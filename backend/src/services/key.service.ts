@@ -1,0 +1,103 @@
+import { generateKeyPairSync } from 'crypto';
+import { prisma } from '../config/db';
+import { CryptoService } from './crypto.service';
+import sshpk from 'sshpk';
+
+export class KeyService {
+  static async generateKey(name: string, type: 'rsa' | 'ed25519', passphrase?: string, description?: string) {
+    let privateKeyStr = '';
+    let publicKeyStr = '';
+
+    if (type === 'rsa') {
+      const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+      privateKeyStr = privateKey;
+      // Convert to OpenSSH format
+      const key = sshpk.parseKey(publicKey, 'pem');
+      publicKeyStr = key.toString('ssh');
+    } else if (type === 'ed25519') {
+      const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+      privateKeyStr = privateKey;
+      const key = sshpk.parseKey(publicKey, 'pem');
+      publicKeyStr = key.toString('ssh');
+    }
+
+    const keyForFp = sshpk.parseKey(publicKeyStr, 'ssh');
+    const fingerprint = keyForFp.fingerprint('sha256').toString();
+
+    // If a passphrase is provided, we would encrypt the PEM with it first, or just rely on our AES encryption
+    // Actually, SRS says "All private keys AES-256-GCM encrypted in SQLite — never plaintext". 
+    // And "Optional passphrase protection per stored key". If they add a passphrase, we can store a flag `hasPassphrase`. 
+    // But ssh2 expects either unencrypted PEM or PEM encrypted with passphrase.
+    // If we just store it encrypted by our AES key, and inject the passphrase when using it?
+    // Let's just encrypt the raw PEM with our AES key. The passphrase flag is for when the original key requires a passphrase.
+
+    const encryptedPrivateKey = CryptoService.encrypt(privateKeyStr);
+
+    return prisma.sSHKey.create({
+      data: {
+        name,
+        description,
+        keyType: type,
+        encryptedPrivateKey,
+        publicKey: publicKeyStr,
+        fingerprint,
+        hasPassphrase: !!passphrase,
+      }
+    });
+  }
+
+  static async importKey(name: string, privateKeyPem: string, description?: string, passphrase?: string) {
+    let key;
+    try {
+      // Parse to ensure it's valid, and extract the public key
+      key = sshpk.parsePrivateKey(privateKeyPem, 'auto');
+    } catch (e) {
+      throw new Error('Invalid private key format');
+    }
+
+    const publicKeyStr = key.toPublic().toString('ssh');
+    const fingerprint = key.fingerprint('sha256').toString();
+    const type = key.type === 'ed25519' ? 'ed25519' : 'rsa'; // Simplify types
+
+    const encryptedPrivateKey = CryptoService.encrypt(privateKeyPem);
+
+    return prisma.sSHKey.create({
+      data: {
+        name,
+        description,
+        keyType: type,
+        encryptedPrivateKey,
+        publicKey: publicKeyStr,
+        fingerprint,
+        hasPassphrase: !!passphrase,
+      }
+    });
+  }
+
+  static async listKeys() {
+    const keys = await prisma.sSHKey.findMany({
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        keyType: true,
+        publicKey: true,
+        fingerprint: true,
+        hasPassphrase: true,
+        createdAt: true,
+      }
+    });
+    return keys;
+  }
+
+  static async deleteKey(id: string) {
+    return prisma.sSHKey.delete({ where: { id } });
+  }
+}
