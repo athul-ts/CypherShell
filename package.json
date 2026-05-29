@@ -1,10 +1,10 @@
 {
-  "name": "ssh-desktop-client",
+  "name": "cyphershell",
   "version": "1.0.0",
   "description": "A polished, secure SSH desktop client with SFTP, key management, and port forwarding — built with Electron, React, and TypeScript.",
   "main": "./out/main/index.js",
-  "author": "MajorVise <support@majorvise.com>",
-  "homepage": "https://majorvise.com",
+  "author": "CypherShell <support@cyphershell.in>",
+  "homepage": "https://cyphershell.in",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

@@ -1,6 +1,6 @@
-appId: com.majorvise.ssh-desktop-client
-productName: MajorVise SSH Client
-copyright: Copyright © 2024 MajorVise
+appId: com.cyphershell.app
+productName: CypherShell
+copyright: Copyright © 2026 CypherShell
 afterPack: scripts/after-pack.cjs
 directories:
   buildResources: build
@@ -41,7 +41,7 @@ asarUnpack:
   - backend/node_modules/ssh2/**
   - backend/node_modules/cpu-features/**
 win:
-  executableName: MajorVise-SSH-Client
+  executableName: CypherShell
   icon: build/icon.ico
   forceCodeSigning: false
   signAndEditExecutable: false
@@ -76,7 +76,7 @@ linux:
   target:
     - AppImage
     - deb
-  maintainer: MajorVise
+  maintainer: CypherShell
   category: Network
 appImage:
   artifactName: ${productName}-${version}.${ext}
@@ -85,4 +85,4 @@ deb:
 npmRebuild: false
 publish:
   provider: generic
-  url: https://updates.majorvise.com/releases
+  url: https://updates.cyphershell.com/releases

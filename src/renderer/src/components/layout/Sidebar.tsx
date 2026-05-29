@@ -14,7 +14,7 @@ export function Sidebar() {
     <div className="w-16 md:w-56 h-full border-r border-slate-800 bg-[#0f1117] flex flex-col items-center md:items-start py-4">
       <div className="px-4 mb-8 hidden md:flex items-center gap-2">
         <TerminalSquare className="w-6 h-6 text-emerald-500" />
-        <span className="font-bold text-slate-200">MajorVise</span>
+        <span className="font-bold text-slate-200">CypherShell</span>
       </div>
 
       <div className="flex flex-col w-full gap-2 px-2">

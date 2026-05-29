@@ -173,7 +173,7 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
-    title: 'MajorVise SSH Client',
+    title: 'CypherShell',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -207,7 +207,7 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   logToFile('Electron app whenReady triggered');
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.majorvise.ssh-desktop-client')
+  electronApp.setAppUserModelId('com.cyphershell.app')
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
