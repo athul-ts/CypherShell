@@ -60,7 +60,7 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
     if (localPath) {
       await executeUpload(localPath);
     } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      await executeUpload(e.dataTransfer.files[0].path);
+      await executeUpload((e.dataTransfer.files[0] as any).path);
     }
   };
 

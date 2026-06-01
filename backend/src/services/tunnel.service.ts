@@ -101,7 +101,7 @@ export class TunnelService {
 
     const server = net.createServer((socket) => {
       let state = 'VERSION';
-      socket.on('data', (chunk) => {
+      socket.on('data', (chunk: Buffer) => {
         if (state === 'VERSION') {
           if (chunk[0] !== 0x05) return socket.end();
           socket.write(Buffer.from([0x05, 0x00])); // NO AUTH

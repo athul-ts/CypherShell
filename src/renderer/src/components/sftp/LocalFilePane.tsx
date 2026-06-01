@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import { File, Folder, RefreshCw, Trash2, Edit, Shield, HardDriveDownload } from 'lucide-react';
-import { format } from 'date-fns';
-import { useTransferStore } from '../../store/transferStore';
+import { File, Folder, RefreshCw } from 'lucide-react';
 
 interface LocalFilePaneProps {
   sessionId: string;
@@ -9,7 +7,7 @@ interface LocalFilePaneProps {
   onDownload: (remotePath: string, localPath: string, filename: string, size: number) => void;
 }
 
-export function LocalFilePane({ sessionId, onUpload, onDownload }: LocalFilePaneProps) {
+export function LocalFilePane({ sessionId: _sessionId, onUpload: _onUpload, onDownload }: LocalFilePaneProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [files, setFiles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);

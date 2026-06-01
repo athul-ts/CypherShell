@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "A polished, secure SSH desktop client with SFTP, key management, and port forwarding — built with Electron, React, and TypeScript.",
   "main": "./out/main/index.js",
-  "author": "CypherShell <support@cyphershell.in>",
+  "author": "Athul",
   "homepage": "https://cyphershell.in",
   "scripts": {
     "format": "prettier --write .",

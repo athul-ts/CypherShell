@@ -140,7 +140,7 @@ function createConnectionWindow(type: 'terminal' | 'sftp', sessionId: string, pr
     title: `${title} (${type.toUpperCase()})`,
     autoHideMenuBar: true,
     show: false,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false

@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="build/icon.png" alt="CypherShell" width="128" />
+  <img src="docs/banner.png" alt="CypherShell — Secure Access. Encrypted Trust." width="720" />
 </p>
-
-<h1 align="center">CypherShell</h1>
 
 <p align="center">
   <strong>A polished, secure, cross-platform SSH desktop client built with Electron, React, and TypeScript.</strong><br/>
