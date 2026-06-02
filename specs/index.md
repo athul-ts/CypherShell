@@ -81,7 +81,7 @@
 | FR-04.13 | Failed transfer one-click retry with error reason | ✅ |
 | FR-04.14 | Toggle hidden files (dotfiles) | ✅ |
 | FR-04.15 | Breadcrumb path bar with click-to-navigate in both panes | ✅ |
-| FR-04.16 | Cancel an in-progress transfer | ❌ → BL-01 |
+| FR-04.16 | Cancel an in-progress transfer | ✅ |
 
 ---
 
@@ -170,7 +170,7 @@
 
 | ID | Feature | Priority | Linked FR | Est. Complexity |
 |---|---|---|---|---|
-| BL-01 | Cancel in-progress SFTP transfer | High | FR-04.16 | Medium |
+| ~~BL-01~~ | ~~Cancel in-progress SFTP transfer~~ | ~~High~~ | FR-04.16 | ✅ Done |
 | BL-02 | Port conflict detection before tunnel bind | Medium | FR-06.6 | Low |
 | BL-03 | Warn when deleting SSH key in use by profiles | Medium | FR-05.11 | Low |
 | BL-04 | Audit log auto-purge scheduler | Medium | FR-08.7 | Low |

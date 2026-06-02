@@ -498,7 +498,7 @@ CypherShell/
 
 ### FR-04: SFTP File Manager
 
-**Priority:** High | **Status:** ✅ Mostly Implemented (FR-04.6, FR-04.8, FR-04.16 — see §17)
+**Priority:** High | **Status:** ✅ Mostly Implemented (FR-04.6, FR-04.8 — see §17)
 
 - FR-04.1 — SFTP Explorer opens in standalone window from Profile Details tab ✅
 - FR-04.2 — Left pane: local machine files; Right pane: remote server files ✅
@@ -515,7 +515,7 @@ CypherShell/
 - FR-04.13 — Failed transfers: one-click retry with error reason shown ✅
 - FR-04.14 — Toggle hidden files (dotfiles) ✅
 - FR-04.15 — Breadcrumb path bar in both panes with click-to-navigate ✅
-- FR-04.16 — Cancel an in-progress transfer — **not yet implemented** ❌
+- FR-04.16 — Cancel an in-progress transfer ✅
 
 ---
 
@@ -1183,18 +1183,11 @@ These items are specified in this SRS but have not yet been implemented. They ar
 
 ---
 
-### BL-01 — Cancel In-Progress SFTP Transfer
+### ~~BL-01 — Cancel In-Progress SFTP Transfer~~ ✅ Implemented
 **Requirement:** FR-04.16
-**Priority:** High
+**Priority:** High — **Done in v1.1**
 
-The "Cancel" button in the transfer queue is not yet wired up. Cancellation must:
-1. Stop the underlying `ssh2-sftp-client` stream operation
-2. Close the SSE event stream for that `transferId`
-3. Mark the transfer as "cancelled" in `transferStore`
-4. Clean up the in-memory `EventEmitter` entry
-
-**Backend work:** Add `DELETE /api/sftp/:sessionId/transfer/:transferId` route, controller, and `SftpService.cancelTransfer(transferId)` method.
-**Frontend work:** Wire the cancel button in `SftpPane` to call that endpoint and update the store.
+Implemented: `DELETE /api/sftp/:sessionId/transfer/:transferId` → `SftpService.cancelTransfer()` destroys the underlying ssh2 SFTPStream, emits `{ status: 'cancelled' }` on the SSE channel, and cleans up the `activeTransfers` Map. The `SftpPane` cancel button calls the endpoint and the `transferStore` reflects the cancelled state immediately.
 
 ---
 

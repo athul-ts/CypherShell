@@ -7,6 +7,20 @@ import path from 'path';
 
 export class SftpService {
   static transferEvents = new EventEmitter();
+  // Maps transferId → the raw ssh2 SFTPStream so cancelTransfer() can destroy it
+  static activeTransfers = new Map<string, any>();
+  // Transfers explicitly cancelled — guards against emitting 'error' after cancel
+  static cancelledTransfers = new Set<string>();
+
+  static cancelTransfer(transferId: string): void {
+    this.cancelledTransfers.add(transferId);
+    this.transferEvents.emit(transferId, { transferId, status: 'cancelled' });
+    const stream = this.activeTransfers.get(transferId);
+    if (stream) {
+      stream.destroy();
+      this.activeTransfers.delete(transferId);
+    }
+  }
 
   static async getClient(sessionId: string): Promise<SftpClient> {
     const session = SSHService.getSession(sessionId);
@@ -75,11 +89,12 @@ export class SftpService {
   static async upload(sessionId: string, localPath: string, remotePath: string, transferId: string) {
     const sftp = await this.getClient(sessionId);
     const stream = (sftp as any).sftp;
-    
-    // We can use raw fastPut from ssh2 stream.
+    this.activeTransfers.set(transferId, stream);
+
     return new Promise<void>((resolve, reject) => {
       stream.fastPut(localPath, remotePath, {
-        step: (total_transferred: number, chunk: number, total: number) => {
+        step: (total_transferred: number, _chunk: number, total: number) => {
+          if (this.cancelledTransfers.has(transferId)) return;
           this.transferEvents.emit(transferId, {
             transferId,
             status: 'progress',
@@ -89,6 +104,11 @@ export class SftpService {
           });
         }
       }, (err: any) => {
+        this.activeTransfers.delete(transferId);
+        if (this.cancelledTransfers.has(transferId)) {
+          this.cancelledTransfers.delete(transferId);
+          return resolve();
+        }
         const session = SSHService.getSession(sessionId);
         const profileId = session?.profileId || null;
         if (err) {
@@ -97,7 +117,7 @@ export class SftpService {
           return reject(err);
         }
         this.transferEvents.emit(transferId, { transferId, status: 'complete', percent: 100 });
-        fs.stat(localPath, (statErr, stats) => {
+        fs.stat(localPath, (_statErr, stats) => {
           AuditService.logSftpTransfer(profileId, 'sftp_upload', `Uploaded ${localPath} to ${remotePath}`, true, stats?.size).catch(console.error);
         });
         resolve();
@@ -108,10 +128,12 @@ export class SftpService {
   static async download(sessionId: string, remotePath: string, localPath: string, transferId: string) {
     const sftp = await this.getClient(sessionId);
     const stream = (sftp as any).sftp;
+    this.activeTransfers.set(transferId, stream);
 
     return new Promise<void>((resolve, reject) => {
       stream.fastGet(remotePath, localPath, {
-        step: (total_transferred: number, chunk: number, total: number) => {
+        step: (total_transferred: number, _chunk: number, total: number) => {
+          if (this.cancelledTransfers.has(transferId)) return;
           this.transferEvents.emit(transferId, {
             transferId,
             status: 'progress',
@@ -121,6 +143,11 @@ export class SftpService {
           });
         }
       }, (err: any) => {
+        this.activeTransfers.delete(transferId);
+        if (this.cancelledTransfers.has(transferId)) {
+          this.cancelledTransfers.delete(transferId);
+          return resolve();
+        }
         const session = SSHService.getSession(sessionId);
         const profileId = session?.profileId || null;
         if (err) {
@@ -129,7 +156,7 @@ export class SftpService {
           return reject(err);
         }
         this.transferEvents.emit(transferId, { transferId, status: 'complete', percent: 100 });
-        fs.stat(localPath, (statErr, stats) => {
+        fs.stat(localPath, (_statErr, stats) => {
           AuditService.logSftpTransfer(profileId, 'sftp_download', `Downloaded ${remotePath} to ${localPath}`, true, stats?.size).catch(console.error);
         });
         resolve();

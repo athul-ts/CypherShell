@@ -23,7 +23,7 @@ export function useSFTPTransfer(sessionId: string) {
         try {
           const event: TransferEvent = JSON.parse(e.data);
           updateProgress(event);
-          if (event.status === 'complete' || event.status === 'error') {
+          if (event.status === 'complete' || event.status === 'error' || event.status === 'cancelled') {
             source.close();
           }
         } catch (err) {

@@ -89,10 +89,7 @@ export function progressStream(req: Request, res: Response) {
 
   const onProgress = (data: any) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
-    // Do NOT call res.end() here — closing the connection server-side triggers
-    // EventSource onerror in the client even when the message was delivered.
-    // The client calls source.close() after receiving the terminal event.
-    if (data.status === 'complete' || data.status === 'error') {
+    if (data.status === 'complete' || data.status === 'error' || data.status === 'cancelled') {
       SftpService.transferEvents.off(transferId, onProgress);
     }
   };
@@ -102,4 +99,10 @@ export function progressStream(req: Request, res: Response) {
   req.on('close', () => {
     SftpService.transferEvents.off(transferId, onProgress);
   });
+}
+
+export async function cancelTransfer(req: Request, res: Response) {
+  const { transferId } = req.params;
+  SftpService.cancelTransfer(transferId);
+  res.json({ success: true });
 }

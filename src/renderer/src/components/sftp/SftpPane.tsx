@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { File, Folder, HardDriveUpload, RefreshCw, Trash2, Download, CheckCircle, XCircle, Loader2, FolderPlus, Edit, Shield } from 'lucide-react';
+import { File, Folder, HardDriveUpload, RefreshCw, Trash2, Download, CheckCircle, XCircle, Loader2, FolderPlus, Edit, Shield, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { useSFTPTransfer } from '../../hooks/useSFTPTransfer';
 import { useTransferStore } from '../../store/transferStore';
@@ -25,6 +25,16 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
   const { listenToTransfer, addTransfer } = useSFTPTransfer(sessionId);
   const transfers = useTransferStore(s => s.transfers);
   const clearCompleted = useTransferStore(s => s.clearCompleted);
+  const cancelTransferStore = useTransferStore(s => s.cancelTransfer);
+
+  const handleCancel = async (transferId: string) => {
+    cancelTransferStore(transferId);
+    try {
+      await api.delete(`/sftp/${sessionId}/transfer/${transferId}`);
+    } catch {
+      // best-effort — store is already marked cancelled
+    }
+  };
 
   const handleNavigate = (file: any) => {
     if (file.type === 'd') {
@@ -293,20 +303,34 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className={`h-full rounded-full transition-all duration-300 ${
-                        t.status === 'error' ? 'bg-red-500' : t.status === 'complete' ? 'bg-emerald-500' : 'bg-blue-500'
+                        t.status === 'error' ? 'bg-red-500' :
+                        t.status === 'complete' ? 'bg-emerald-500' :
+                        t.status === 'cancelled' ? 'bg-slate-600' :
+                        'bg-blue-500'
                       }`}
                       style={{ width: `${Math.max(0, Math.min(100, t.percent))}%` }}
                     />
                   </div>
-                  <div className="w-16 text-right text-xs">
+                  <div className="w-24 text-right text-xs flex items-center justify-end gap-1">
                     {t.status === 'progress' ? (
-                      <span className="text-slate-400 flex items-center justify-end gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {t.percent}%</span>
+                      <>
+                        <span className="text-slate-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {t.percent}%</span>
+                        <button
+                          onClick={() => handleCancel(t.id)}
+                          title="Cancel transfer"
+                          className="ml-1 p-0.5 rounded hover:bg-slate-700 text-slate-500 hover:text-red-400 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </>
                     ) : t.status === 'complete' ? (
-                      <span className="text-emerald-500 flex items-center justify-end gap-1"><CheckCircle className="w-3 h-3" /> Done</span>
+                      <span className="text-emerald-500 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Done</span>
+                    ) : t.status === 'cancelled' ? (
+                      <span className="text-slate-500 flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelled</span>
                     ) : (
-                      <span className="text-red-500 flex items-center justify-end gap-1"><XCircle className="w-3 h-3" /> Error</span>
+                      <span className="text-red-500 flex items-center gap-1"><XCircle className="w-3 h-3" /> Error</span>
                     )}
                   </div>
                 </div>
