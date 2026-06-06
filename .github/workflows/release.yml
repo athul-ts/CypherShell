@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write  # needed to create releases and upload assets
+
+jobs:
+  # ── Windows ────────────────────────────────────────────────────────────────
+  build-win:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Build backend (TypeScript → dist/)
+        run: npm run build:backend
+
+      - name: Build renderer + main (typecheck included)
+        run: npm run build
+
+      - name: Package & publish to GitHub Releases
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Linux ──────────────────────────────────────────────────────────────────
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install native build tools
+        run: sudo apt-get update && sudo apt-get install -y python3 make g++
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Build backend (TypeScript → dist/)
+        run: npm run build:backend
+
+      - name: Build renderer + main (typecheck included)
+        run: npm run build
+
+      - name: Package & publish to GitHub Releases
+        run: npx electron-builder --linux --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── macOS (self-hosted or paid runner required) ────────────────────────────
+  # Uncomment when a macOS runner is available.
+  #
+  # build-mac:
+  #   name: Build macOS
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with: { node-version: 20, cache: npm }
+  #     - run: npm ci
+  #     - run: npm ci --prefix backend
+  #     - run: npm run build:backend
+  #     - run: npm run build
+  #     - run: npx electron-builder --mac --publish always
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

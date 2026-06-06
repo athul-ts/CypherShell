@@ -84,5 +84,6 @@ deb:
   artifactName: ${productName}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://updates.cyphershell.com/releases
+  provider: github
+  owner: athul-ts
+  repo: CypherShell
