@@ -11,6 +11,8 @@ import auditRoutes from './routes/audit.routes';
 import configRoutes from './routes/config.routes';
 import { requireAuth } from './middleware/auth.middleware';
 import { requireAuthFlexible } from './middleware/auth.middleware';
+import { ConfigService } from './services/config.service';
+import { AuditService } from './services/audit.service';
 import { progressStream } from './controllers/sftp.controller';
 import { setupTerminalWebSocket } from './websocket/terminal.ws';
 import rateLimit from 'express-rate-limit';
@@ -63,6 +65,15 @@ async function bootstrap() {
   });
 
   setupTerminalWebSocket(server);
+
+  const runPurge = async () => {
+    const config = await ConfigService.getConfig();
+    if (config.logRetentionDays > 0) {
+      await AuditService.clearOldLogs(config.logRetentionDays);
+    }
+  };
+  runPurge().catch(console.error);
+  setInterval(() => runPurge().catch(console.error), 24 * 60 * 60 * 1000);
 }
 
 bootstrap().catch(err => {

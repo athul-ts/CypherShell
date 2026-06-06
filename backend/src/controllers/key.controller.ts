@@ -30,6 +30,16 @@ export async function importKey(req: Request, res: Response) {
   }
 }
 
+export async function getKeyUsage(req: Request, res: Response) {
+  try {
+    const id = req.params.id as string;
+    const profiles = await KeyService.getKeyUsage(id);
+    res.json({ profiles });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 export async function deleteKey(req: Request, res: Response) {
   try {
     const id = req.params.id as string;

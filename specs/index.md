@@ -38,7 +38,7 @@
 | FR-02.1 | Terminal spawned from Profile Details tab as standalone window | ✅ |
 | FR-02.2 | xterm.js full ANSI colour and escape sequence support | ✅ |
 | FR-02.3 | PTY resizes dynamically (xterm-addon-fit) | ✅ |
-| FR-02.4 | Ctrl+Shift+C copy; right-click paste | ⚠️ copy ✅, paste ❌ → BL-08 |
+| FR-02.4 | Ctrl+Shift+C copy; right-click paste | ✅ |
 | FR-02.5 | Full keyboard support (Ctrl+C, arrows, function keys) | ✅ |
 | FR-02.6 | Auto-reconnect with exponential backoff, max 3 retries | ✅ |
 | FR-02.7 | Connection status badge | ✅ |
@@ -71,9 +71,9 @@
 | FR-04.3 | Double-click to navigate folders | ✅ |
 | FR-04.4 | Upload via button (native file dialog) + drag-and-drop | ✅ |
 | FR-04.5 | Download via button (native save dialog) | ✅ |
-| FR-04.6 | Rename via right-click; F2 shortcut | ⚠️ right-click ✅, F2 ❌ → BL-07 |
+| FR-04.6 | Rename via right-click; F2 shortcut | ✅ |
 | FR-04.7 | Delete with confirmation | ✅ |
-| FR-04.8 | New folder via button; Ctrl+Shift+N shortcut | ⚠️ button ✅, shortcut ❌ → BL-07 |
+| FR-04.8 | New folder via button; Ctrl+Shift+N shortcut | ✅ |
 | FR-04.9 | Show and edit Unix permissions (chmod) | ✅ |
 | FR-04.10 | Per-transfer SSE progress: filename, bytes, %, speed, elapsed | ✅ |
 | FR-04.11 | Multiple simultaneous transfers in queue, each with own SSE stream | ✅ |
@@ -100,7 +100,7 @@
 | FR-05.8 | Copy public key to clipboard | ✅ |
 | FR-05.9 | Export public key to file via native save dialog | ✅ |
 | FR-05.10 | Assign stored keys to profiles via profile form | ✅ |
-| FR-05.11 | Delete with confirmation; warn if key in use by profiles | ⚠️ delete ✅, in-use warning ❌ → BL-03 |
+| FR-05.11 | Delete with confirmation; warn if key in use by profiles | ✅ |
 | FR-05.12 | Name and optional description per key | ✅ |
 
 ---
@@ -115,7 +115,7 @@
 | FR-06.3 | Dynamic SOCKS5 proxy | ✅ |
 | FR-06.4 | Tunnel panel in Profile Details tab | ✅ |
 | FR-06.5 | Start/stop tunnels independently of terminal/SFTP sessions | ✅ |
-| FR-06.6 | Port conflict detection before binding | ❌ → BL-02 |
+| FR-06.6 | Port conflict detection before binding | ✅ |
 
 ---
 
@@ -139,13 +139,13 @@
 | ID | Requirement | Status |
 |---|---|---|
 | FR-08.1 | Log SSH connect (profile, host, timestamp, success/fail) | ✅ |
-| FR-08.2 | Log SSH disconnect with duration and reason | ⚠️ duration ✅, reason ❌ → BL-05 |
+| FR-08.2 | Log SSH disconnect with duration and reason | ✅ |
 | FR-08.3 | Log SFTP upload (filename, size, remote path, timestamp) | ✅ |
 | FR-08.4 | Log SFTP download (filename, size, local path, timestamp) | ✅ |
 | FR-08.5 | Paginated log table with search and date range filter | ✅ |
 | FR-08.6 | Export logs as CSV via native save dialog | ✅ |
-| FR-08.7 | Auto-purge logs older than N days | ⚠️ config field ✅, scheduler ❌ → BL-04 |
-| FR-08.8 | Clear all logs via UI | ❌ → BL-06 |
+| FR-08.7 | Auto-purge logs older than N days | ✅ |
+| FR-08.8 | Clear all logs via UI | ✅ |
 
 ---
 
@@ -171,13 +171,13 @@
 | ID | Feature | Priority | Linked FR | Est. Complexity |
 |---|---|---|---|---|
 | ~~BL-01~~ | ~~Cancel in-progress SFTP transfer~~ | ~~High~~ | FR-04.16 | ✅ Done |
-| BL-02 | Port conflict detection before tunnel bind | Medium | FR-06.6 | Low |
-| BL-03 | Warn when deleting SSH key in use by profiles | Medium | FR-05.11 | Low |
-| BL-04 | Audit log auto-purge scheduler | Medium | FR-08.7 | Low |
-| BL-05 | SSH disconnect reason logging | Low | FR-08.2 | Low |
-| BL-06 | DELETE /api/logs clear-all endpoint + UI button | Low | FR-08.8 | Low |
-| BL-07 | SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder) | Low | FR-04.6, FR-04.8 | Low |
-| BL-08 | Terminal right-click paste | Low | FR-02.4 | Low |
+| ~~BL-02~~ | ~~Port conflict detection before tunnel bind~~ | ~~Medium~~ | FR-06.6 | ✅ Done |
+| ~~BL-03~~ | ~~Warn when deleting SSH key in use by profiles~~ | ~~Medium~~ | FR-05.11 | ✅ Done |
+| ~~BL-04~~ | ~~Audit log auto-purge scheduler~~ | ~~Medium~~ | FR-08.7 | ✅ Done |
+| ~~BL-05~~ | ~~SSH disconnect reason logging~~ | ~~Low~~ | FR-08.2 | ✅ Done |
+| ~~BL-06~~ | ~~DELETE /api/logs clear-all endpoint + UI button~~ | ~~Low~~ | FR-08.8 | ✅ Done |
+| ~~BL-07~~ | ~~SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder)~~ | ~~Low~~ | FR-04.6, FR-04.8 | ✅ Done |
+| ~~BL-08~~ | ~~Terminal right-click paste~~ | ~~Low~~ | FR-02.4 | ✅ Done |
 
 ---
 

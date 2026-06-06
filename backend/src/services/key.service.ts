@@ -97,6 +97,14 @@ export class KeyService {
     return keys;
   }
 
+  static async getKeyUsage(id: string): Promise<{ id: string; name: string }[]> {
+    const key = await prisma.sSHKey.findUnique({
+      where: { id },
+      include: { profiles: { select: { id: true, name: true } } },
+    });
+    return key?.profiles ?? [];
+  }
+
   static async deleteKey(id: string) {
     return prisma.sSHKey.delete({ where: { id } });
   }

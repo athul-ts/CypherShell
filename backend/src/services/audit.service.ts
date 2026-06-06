@@ -15,6 +15,20 @@ export class AuditService {
     });
   }
 
+  static async logDisconnect(profileId: string | null, profileName: string | null, host: string | null, reason: string, durationMs?: number) {
+    return prisma.auditLog.create({
+      data: {
+        type: 'disconnection',
+        profileId,
+        profileName,
+        host,
+        detail: `Disconnected: ${reason}`,
+        success: true,
+        durationMs,
+      }
+    });
+  }
+
   static async logSftpTransfer(profileId: string | null, type: 'sftp_upload' | 'sftp_download', detail: string, success: boolean, fileSizeBytes?: number, errorMessage?: string) {
     return prisma.auditLog.create({
       data: {
@@ -57,6 +71,10 @@ export class AuditService {
     });
 
     return header + rows.join('\n');
+  }
+
+  static async clearAllLogs() {
+    return prisma.auditLog.deleteMany({});
   }
 
   static async clearOldLogs(retentionDays: number) {

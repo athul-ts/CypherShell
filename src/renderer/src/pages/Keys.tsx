@@ -19,12 +19,19 @@ export default function Keys() {
   });
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this key? It cannot be recovered.')) return;
     try {
+      const { data } = await api.get(`/keys/${id}/usage`);
+      const profiles: { id: string; name: string }[] = data.profiles;
+      let message = 'Are you sure you want to delete this key? It cannot be recovered.';
+      if (profiles.length > 0) {
+        const names = profiles.map(p => `• ${p.name}`).join('\n');
+        message = `This key is used by ${profiles.length} profile(s):\n${names}\n\nDeleting it will remove the key assignment from those profiles. Continue?`;
+      }
+      if (!confirm(message)) return;
       await api.delete(`/keys/${id}`);
       refetch();
-    } catch (err) {
-      alert('Failed to delete key');
+    } catch (err: any) {
+      alert(err?.response?.data?.error ?? 'Failed to delete key');
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { File, Folder, HardDriveUpload, RefreshCw, Trash2, Download, CheckCircle, XCircle, Loader2, FolderPlus, Edit, Shield, X } from 'lucide-react';
@@ -13,6 +13,8 @@ interface SftpPaneProps {
 
 export function SftpPane({ sessionId }: SftpPaneProps) {
   const [currentPath, setCurrentPath] = useState('.');
+  const [selectedFile, setSelectedFile] = useState<any>(null);
+  const remoteRef = useRef<HTMLDivElement>(null);
 
   const { data: files, isLoading, refetch, isError, error } = useQuery({
     queryKey: ['sftp', sessionId, currentPath],
@@ -133,6 +135,31 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
     }
   };
 
+  useEffect(() => {
+    const onKey = async (e: KeyboardEvent) => {
+      if (!remoteRef.current?.contains(document.activeElement) && document.activeElement !== document.body) return;
+      if (e.key === 'F2' && selectedFile) {
+        e.preventDefault();
+        const newName = prompt('Rename to:', selectedFile.name);
+        if (!newName || newName === selectedFile.name) return;
+        const oldPath = currentPath === '.' || currentPath === '' ? selectedFile.name : `${currentPath}/${selectedFile.name}`;
+        const newPath = currentPath === '.' || currentPath === '' ? newName : `${currentPath}/${newName}`;
+        try {
+          await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath });
+          refetch();
+        } catch {
+          alert('Rename failed');
+        }
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+        e.preventDefault();
+        handleMkdir();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selectedFile, currentPath]);
+
   const handleRename = async (file: any, e: React.MouseEvent) => {
     e.stopPropagation();
     const newName = prompt('Rename to:', file.name);
@@ -182,6 +209,7 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
 
         {/* Right Pane: Remote File System */}
         <div
+          ref={remoteRef}
           className="w-1/2 flex flex-col min-w-[300px] border-l border-slate-800"
           onDrop={handleDropToRemote}
           onDragOver={handleDragOver}
@@ -224,10 +252,11 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
                   {files?.map((f: any) => (
                     <tr
                       key={f.name}
+                      onClick={() => setSelectedFile(f)}
                       onDoubleClick={() => handleNavigate(f)}
                       draggable={f.type !== 'd'}
                       onDragStart={(e) => handleRemoteDragStart(e, f)}
-                      className="border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer group transition-colors"
+                      className={`border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer group transition-colors ${selectedFile?.name === f.name ? 'bg-slate-800/50' : ''}`}
                     >
                       <td className="px-4 py-2 font-medium text-slate-300 flex items-center gap-3">
                         {f.type === 'd' ? (

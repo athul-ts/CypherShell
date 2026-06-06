@@ -8,6 +8,9 @@ export interface SSHSession {
   id: string;
   client: Client;
   profileId: string;
+  profileName: string;
+  host: string;
+  connectedAt: Date;
 }
 
 export class SSHService {
@@ -48,9 +51,22 @@ export class SSHService {
 
     return new Promise((resolve, reject) => {
       client.on('ready', () => {
-        const session = { id: sessionId, client, profileId: profile.id };
+        const connectedAt = new Date();
+        const session: SSHSession = { id: sessionId, client, profileId: profile.id, profileName: profile.name, host: profile.host, connectedAt };
         this.sessions.set(sessionId, session);
         AuditService.logConnection(profile.id, profile.name, profile.host, true).catch(console.error);
+
+        client.on('close', () => {
+          const durationMs = Date.now() - connectedAt.getTime();
+          AuditService.logDisconnect(profile.id, profile.name, profile.host, 'Connection closed', durationMs).catch(console.error);
+          this.sessions.delete(sessionId);
+        });
+
+        client.on('error', (postConnectErr) => {
+          const durationMs = Date.now() - connectedAt.getTime();
+          AuditService.logDisconnect(profile.id, profile.name, profile.host, postConnectErr.message, durationMs).catch(console.error);
+        });
+
         resolve(session);
       });
 

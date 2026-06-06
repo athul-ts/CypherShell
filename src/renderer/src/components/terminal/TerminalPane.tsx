@@ -39,6 +39,21 @@ export function TerminalPane({ sessionId }: TerminalPaneProps) {
     term.current.open(terminalRef.current);
     fitAddon.current.fit();
 
+    // Right-click pastes clipboard content into the terminal
+    terminalRef.current.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && ws.current?.readyState === WebSocket.OPEN) {
+          const bytes = new TextEncoder().encode(text);
+          const binary = Array.from(bytes, b => String.fromCodePoint(b)).join('');
+          ws.current.send(JSON.stringify({ type: 'input', data: btoa(binary) }));
+        }
+      } catch {
+        // Clipboard access denied — ignore silently
+      }
+    });
+
     // Connect WebSocket
     const backendPort = (window as any).api.backendPort;
     const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}`;

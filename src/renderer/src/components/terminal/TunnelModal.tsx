@@ -23,8 +23,8 @@ export function TunnelModal({ sessionId, open, onOpenChange }: TunnelModalProps)
       await api.post(`/tunnels/${sessionId}/start`, formData);
       setActiveForwards([...activeForwards, { ...formData, id: Date.now() }]);
       setFormData({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' });
-    } catch (err) {
-      alert('Failed to start tunnel');
+    } catch (err: any) {
+      alert(err?.response?.data?.error ?? 'Failed to start tunnel');
     }
   };
 

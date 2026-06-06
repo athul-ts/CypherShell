@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { FileText, Download, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { FileText, Download, CheckCircle2, XCircle, Search, Trash2 } from 'lucide-react';
 import { format, isAfter, subDays, subMonths } from 'date-fns';
 import { useState } from 'react';
 
@@ -8,6 +8,7 @@ export default function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterDate, setFilterDate] = useState('all');
+  const queryClient = useQueryClient();
 
   const { data: logs, isLoading } = useQuery({
     queryKey: ['logs'],
@@ -21,6 +22,12 @@ export default function Logs() {
   const handleExport = () => {
     const backendPort = (window as any).api.backendPort;
     window.location.href = `http://127.0.0.1:${backendPort}/api/audit/export`;
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm('Delete all audit logs permanently? This cannot be undone.')) return;
+    await api.delete('/audit');
+    queryClient.invalidateQueries({ queryKey: ['logs'] });
   };
 
   const filteredLogs = logs?.filter((log: any) => {
@@ -52,7 +59,13 @@ export default function Logs() {
           <h1 className="text-2xl font-bold text-slate-200">Audit Logs</h1>
           <p className="text-slate-500 mt-1">Review connection history and file transfer activity.</p>
         </div>
-        <button 
+        <button
+          onClick={handleClearAll}
+          className="bg-slate-800 hover:bg-red-500/20 hover:text-red-400 text-slate-300 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors border border-slate-700"
+        >
+          <Trash2 className="w-4 h-4" /> Clear All
+        </button>
+        <button
           onClick={handleExport}
           className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
         >
