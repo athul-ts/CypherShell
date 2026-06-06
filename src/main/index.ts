@@ -4,7 +4,9 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { spawn } from 'child_process'
 import portfinder from 'portfinder'
-import icon from '../../resources/icon.png?asset'
+import iconPng from '../../resources/icon.png?asset'
+import iconIco from '../../build/icon.ico?asset'
+const icon = process.platform === 'win32' ? iconIco : iconPng
 import { writeFileSync, appendFileSync } from 'fs'
 import { stat, readdir, mkdir, rename, rm } from 'fs/promises'
 import * as os from 'os'
@@ -174,7 +176,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'CypherShell',
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false

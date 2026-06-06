@@ -102,7 +102,7 @@ export function progressStream(req: Request, res: Response) {
 }
 
 export async function cancelTransfer(req: Request, res: Response) {
-  const { transferId } = req.params;
+  const transferId = req.params['transferId'] as string;
   SftpService.cancelTransfer(transferId);
   res.json({ success: true });
 }
