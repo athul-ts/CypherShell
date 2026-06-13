@@ -3,6 +3,18 @@ import { prisma } from '../config/db';
 import { CryptoService } from './crypto.service';
 import sshpk from 'sshpk';
 
+export interface CskbBundle {
+  version: number;
+  keyName: string;
+  keyType: string;
+  description: string | null;
+  publicKey: string;
+  encryptedPrivateKey: string;
+  iv: string;
+  salt: string;
+  authTag: string;
+}
+
 export class KeyService {
   static async generateKey(name: string, type: 'rsa' | 'ed25519', passphrase?: string, description?: string) {
     let privateKeyStr = '';
@@ -107,5 +119,69 @@ export class KeyService {
 
   static async deleteKey(id: string) {
     return prisma.sSHKey.delete({ where: { id } });
+  }
+
+  static async buildKeyBundle(id: string, passphrase: string): Promise<CskbBundle> {
+    const key = await prisma.sSHKey.findUnique({ where: { id } });
+    if (!key) throw new Error('Key not found');
+    const privateKeyPem = CryptoService.decrypt(key.encryptedPrivateKey);
+    const encrypted = await CryptoService.encryptWithPassphrase(privateKeyPem, passphrase);
+    return {
+      version: 1,
+      keyName: key.name,
+      keyType: key.keyType,
+      description: key.description,
+      publicKey: key.publicKey,
+      ...encrypted,
+    };
+  }
+
+  static async applyKeyImport(
+    bundle: CskbBundle,
+    passphrase: string,
+    resolution: 'skip' | 'rename' | 'overwrite' | null,
+  ): Promise<{ status: 'imported' | 'skipped' | 'conflict'; conflictName?: string }> {
+    let privateKeyPem: string;
+    try {
+      privateKeyPem = await CryptoService.decryptWithPassphrase(bundle, passphrase);
+    } catch {
+      throw new Error('Invalid passphrase or corrupted bundle');
+    }
+
+    const existing = await prisma.sSHKey.findFirst({ where: { name: bundle.keyName } });
+    let finalName = bundle.keyName;
+
+    if (existing) {
+      if (!resolution) return { status: 'conflict', conflictName: bundle.keyName };
+      if (resolution === 'skip') return { status: 'skipped' };
+      if (resolution === 'rename') finalName = `${bundle.keyName} (imported)`;
+      if (resolution === 'overwrite') await prisma.sSHKey.delete({ where: { id: existing.id } });
+    }
+
+    let parsedKey: ReturnType<typeof sshpk.parsePrivateKey>;
+    try {
+      parsedKey = sshpk.parsePrivateKey(privateKeyPem, 'auto');
+    } catch (err) {
+      throw new Error(`Invalid private key in bundle: ${(err as Error).message}`);
+    }
+    const publicKeyStr = parsedKey.toPublic().toString('ssh');
+    const fingerprint = parsedKey.fingerprint('sha256').toString();
+    const keyType = parsedKey.type === 'ed25519' ? 'ed25519' : 'rsa';
+
+    const encryptedPrivateKey = CryptoService.encrypt(privateKeyPem);
+
+    await prisma.sSHKey.create({
+      data: {
+        name: finalName,
+        description: bundle.description ?? undefined,
+        keyType,
+        encryptedPrivateKey,
+        publicKey: publicKeyStr,
+        fingerprint,
+        hasPassphrase: false,
+      },
+    });
+
+    return { status: 'imported' };
   }
 }

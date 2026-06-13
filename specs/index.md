@@ -168,18 +168,18 @@
 ---
 
 ### FR-10 — SSH Key Export/Import
-**SRS §6.10** | Priority: Medium | Overall: ❌ Not Implemented
+**SRS §6.10** | Priority: Medium | Overall: ✅ Implemented
 
 | ID | Requirement | Status |
 |---|---|---|
-| FR-10.1 | Export key as encrypted `.cskb` file via native save dialog (one key per file) | ❌ |
-| FR-10.2 | `.cskb` bundle: JSON envelope with publicKey (plaintext) + AES-256-GCM encrypted private key, IV, salt, authTag; key derived from user passphrase via PBKDF2-SHA512 | ❌ |
-| FR-10.3 | Export passphrase required and confirmed before file is written | ❌ |
-| FR-10.4 | Import `.cskb` file via native file picker | ❌ |
-| FR-10.5 | On import: unwrap with export passphrase, re-encrypt under app master key — passphrase not retained | ❌ |
-| FR-10.6 | Import conflict (key name exists): Skip / Rename / Overwrite | ❌ |
-| FR-10.7 | Export and Import accessible from SSH Keys page per-key action menu | ❌ |
-| FR-10.8 | `.cskb` format distinct from FR-05.9 public-key export (`.cskb` = full encrypted key backup) | ❌ |
+| FR-10.1 | Export key as encrypted `.cskb` file via native save dialog (one key per file) | ✅ |
+| FR-10.2 | `.cskb` bundle: JSON envelope with publicKey (plaintext) + AES-256-GCM encrypted private key, IV, salt, authTag; key derived from user passphrase via PBKDF2-SHA512 | ✅ |
+| FR-10.3 | Export passphrase required and confirmed before file is written | ✅ |
+| FR-10.4 | Import `.cskb` file via native file picker | ✅ |
+| FR-10.5 | On import: unwrap with export passphrase, re-encrypt under app master key — passphrase not retained | ✅ |
+| FR-10.6 | Import conflict (key name exists): Skip / Rename / Overwrite | ✅ |
+| FR-10.7 | Export and Import accessible from SSH Keys page per-key action menu | ✅ |
+| FR-10.8 | `.cskb` format distinct from FR-05.9 public-key export (`.cskb` = full encrypted key backup) | ✅ |
 
 ---
 

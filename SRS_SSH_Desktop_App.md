@@ -637,18 +637,18 @@ Export and import connection profiles as JSON files for backup, sharing, and mig
 
 ### FR-10: SSH Key Export/Import
 
-**Priority:** Medium | **Status:** ❌ Not Implemented
+**Priority:** Medium | **Status:** ✅ Implemented
 
 Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup and migration. The bundle re-encrypts the private key with a user-supplied passphrase so it is never written to disk unprotected. Import restores from a `.cskb` file and re-encrypts with the current app master key.
 
-- FR-10.1 — Export a key as an encrypted `.cskb` file via native save dialog; only one key per export file ❌
-- FR-10.2 — The `.cskb` bundle is a JSON envelope containing: `version`, `keyName`, `keyType`, `description`, `publicKey` (plaintext), `encryptedPrivateKey` (AES-256-GCM), `iv`, `salt`, `authTag` — where the encryption key is derived from the user-supplied export passphrase via PBKDF2-SHA512 (200 000 iterations) ❌
-- FR-10.3 — User must supply and confirm an export passphrase before export proceeds — the file is never written without passphrase encryption ❌
-- FR-10.4 — Import a `.cskb` file via native file picker ❌
-- FR-10.5 — On import, user is prompted for the export passphrase; the private key is unwrapped, then immediately re-encrypted with the current app master key and stored in the database — the export passphrase is not retained ❌
-- FR-10.6 — On import conflict (key name already exists), the user is shown: **Skip**, **Rename** (append suffix), or **Overwrite** ❌
-- FR-10.7 — Export and Import are accessible from the SSH Keys management page via the per-key action/context menu ❌
-- FR-10.8 — The `.cskb` format is explicitly distinct from the raw PEM/public-key export in FR-05.9 — `.cskb` is a CypherShell-native full-key backup; FR-05.9 exports only the public key ❌
+- FR-10.1 — Export a key as an encrypted `.cskb` file via native save dialog; only one key per export file ✅
+- FR-10.2 — The `.cskb` bundle is a JSON envelope containing: `version`, `keyName`, `keyType`, `description`, `publicKey` (plaintext), `encryptedPrivateKey` (AES-256-GCM), `iv`, `salt`, `authTag` — where the encryption key is derived from the user-supplied export passphrase via PBKDF2-SHA512 (200 000 iterations) ✅
+- FR-10.3 — User must supply and confirm an export passphrase before export proceeds — the file is never written without passphrase encryption ✅
+- FR-10.4 — Import a `.cskb` file via native file picker ✅
+- FR-10.5 — On import, user is prompted for the export passphrase; the private key is unwrapped, then immediately re-encrypted with the current app master key and stored in the database — the export passphrase is not retained ✅
+- FR-10.6 — On import conflict (key name already exists), the user is shown: **Skip**, **Rename** (append suffix), or **Overwrite** ✅
+- FR-10.7 — Export and Import are accessible from the SSH Keys management page via the per-key action/context menu ✅
+- FR-10.8 — The `.cskb` format is explicitly distinct from the raw PEM/public-key export in FR-05.9 — `.cskb` is a CypherShell-native full-key backup; FR-05.9 exports only the public key ✅
 
 **Acceptance Criteria:**
 
@@ -1261,14 +1261,14 @@ Current build state as of v3.0 of this document.
 | TabBar | ✅ Complete | DnD reorder, close, Home anchor tab |
 | SftpPane (dual-pane) | ✅ Complete | All file ops, progress, transfer queue |
 | LocalFilePane | ✅ Complete | Local FS browsing via Electron IPC |
-| Keys page | ✅ Complete | Generate, import, copy, export, delete |
+| Keys page | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle |
 | Logs page | ✅ Complete | Filter, search, date range, CSV export |
 | Settings page | ✅ Complete | Theme, font, lock, retention |
 | UpdateBanner | ✅ Complete | Auto-update notification + install |
 | SSH service | ✅ Complete | Session pool, password + key auth |
 | SFTP service | ✅ Complete | All file ops + SSE progress emitter |
-| Crypto service | ✅ Complete | AES-256-GCM + PBKDF2 |
-| Key service | ✅ Complete | RSA/ED25519 gen, import, fingerprint |
+| Crypto service | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based) |
+| Key service | ✅ Complete | RSA/ED25519 gen, import, fingerprint, .cskb export/import |
 | Tunnel service | ✅ Complete | Local, remote, dynamic SOCKS5 |
 | Audit service | ✅ Complete | Event logging + CSV generation |
 | Config service | ✅ Complete | AppConfig singleton CRUD |

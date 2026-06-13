@@ -255,6 +255,15 @@ app.whenReady().then(async () => {
     return []
   })
 
+  ipcMain.handle('dialog:openCskbFile', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'CypherShell Key Bundle', extensions: ['cskb'] }],
+    })
+    if (!canceled) return filePaths
+    return []
+  })
+
   // Auto-updater IPC
   ipcMain.handle('updater:install', () => {
     autoUpdater.quitAndInstall()

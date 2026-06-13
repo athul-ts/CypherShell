@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Key, Plus, Upload, Trash2, Copy, Download } from 'lucide-react';
+import { Key, Plus, Upload, Trash2, Copy, Download, PackageOpen } from 'lucide-react';
 import { KeyGeneratorModal } from '../components/keys/KeyGeneratorModal';
 import { KeyImportModal } from '../components/keys/KeyImportModal';
+import { ExportKeyBundleDialog } from '../components/keys/ExportKeyBundleDialog';
+import { ImportKeyBundleDialog } from '../components/keys/ImportKeyBundleDialog';
 import { format } from 'date-fns';
 
 export default function Keys() {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importBundleOpen, setImportBundleOpen] = useState(false);
+  const [exportBundle, setExportBundle] = useState<{ id: string; name: string } | null>(null);
 
   const { data: keys, isLoading, refetch } = useQuery({
     queryKey: ['keys'],
@@ -60,13 +64,19 @@ export default function Keys() {
           <p className="text-slate-500 mt-1">Manage cryptographic keys for secure authentication.</p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
+          <button
+            onClick={() => setImportBundleOpen(true)}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
+          >
+            <PackageOpen className="w-4 h-4" /> Import Bundle
+          </button>
+          <button
             onClick={() => setImportOpen(true)}
             className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
           >
             <Upload className="w-4 h-4" /> Import Key
           </button>
-          <button 
+          <button
             onClick={() => setGenerateOpen(true)}
             className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
           >
@@ -77,6 +87,15 @@ export default function Keys() {
 
       <KeyGeneratorModal open={generateOpen} onOpenChange={setGenerateOpen} />
       <KeyImportModal open={importOpen} onOpenChange={setImportOpen} />
+      <ImportKeyBundleDialog open={importBundleOpen} onOpenChange={setImportBundleOpen} />
+      {exportBundle && (
+        <ExportKeyBundleDialog
+          open={true}
+          keyId={exportBundle.id}
+          keyName={exportBundle.name}
+          onOpenChange={(o) => { if (!o) setExportBundle(null); }}
+        />
+      )}
 
       {isLoading ? (
         <div className="text-slate-500">Loading keys...</div>
@@ -129,7 +148,7 @@ export default function Keys() {
                 </div>
               </div>
               
-              <div className="mt-4 pt-4 border-t border-slate-800 flex items-center gap-4">
+              <div className="mt-4 pt-4 border-t border-slate-800 flex items-center gap-4 flex-wrap">
                 <button
                   onClick={() => copyToClipboard(key.publicKey)}
                   className="text-emerald-500 hover:text-emerald-400 text-sm font-medium flex items-center gap-2 transition-colors"
@@ -141,6 +160,12 @@ export default function Keys() {
                   className="text-blue-500 hover:text-blue-400 text-sm font-medium flex items-center gap-2 transition-colors"
                 >
                   <Download className="w-4 h-4" /> Save to File
+                </button>
+                <button
+                  onClick={() => setExportBundle({ id: key.id, name: key.name })}
+                  className="text-violet-400 hover:text-violet-300 text-sm font-medium flex items-center gap-2 transition-colors"
+                >
+                  <PackageOpen className="w-4 h-4" /> Export Bundle
                 </button>
               </div>
             </div>

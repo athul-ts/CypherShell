@@ -8,6 +8,7 @@ const api = {
   openDirectoryDialog: () => ipcRenderer.invoke('dialog:openDirectory'),
   saveFileDialog: (defaultName: string) => ipcRenderer.invoke('dialog:saveFile', defaultName),
   openJsonFileDialog: () => ipcRenderer.invoke('dialog:openJsonFile'),
+  openCskbFileDialog: () => ipcRenderer.invoke('dialog:openCskbFile'),
   appVersion: process.env.APP_VERSION || '1.0.0',
   openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) => 
     ipcRenderer.invoke('window:openTerminal', { sessionId, profileId, title, token }),
