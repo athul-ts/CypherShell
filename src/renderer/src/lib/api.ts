@@ -7,6 +7,7 @@ declare global {
       openFileDialog: () => Promise<string[]>;
       openDirectoryDialog: () => Promise<string | null>;
       saveFileDialog: (defaultName: string) => Promise<string | null>;
+      openJsonFileDialog: () => Promise<string[]>;
       appVersion: string;
       installUpdate: () => Promise<void>;
       onUpdateAvailable: (cb: () => void) => () => void;

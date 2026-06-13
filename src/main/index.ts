@@ -7,7 +7,7 @@ import portfinder from 'portfinder'
 import iconPng from '../../resources/icon.png?asset'
 import iconIco from '../../build/icon.ico?asset'
 const icon = process.platform === 'win32' ? iconIco : iconPng
-import { writeFileSync, appendFileSync } from 'fs'
+import { writeFileSync, appendFileSync, readFileSync } from 'fs'
 import { stat, readdir, mkdir, rename, rm } from 'fs/promises'
 import * as os from 'os'
 
@@ -246,6 +246,15 @@ app.whenReady().then(async () => {
     return null
   })
 
+  ipcMain.handle('dialog:openJsonFile', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'JSON Files', extensions: ['json'] }],
+    })
+    if (!canceled) return filePaths
+    return []
+  })
+
   // Auto-updater IPC
   ipcMain.handle('updater:install', () => {
     autoUpdater.quitAndInstall()
@@ -290,6 +299,7 @@ app.whenReady().then(async () => {
       else if (op === 'rename') await rename(args.oldPath, args.newPath);
       else if (op === 'delete') await rm(args.path, { recursive: true, force: true });
       else if (op === 'writeFile') writeFileSync(args.path, args.content, 'utf8');
+      else if (op === 'readFile') return readFileSync(args.path, 'utf8');
       return true;
     } catch (err: any) {
       throw new Error(err.message);

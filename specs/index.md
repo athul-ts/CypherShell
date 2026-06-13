@@ -1,5 +1,5 @@
 # CypherShell — Spec Index
-**SRS Version:** 3.0 | **Last Updated:** 2026-06-01
+**SRS Version:** 3.2 | **Last Updated:** 2026-06-13
 **Source of Truth:** `SRS_SSH_Desktop_App.md`
 
 > This file is the fast-lookup reference for all requirement IDs. For full text, acceptance criteria, and implementation notes, read the corresponding section in `SRS_SSH_Desktop_App.md`.
@@ -147,6 +147,39 @@
 | FR-08.6 | Export logs as CSV via native save dialog | ✅ |
 | FR-08.7 | Auto-purge logs older than N days | ✅ |
 | FR-08.8 | Clear all logs via UI | ✅ |
+
+---
+
+### FR-09 — Profile Export/Import
+**SRS §6.9** | Priority: Medium | Overall: ✅ Implemented
+
+| ID | Requirement | Status |
+|---|---|---|
+| FR-09.1 | Export selected/all profiles as `.json` via native save dialog | ✅ |
+| FR-09.2 | Export includes metadata: name, host, port, username, authMethod, group, description, port-forwarding rules | ✅ |
+| FR-09.3 | Export explicitly excludes all SSH key material; `linkedKeyName` included as hint only | ✅ |
+| FR-09.4 | Import profiles from a CypherShell profile export `.json` file | ✅ |
+| FR-09.5 | On import, profiles with `linkedKeyName` created with `sshKeyId = null` + visible re-link notice | ✅ |
+| FR-09.6 | Single export file may contain multiple profiles; all imported in one operation | ✅ |
+| FR-09.7 | Import conflict (name exists): user chooses Skip / Rename / Overwrite per profile | ✅ |
+| FR-09.8 | Export action in Profiles list page (global "Export All" + per-profile context menu) | ✅ |
+| FR-09.9 | Import action in Profiles list page | ✅ |
+
+---
+
+### FR-10 — SSH Key Export/Import
+**SRS §6.10** | Priority: Medium | Overall: ❌ Not Implemented
+
+| ID | Requirement | Status |
+|---|---|---|
+| FR-10.1 | Export key as encrypted `.cskb` file via native save dialog (one key per file) | ❌ |
+| FR-10.2 | `.cskb` bundle: JSON envelope with publicKey (plaintext) + AES-256-GCM encrypted private key, IV, salt, authTag; key derived from user passphrase via PBKDF2-SHA512 | ❌ |
+| FR-10.3 | Export passphrase required and confirmed before file is written | ❌ |
+| FR-10.4 | Import `.cskb` file via native file picker | ❌ |
+| FR-10.5 | On import: unwrap with export passphrase, re-encrypt under app master key — passphrase not retained | ❌ |
+| FR-10.6 | Import conflict (key name exists): Skip / Rename / Overwrite | ❌ |
+| FR-10.7 | Export and Import accessible from SSH Keys page per-key action menu | ❌ |
+| FR-10.8 | `.cskb` format distinct from FR-05.9 public-key export (`.cskb` = full encrypted key backup) | ❌ |
 
 ---
 

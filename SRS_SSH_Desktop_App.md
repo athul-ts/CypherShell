@@ -1,9 +1,21 @@
 # Software Requirements Specification (SRS)
 ## CypherShell — Secure SSH Desktop Client
-**Version:** 3.0
+**Version:** 3.2
 **Author:** Athul T S
-**Date:** 2026-06-01
+**Date:** 2026-06-13
 **Status:** Living Document — v1.0 Feature Complete, v1.1 Backlog Active
+
+> **Changelog from v3.1:**
+> - Added FR-09: Profile Export/Import (data portability — no key material in profile export)
+> - Added FR-10: SSH Key Export/Import (encrypted .cskb bundle with user-supplied passphrase)
+
+> **Changelog from v3.0:**
+> - Updated §8.0: migration strategy now uses `better-sqlite3` directly at runtime (no Prisma CLI)
+> - Updated §8.1: `binaryTargets = ["native"]` (was multi-platform list)
+> - Updated §15 risk table: resolved "bundle > 200 MB" (101 MB installer) and "Prisma engine binary" risks
+> - Updated §16: build pipeline note — Windows installer ~101 MB via esbuild + direct migrations
+> - Updated §14 Phase 5 deliverable: installer size optimization note added
+> - Synced ADR-003 with new migration strategy and `after-pack.cjs` rebuild approach
 
 > **Changelog from v2.0:**
 > - Corrected all tech stack versions to match actual implementation
@@ -579,6 +591,95 @@ CypherShell/
 
 ---
 
+### FR-09: Profile Export/Import
+
+**Priority:** Medium | **Status:** ✅ Implemented
+
+Export and import connection profiles as JSON files for backup, sharing, and migration. SSH key material is intentionally excluded from profile exports — keys are managed separately via FR-10.
+
+- FR-09.1 — Export selected profiles or all profiles as a `.json` file via native save dialog ✅
+- FR-09.2 — Exported JSON includes all profile metadata: `name`, `host`, `port`, `username`, `authMethod`, `group`, `description`, and port-forwarding rules ✅
+- FR-09.3 — Exported JSON explicitly excludes all SSH key material (no private key, passphrase, or encrypted blob); if a profile has a linked key, only the key's display name is noted in a `linkedKeyName` field as a user hint ✅
+- FR-09.4 — Import profiles from a CypherShell profile export `.json` file via native file picker ✅
+- FR-09.5 — On import, if `linkedKeyName` is present, the profile is created with `sshKeyId = null` and a visible per-profile notice tells the user to re-link the key manually ✅
+- FR-09.6 — A single export file may contain multiple profiles; all are imported in one operation ✅
+- FR-09.7 — On import conflict (profile name already exists), the user is shown a per-profile choice: **Skip**, **Rename** (append suffix), or **Overwrite** ✅
+- FR-09.8 — Export action is accessible from the Profiles list page — both a global "Export All" and a per-profile context menu "Export" ✅
+- FR-09.9 — Import action is accessible from the Profiles list page ✅
+
+**Acceptance Criteria:**
+
+- [ ] Exporting a profile that uses key-based auth produces a JSON file with no private key or passphrase field — only `linkedKeyName` with the key's display name
+- [ ] Exporting a profile that uses password auth produces a JSON file with no password field (passwords are never exported)
+- [ ] Importing a valid export file creates all profiles in the database; profiles with `linkedKeyName` show a "re-link key" notice in the UI
+- [ ] Importing with a conflict (duplicate name) shows the Skip / Rename / Overwrite dialog — not a silent overwrite
+- [ ] Import and export round-trip: export a profile, delete it, re-import — profile appears with correct metadata and `sshKeyId = null`
+
+**Implementation Notes:**
+
+| Layer | File(s) | Change needed |
+|---|---|---|
+| Backend route | `backend/src/routes/profiles.routes.ts` | `GET /api/profiles/export`, `POST /api/profiles/import` |
+| Backend controller | `backend/src/controllers/profiles.controller.ts` | `exportProfiles`, `importProfiles` handlers |
+| Backend service | `backend/src/services/profiles.service.ts` | `buildExportPayload`, `applyImport` — strip sensitive fields on export |
+| IPC | `src/preload/index.ts` + `src/preload/index.d.ts` | Expose `showSaveDialog` and `showOpenDialog` for `.json` files |
+| Frontend component | `src/renderer/src/pages/HomePage.tsx` or new `ProfilesToolbar` | Export All / Import buttons |
+| Frontend component | `src/renderer/src/components/ImportConflictDialog.tsx` | New — Skip / Rename / Overwrite per-profile UI |
+| API client | `src/renderer/src/lib/api.ts` | `exportProfiles(ids?)`, `importProfiles(data)` |
+
+**Out of Scope:**
+
+- Exporting passwords or passphrases in any form — profiles with password auth export metadata only
+- Exporting linked SSH key material — that is FR-10
+- Importing raw PEM/OpenSSH key files — that is FR-05.2–FR-05.4
+
+---
+
+### FR-10: SSH Key Export/Import
+
+**Priority:** Medium | **Status:** ❌ Not Implemented
+
+Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup and migration. The bundle re-encrypts the private key with a user-supplied passphrase so it is never written to disk unprotected. Import restores from a `.cskb` file and re-encrypts with the current app master key.
+
+- FR-10.1 — Export a key as an encrypted `.cskb` file via native save dialog; only one key per export file ❌
+- FR-10.2 — The `.cskb` bundle is a JSON envelope containing: `version`, `keyName`, `keyType`, `description`, `publicKey` (plaintext), `encryptedPrivateKey` (AES-256-GCM), `iv`, `salt`, `authTag` — where the encryption key is derived from the user-supplied export passphrase via PBKDF2-SHA512 (200 000 iterations) ❌
+- FR-10.3 — User must supply and confirm an export passphrase before export proceeds — the file is never written without passphrase encryption ❌
+- FR-10.4 — Import a `.cskb` file via native file picker ❌
+- FR-10.5 — On import, user is prompted for the export passphrase; the private key is unwrapped, then immediately re-encrypted with the current app master key and stored in the database — the export passphrase is not retained ❌
+- FR-10.6 — On import conflict (key name already exists), the user is shown: **Skip**, **Rename** (append suffix), or **Overwrite** ❌
+- FR-10.7 — Export and Import are accessible from the SSH Keys management page via the per-key action/context menu ❌
+- FR-10.8 — The `.cskb` format is explicitly distinct from the raw PEM/public-key export in FR-05.9 — `.cskb` is a CypherShell-native full-key backup; FR-05.9 exports only the public key ❌
+
+**Acceptance Criteria:**
+
+- [ ] Exporting a key without entering a passphrase is blocked — the export dialog requires passphrase + confirmation before saving
+- [ ] The exported `.cskb` file contains no plaintext private key field; only the AES-256-GCM ciphertext, IV, salt, and authTag
+- [ ] Importing a valid `.cskb` with the correct passphrase creates the key in the database with the private key encrypted under the app master key
+- [ ] Importing a `.cskb` with the wrong passphrase shows a clear error and does not create any database record
+- [ ] Import-export round-trip: export a key, delete it, re-import — key appears with correct fingerprint and type
+- [ ] Importing into an app with a different master password still succeeds (the export passphrase is independent of the master key)
+
+**Implementation Notes:**
+
+| Layer | File(s) | Change needed |
+|---|---|---|
+| Backend route | `backend/src/routes/keys.routes.ts` | `GET /api/keys/:id/export`, `POST /api/keys/import` |
+| Backend controller | `backend/src/controllers/keys.controller.ts` | `exportKey`, `importKey` handlers |
+| Backend service | `backend/src/services/keys.service.ts` | `buildKeyBundle` (re-encrypt with passphrase), `applyKeyImport` (unwrap + re-encrypt with master key) |
+| Crypto service | `backend/src/services/crypto.service.ts` | Add `derivePassphraseKey(passphrase, salt)` and `encryptWithPassphrase` / `decryptWithPassphrase` helpers |
+| IPC | `src/preload/index.ts` + `src/preload/index.d.ts` | Expose `showSaveDialog` and `showOpenDialog` for `.cskb` files (reuse if already added for FR-09) |
+| Frontend component | `src/renderer/src/components/ExportKeyDialog.tsx` | New — passphrase + confirm input before export |
+| Frontend component | `src/renderer/src/components/ImportKeyDialog.tsx` | New — file picker + passphrase input for import |
+| API client | `src/renderer/src/lib/api.ts` | `exportKey(id, passphrase)`, `importKey(bundle, passphrase)` |
+
+**Out of Scope:**
+
+- Exporting raw private key as PEM/OpenSSH without passphrase protection — this FR always wraps with a passphrase
+- Batch export of multiple keys in a single file — one key per `.cskb` file
+- Importing raw PEM/OpenSSH/PPK files — that is FR-05.2–FR-05.4
+
+---
+
 ## 7. Non-Functional Requirements
 
 ### NFR-01: Performance
@@ -644,7 +745,7 @@ CypherShell/
 | DB file | `app.getPath('userData')/sshclient.db` |
 | Set by | Electron main — `process.env.DATABASE_URL = file:{path}` |
 | Journal mode | WAL (enabled on init via `PRAGMA journal_mode=WAL`) |
-| Migrations | `prisma migrate deploy` runs automatically every startup |
+| Migrations | Applied on every startup via `better-sqlite3` directly (no Prisma CLI) — uses a `_prisma_migrations` table compatible with Prisma tooling |
 | Backup | User copies the `.db` file — it is self-contained |
 
 ### 8.1 Prisma Schema
@@ -652,7 +753,7 @@ CypherShell/
 ```prisma
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "windows", "darwin", "darwin-arm64", "linux-x64"]
+  binaryTargets = ["native"]
 }
 
 datasource db {
@@ -1041,6 +1142,7 @@ Standalone windows (terminal / SFTP) open independently, sized to fill screen.
 - Auto-updater (`electron-updater`) + UpdateBanner component
 - Build pipeline: `.exe` (Windows), `.dmg` (macOS), `.AppImage` (Linux)
 - README + open-source documentation
+- Installer size optimization: esbuild bundles backend, Prisma CLI removed, migrations applied via `better-sqlite3` at runtime — Windows installer reduced from ~450 MB → ~101 MB
 
 **Deliverable:** Shippable v1.0 ✅
 
@@ -1132,10 +1234,10 @@ electron-updater          v6.8
 | `ssh2` failures on unusual SSH server configs | Medium | Wrap all connections in try/catch; expose raw error in UI |
 | xterm.js perf with very high output (log tail) | Medium | Enable WebGL renderer addon; implement output throttling |
 | PPK import accuracy across PPK format versions | Low–Medium | Test with real PuTTY PPK v2/v3 files; sshpk handles both |
-| `better-sqlite3` native binary bundling in Electron | Medium | Run `electron-rebuild` post-install; add Prisma engines to `extraResources` |
+| `better-sqlite3` native binary bundling in Electron | Medium | `after-pack.cjs` rebuilds the `.node` binary against Electron's ABI in the staging area; `bindings` + `file-uri-to-path` ship as `extraResources` |
 | SQLite corruption on OS force-kill | Low | WAL mode enabled on DB init |
-| Prisma engine binary missing in packaged app | Medium | Set all `binaryTargets` in schema.prisma; test packaged builds early |
-| Electron bundle > 200MB | Low | Use `externalizeDepsPlugin` in electron-vite, tree-shake renderer |
+| Prisma engine binary missing in packaged app | Medium | Resolved — `binaryTargets = ["native"]` only; Prisma CLI not shipped; migrations applied via `better-sqlite3` at startup |
+| Electron bundle > 200MB | Resolved | esbuild bundles backend pure-JS deps inline; installer is ~101 MB |
 | Windows SFTP path separator issues | Medium | Always use `path.posix` for remote paths |
 | Port collision on backend auto-assign | Low | `portfinder` scans from 4000 upward |
 
@@ -1152,7 +1254,7 @@ Current build state as of v3.0 of this document.
 | App auth state machine | ✅ Complete | loading → setup/locked/unlocked flow |
 | SetupWizard page | ✅ Complete | First-run master password setup |
 | LockScreen page | ✅ Complete | Unlock with bcrypt verify + JWT |
-| Home page / Profile grid | ✅ Complete | Search, filter, CRUD, duplicate |
+| Home page / Profile grid | ✅ Complete | Search, filter, CRUD, duplicate, export/import |
 | ProfileDetailPane | ✅ Complete | Connect/disconnect, tunnel panel, window spawning |
 | ProfileForm | ✅ Complete | Create/edit with key selector |
 | TerminalPane (xterm.js) | ✅ Complete | WebSocket I/O, resize, themes, search |
@@ -1170,11 +1272,12 @@ Current build state as of v3.0 of this document.
 | Tunnel service | ✅ Complete | Local, remote, dynamic SOCKS5 |
 | Audit service | ✅ Complete | Event logging + CSV generation |
 | Config service | ✅ Complete | AppConfig singleton CRUD |
+| Profile service | ✅ Complete | Export payload builder, conflict check, import with resolution |
 | WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O |
 | Auth middleware | ✅ Complete | JWT + query-param fallback for SSE |
 | Rate limiting | ✅ Complete | 5/min auth, 300/min API |
 | Database schema | ✅ Complete | 5 models, Prisma migrations, WAL mode |
-| Build pipeline | ✅ Complete | Win/Mac/Linux installers |
+| Build pipeline | ✅ Complete | Win/Mac/Linux installers; Windows installer ~101 MB (esbuild + migration-via-better-sqlite3) |
 
 ---
 

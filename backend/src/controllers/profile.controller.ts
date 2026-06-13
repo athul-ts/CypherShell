@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/db';
 import { CryptoService } from '../services/crypto.service';
 import { SSHService } from '../services/ssh.service';
+import { ProfileService } from '../services/profile.service';
+import type { ExportedProfile, ConflictResolution } from '../services/profile.service';
 import { z } from 'zod';
 
 const ProfileSchema = z.object({
@@ -118,11 +120,69 @@ export async function connectProfile(req: Request, res: Response) {
   const id = req.params.id as string;
   const profile = await prisma.profile.findUnique({ where: { id } });
   if (!profile) return res.status(404).json({ error: 'Profile not found' });
-  
+
   try {
     const session = await SSHService.createSession(profile);
     res.json({ sessionId: session.id });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to connect' });
   }
+}
+
+const ExportedTunnelSchema = z.object({
+  type: z.string(),
+  localPort: z.number().int().min(1).max(65535),
+  remoteHost: z.string().nullable().optional(),
+  remotePort: z.number().int().min(1).max(65535).nullable().optional(),
+  autoStart: z.boolean().default(false),
+  label: z.string().nullable().optional(),
+});
+
+const ExportedProfileSchema = z.object({
+  name: z.string().min(1),
+  host: z.string().min(1),
+  port: z.number().int().min(1).max(65535),
+  username: z.string().min(1),
+  authMethod: z.enum(['password', 'key', 'key+passphrase']),
+  group: z.string().nullable().optional(),
+  terminalTheme: z.string().optional(),
+  fontSize: z.number().int().optional(),
+  autoReconnect: z.boolean().optional(),
+  linkedKeyName: z.string().optional(),
+  tunnels: z.array(ExportedTunnelSchema).default([]),
+});
+
+const ImportBodySchema = z.object({
+  profiles: z.array(ExportedProfileSchema).min(1),
+  resolutions: z.record(z.string(), z.enum(['skip', 'rename', 'overwrite'])).optional(),
+});
+
+export async function exportProfiles(req: Request, res: Response) {
+  const ids = req.query.ids
+    ? (req.query.ids as string).split(',').filter(Boolean)
+    : undefined;
+  const payload = await ProfileService.buildExportPayload(ids);
+  res.json(payload);
+}
+
+export async function importProfiles(req: Request, res: Response) {
+  const result = ImportBodySchema.safeParse(req.body);
+  if (!result.success) return res.status(400).json({ error: result.error.issues });
+
+  const { profiles, resolutions } = result.data;
+
+  if (!resolutions) {
+    const conflicts = await ProfileService.checkImportConflicts(profiles as ExportedProfile[]);
+    if (conflicts.length > 0) {
+      return res.json({ status: 'conflicts', conflicts });
+    }
+    const summary = await ProfileService.applyImport(profiles as ExportedProfile[], {});
+    return res.json({ status: 'ok', ...summary });
+  }
+
+  const summary = await ProfileService.applyImport(
+    profiles as ExportedProfile[],
+    resolutions as Record<string, ConflictResolution>
+  );
+  return res.json({ status: 'ok', ...summary });
 }
