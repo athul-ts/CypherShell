@@ -5,12 +5,10 @@ afterPack: scripts/after-pack.cjs
 directories:
   buildResources: build
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # Whitelist: only include the compiled electron-vite output and the package manifest.
+  # Everything else (src/, backend/, node_modules/, specs/, .claude/, etc.) is excluded.
+  - out/**/*
+  - package.json
 extraResources:
   - from: backend/dist
     to: backend/dist
@@ -23,18 +21,91 @@ extraResources:
     filter:
       - 'schema.prisma'
       - 'migrations/**'
-  - from: backend/node_modules
-    to: backend/node_modules
+  # Native modules — cannot be bundled by esbuild
+  - from: backend/node_modules/better-sqlite3
+    to: backend/node_modules/better-sqlite3
+    filter:
+      - '**/*'
+      - '!**/test/**'
+      - '!**/*.md'
+  # better-sqlite3 loads its .node via require('bindings') at runtime;
+  # bindings in turn requires file-uri-to-path
+  - from: backend/node_modules/bindings
+    to: backend/node_modules/bindings
     filter:
       - '**/*'
       - '!**/*.md'
-      - '!**/*.ts'
+  - from: backend/node_modules/file-uri-to-path
+    to: backend/node_modules/file-uri-to-path
+    filter:
+      - '**/*'
+      - '!**/*.md'
+  - from: backend/node_modules/ssh2
+    to: backend/node_modules/ssh2
+    filter:
+      - '**/*'
       - '!**/test/**'
-      - '!**/tests/**'
-      - '!**/__tests__/**'
+      - '!**/*.md'
+  - from: backend/node_modules/cpu-features
+    to: backend/node_modules/cpu-features
+    filter:
+      - '**/*'
+  # ssh2 is left external by esbuild, so its runtime dependency tree must
+  # ship in node_modules too: asn1 → safer-buffer, bcrypt-pbkdf → tweetnacl
+  - from: backend/node_modules/asn1
+    to: backend/node_modules/asn1
+    filter:
+      - '**/*'
+      - '!**/*.md'
+  - from: backend/node_modules/safer-buffer
+    to: backend/node_modules/safer-buffer
+    filter:
+      - '**/*'
+      - '!**/*.md'
+  - from: backend/node_modules/bcrypt-pbkdf
+    to: backend/node_modules/bcrypt-pbkdf
+    filter:
+      - '**/*'
+      - '!**/*.md'
+  - from: backend/node_modules/tweetnacl
+    to: backend/node_modules/tweetnacl
+    filter:
+      - '**/*'
+      - '!**/*.md'
+  # Prisma client runtime. Migrations are applied at runtime directly via
+  # better-sqlite3 (see backend/src/config/db.ts), so the Prisma CLI and the
+  # schema engine are NOT shipped — only the @prisma/client query runtime and
+  # the better-sqlite3 driver adapter are needed.
+  - from: backend/node_modules/@prisma
+    to: backend/node_modules/@prisma
+    filter:
+      - '**/*'
+      - '!**/test/**'
+      - '!**/*.md'
+      # Prisma Studio — web UI for DB browsing, not needed in production
+      - '!studio-core/**'
+      # Dev tooling — only for local development
+      - '!dev/**'
+      # Schema engine + fetch/config — only needed for `migrate`/introspect,
+      # which we no longer run at runtime (migrations applied via better-sqlite3)
+      - '!engines/**'
+      - '!fetch-engine/**'
+      - '!config/**'
+      # Non-SQLite WASM query compilers in @prisma/client/runtime (60 MB+).
+      # CypherShell uses only SQLite; mysql/postgresql/cockroachdb/sqlserver
+      # WASM files are never loaded at runtime.
+      - '!client/runtime/*mysql*'
+      - '!client/runtime/*postgresql*'
+      - '!client/runtime/*cockroachdb*'
+      - '!client/runtime/*sqlserver*'
+      # Source maps are never needed at runtime
+      - '!client/runtime/*.map'
+  - from: backend/node_modules/.prisma
+    to: backend/node_modules/.prisma
+    filter:
+      - '**/*'
 asarUnpack:
   - resources/**
-  - node_modules/portfinder/**
   # Backend native binaries must not be inside the asar archive
   - backend/node_modules/better-sqlite3/**
   - backend/node_modules/.prisma/**

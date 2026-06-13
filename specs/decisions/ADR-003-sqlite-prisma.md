@@ -29,9 +29,18 @@ SQLite is the right answer for any application that needs relational storage and
 
 **Why Prisma over raw SQL:**
 - **Type safety:** Prisma generates a full TypeScript client from `schema.prisma`. All queries are type-checked at compile time — no string-typed SQL and no runtime schema drift.
-- **Migrations:** `prisma migrate` tracks schema changes as SQL migration files and applies them atomically at startup (`prisma migrate deploy`). Adding a column never requires manual SQL.
+- **Migrations:** `prisma migrate dev` tracks schema changes as versioned SQL files during development. In the packaged app, migrations are applied at startup directly via `better-sqlite3` (see "Migration strategy" below) — no Prisma CLI required at runtime.
 - **Schema as source of truth:** `schema.prisma` is the single place that defines the data model. All types in controllers and services are derived from it — there is no duplication between SQL DDL and TypeScript interfaces.
 - **Readable query syntax:** `prisma.profile.findMany({ where: { group: 'Production' } })` is far more readable and refactorable than a prepared statement string.
+
+**Migration strategy (dev vs. packaged):**
+
+| Environment | How migrations run |
+|---|---|
+| Development | `npx prisma migrate dev` (normal Prisma CLI workflow) |
+| Packaged app (production) | `initDatabase()` reads the SQL files from `prisma/migrations/` and applies any unapplied migrations via `better-sqlite3`, writing bookkeeping rows to `_prisma_migrations` in the same format Prisma uses — so the schema stays compatible with the Prisma toolchain |
+
+This approach eliminates the need to ship the Prisma CLI (`prisma` package), `@prisma/engines` (schema-engine binary), `@prisma/fetch-engine`, `@prisma/config`, and their transitive dependencies (including the `effect` library at 31 MB) — reducing the Windows installer by an additional ~40 MB.
 
 **Why `better-sqlite3` (not the default Prisma SQLite driver):**
 Prisma's default SQLite driver uses a WASM build that has compatibility issues with Electron's sandboxed renderer. `better-sqlite3` is a native Node.js binding that works cleanly with Electron's bundled Node.js runtime after the ABI rebuild step.
@@ -43,14 +52,15 @@ Prisma's default SQLite driver uses a WASM build that has compatibility issues w
 - **Positive:** Zero-install — the `.db` file is created automatically on first run in `app.getPath('userData')`
 - **Positive:** Fully type-safe queries — schema changes that break existing queries are caught at build time
 - **Positive:** Portable — user backup is simply copying the `.db` file
-- **Negative:** `better-sqlite3` is a native module — must be rebuilt for Electron's Node ABI via `npm run rebuild:native` after `npm install` or Electron version changes
+- **Negative:** `better-sqlite3` is a native module — rebuilt for Electron's Node ABI by `scripts/after-pack.cjs` during `electron-builder` packaging; `bindings` + `file-uri-to-path` must ship as `extraResources`
 - **Negative:** Prisma client must be regenerated (`npx prisma generate`) after every schema change
 - **Negative:** No multi-process write concurrency — only the Express backend writes to the DB; the renderer never has direct DB access (this is by design)
+- **Negative:** `binaryTargets = ["native"]` in `schema.prisma` means cross-compiling (e.g. building on macOS for Windows) requires regenerating the client on the target platform
 
 ## Related
 
 - `backend/prisma/schema.prisma` — the single source of truth for the data model
-- `backend/src/config/db.ts` — `initDatabase()`: runs `prisma migrate deploy` + enables WAL
+- `backend/src/config/db.ts` — `initDatabase()`: applies pending migrations via `better-sqlite3`, then opens Prisma client
 - `backend/src/services/` — all DB access is through service files, never in controllers
-- `scripts/rebuild-native.cjs` — rebuilds `better-sqlite3` for the current Electron ABI
+- `scripts/after-pack.cjs` — rebuilds `better-sqlite3` for Electron ABI during packaging
 - `SRS_SSH_Desktop_App.md §8` — full database schema documentation
