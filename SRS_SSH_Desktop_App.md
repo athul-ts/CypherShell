@@ -469,7 +469,7 @@ CypherShell/
 
 ### FR-02: SSH Terminal
 
-**Priority:** High | **Status:** ✅ Implemented (FR-02.4 partial — see §17)
+**Priority:** High | **Status:** ✅ Implemented
 
 - FR-02.1 — Connecting opens a Profile Details tab; users spawn standalone terminal console windows from it ✅
 - FR-02.2 — xterm.js renders with full ANSI colour and escape sequence support ✅
@@ -481,6 +481,7 @@ CypherShell/
 - FR-02.8 — Closing standalone terminal window closes the backend PTY session ✅
 - FR-02.9 — JWT token passed via route parameter — no re-auth required in popup windows ✅
 - FR-02.10 — Terminal font, font size, and color theme customizable ✅
+- FR-02.11 — Selecting text in the terminal automatically copies it to the system clipboard ✅
 
 ---
 
@@ -1263,6 +1264,28 @@ The file operations exist via right-click and buttons, but the following keyboar
 `Ctrl+Shift+C` (copy) works via xterm.js default behaviour, but right-click paste is not implemented.
 
 **Frontend work:** In `TerminalPane.tsx`, add a `contextmenu` event listener on the xterm container that reads `navigator.clipboard.readText()` and writes the result to the terminal via `socket.send({ type: 'input', data: text })`.
+
+---
+
+### BL-09 — Terminal Auto-Copy on Selection ✅
+**Requirement:** FR-02.11
+**Priority:** Medium
+
+Selecting text in the terminal does not automatically copy to the system clipboard. Users must manually press `Ctrl+Shift+C` after selecting, which differs from the standard Unix/Linux terminal behaviour where selection = copy.
+
+**Requirements:**
+- FR-02.11.1 — Click-and-drag (mouse) selection in the terminal automatically copies the selected text to the system clipboard on mouse release ❌
+- FR-02.11.2 — Double-click (word) and triple-click (line) selection also trigger auto-copy ❌
+- FR-02.11.3 — An empty or cleared selection does not overwrite the clipboard with an empty string ❌
+
+**Acceptance Criteria:**
+- [ ] Dragging to select text copies to OS clipboard immediately — verified by pasting outside the app
+- [ ] Double-clicking a word and triple-clicking a line each copy to clipboard
+- [ ] Clearing a selection (clicking blank area) does not wipe the clipboard
+- [ ] `Ctrl+Shift+C` shortcut (FR-02.4) continues to work as before
+- [ ] Auto-copy works in all terminal themes and font size settings
+
+**Frontend work:** In `src/renderer/src/components/terminal/TerminalPane.tsx`, listen to `terminal.onSelectionChange()` (xterm.js API). In the handler, check `terminal.hasSelection()` and if truthy, call `navigator.clipboard.writeText(terminal.getSelection())`. No backend or IPC changes are needed.
 
 ---
 

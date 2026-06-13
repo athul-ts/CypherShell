@@ -31,7 +31,7 @@
 ---
 
 ### FR-02 — SSH Terminal
-**SRS §6.2** | Priority: High | Overall: ✅ Implemented (FR-02.4 partial)
+**SRS §6.2** | Priority: High | Overall: ✅ Implemented
 
 | ID | Requirement | Status |
 |---|---|---|
@@ -45,6 +45,7 @@
 | FR-02.8 | Closing terminal window closes PTY session | ✅ |
 | FR-02.9 | JWT passed via route param — no re-auth in popup windows | ✅ |
 | FR-02.10 | Font, font size, and color theme customizable | ✅ |
+| FR-02.11 | Auto-copy selected text to clipboard on selection | ✅ |
 
 ---
 
@@ -178,6 +179,7 @@
 | ~~BL-06~~ | ~~DELETE /api/logs clear-all endpoint + UI button~~ | ~~Low~~ | FR-08.8 | ✅ Done |
 | ~~BL-07~~ | ~~SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder)~~ | ~~Low~~ | FR-04.6, FR-04.8 | ✅ Done |
 | ~~BL-08~~ | ~~Terminal right-click paste~~ | ~~Low~~ | FR-02.4 | ✅ Done |
+| ~~BL-09~~ | ~~Terminal auto-copy on text selection~~ | ~~Medium~~ | FR-02.11 | ✅ Done |
 
 ---
 

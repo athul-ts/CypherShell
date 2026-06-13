@@ -39,6 +39,15 @@ export function TerminalPane({ sessionId }: TerminalPaneProps) {
     term.current.open(terminalRef.current);
     fitAddon.current.fit();
 
+    // Copy selected text to clipboard whenever the selection changes (copy-on-select)
+    term.current.onSelectionChange(() => {
+      if (!term.current?.hasSelection()) return;
+      const selected = term.current.getSelection();
+      if (selected) {
+        navigator.clipboard.writeText(selected).catch(() => undefined);
+      }
+    });
+
     // Right-click pastes clipboard content into the terminal
     terminalRef.current.addEventListener('contextmenu', async (e) => {
       e.preventDefault();
