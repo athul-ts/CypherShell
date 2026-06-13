@@ -23,7 +23,7 @@ const importBundleSchema = z.object({
   resolution: z.enum(['skip', 'rename', 'overwrite']).nullable().optional(),
 });
 
-export async function listKeys(req: Request, res: Response) {
+export async function listKeys(_req: Request, res: Response) {
   try {
     const keys = await KeyService.listKeys();
     res.json(keys);
@@ -76,7 +76,7 @@ export async function exportKeyBundle(req: Request, res: Response) {
   try {
     const parsed = exportBundleSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0].message });
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
     const { passphrase, confirmPassphrase } = parsed.data;
@@ -96,13 +96,13 @@ export async function importKeyBundle(req: Request, res: Response) {
   try {
     const parsed = importBundleSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0].message });
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
     const { bundle, passphrase, resolution } = parsed.data;
     const result = await KeyService.applyKeyImport(bundle, passphrase, resolution ?? null);
     if (result.status === 'conflict') {
-      res.status(409).json({ status: 'conflict', conflictName: result.conflictName });
+      res.status(409).json({ status: 'conflict', conflictName: result.conflictName, profileCount: result.profileCount ?? 0 });
       return;
     }
     res.json({ status: result.status });

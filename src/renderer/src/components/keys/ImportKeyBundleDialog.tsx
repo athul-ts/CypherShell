@@ -16,6 +16,7 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
   const [bundleFileName, setBundleFileName] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [conflict, setConflict] = useState<string | null>(null);
+  const [conflictProfileCount, setConflictProfileCount] = useState(0);
   const [resolution, setResolution] = useState<Resolution>('skip');
   const [error, setError] = useState('');
 
@@ -24,6 +25,7 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
     setBundleFileName('');
     setPassphrase('');
     setConflict(null);
+    setConflictProfileCount(0);
     setError('');
   };
 
@@ -56,6 +58,7 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
     onSuccess: ({ data }) => {
       if (data.status === 'conflict') {
         setConflict(data.conflictName);
+        setConflictProfileCount(data.profileCount ?? 0);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['keys'] });
@@ -118,7 +121,10 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
               ))}
             </div>
             {resolution === 'overwrite' && (
-              <p className="text-xs text-red-400">The existing key and all its data will be permanently deleted.</p>
+              <p className="text-xs text-red-400">
+                The existing key will be permanently deleted.
+                {conflictProfileCount > 0 && ` ${conflictProfileCount} profile${conflictProfileCount === 1 ? '' : 's'} using it will lose their key assignment.`}
+              </p>
             )}
             <div className="flex justify-end gap-3 pt-2 border-t border-slate-800 mt-2">
               <button onClick={handleClose} className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors">

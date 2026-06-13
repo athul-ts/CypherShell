@@ -140,7 +140,7 @@ export class KeyService {
     bundle: CskbBundle,
     passphrase: string,
     resolution: 'skip' | 'rename' | 'overwrite' | null,
-  ): Promise<{ status: 'imported' | 'skipped' | 'conflict'; conflictName?: string }> {
+  ): Promise<{ status: 'imported' | 'skipped' | 'conflict'; conflictName?: string; profileCount?: number }> {
     let privateKeyPem: string;
     try {
       privateKeyPem = await CryptoService.decryptWithPassphrase(bundle, passphrase);
@@ -148,11 +148,14 @@ export class KeyService {
       throw new Error('Invalid passphrase or corrupted bundle');
     }
 
-    const existing = await prisma.sSHKey.findFirst({ where: { name: bundle.keyName } });
+    const existing = await prisma.sSHKey.findFirst({
+      where: { name: bundle.keyName },
+      include: { profiles: { select: { id: true } } },
+    });
     let finalName = bundle.keyName;
 
     if (existing) {
-      if (!resolution) return { status: 'conflict', conflictName: bundle.keyName };
+      if (!resolution) return { status: 'conflict', conflictName: bundle.keyName, profileCount: existing.profiles.length };
       if (resolution === 'skip') return { status: 'skipped' };
       if (resolution === 'rename') finalName = `${bundle.keyName} (imported)`;
       if (resolution === 'overwrite') await prisma.sSHKey.delete({ where: { id: existing.id } });
