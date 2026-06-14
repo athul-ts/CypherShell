@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Server, Play, MoreVertical, Copy, Trash, Download, Upload, FileDown } from 'lucide-react';
+import { Server, Play, MoreVertical, Copy, Trash, Download, Upload, FileDown, Pencil } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { ProfileForm } from '../components/profiles/ProfileForm';
 import { useTabStore } from '../store/tabStore';
@@ -29,6 +29,7 @@ export default function Home() {
   });
 
   const [formOpen, setFormOpen] = useState(false);
+  const [editProfile, setEditProfile] = useState<any>(null);
   const addTab = useTabStore(s => s.addTab);
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
@@ -155,6 +156,12 @@ export default function Home() {
       </div>
 
       <ProfileForm open={formOpen} onOpenChange={setFormOpen} />
+      <ProfileForm
+        key={editProfile?.id}
+        profile={editProfile}
+        open={!!editProfile}
+        onOpenChange={(open) => { if (!open) setEditProfile(null); }}
+      />
 
       <ImportConflictDialog
         open={importState.open}
@@ -201,6 +208,13 @@ export default function Home() {
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content align="end" className="bg-[#1a1c23] border border-slate-800 rounded-lg p-1 min-w-[160px] shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+                      <DropdownMenu.Item
+                        onClick={() => setEditProfile(profile)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-md cursor-default outline-none select-none"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit
+                      </DropdownMenu.Item>
                       <DropdownMenu.Item
                         onClick={() => duplicateMutation.mutate(profile.id)}
                         className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-md cursor-default outline-none select-none"

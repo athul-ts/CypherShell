@@ -40,6 +40,9 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: ['profile', profile.id] });
+      }
       onOpenChange(false);
     },
   });

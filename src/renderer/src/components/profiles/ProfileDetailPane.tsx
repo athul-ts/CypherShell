@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { Server, TerminalSquare, FolderOpen, Loader2, Power, Wifi, Shield, Box, Play, Square, ArrowRightLeft } from 'lucide-react';
+import { Server, TerminalSquare, FolderOpen, Loader2, Power, Wifi, Shield, Box, Play, Square, ArrowRightLeft, Pencil } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { ProfileForm } from './ProfileForm';
 
 interface ProfileDetailPaneProps {
   profileId: string;
@@ -13,6 +14,7 @@ type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'disconnec
 export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   
   // Tunnels state
   const [activeForwards, setActiveForwards] = useState<any[]>([]);
@@ -146,7 +148,14 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps) {
           </div>
         </div>
 
-        <div className="mt-6 md:mt-0">
+        <div className="mt-6 md:mt-0 flex items-center gap-3">
+          <button
+            onClick={() => setEditOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium flex items-center gap-2 transition-colors border border-slate-700"
+          >
+            <Pencil className="w-4 h-4" />
+            Edit Profile
+          </button>
           {status === 'disconnected' && (
             <button
               onClick={handleConnect}
@@ -377,6 +386,13 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps) {
         </div>
 
       </div>
+
+      <ProfileForm
+        key={profile.id}
+        profile={profile}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
     </div>
   );
 }

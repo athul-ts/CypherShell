@@ -476,6 +476,48 @@ CypherShell/
 - FR-01.5 — Profiles can be duplicated with one click ✅
 - FR-01.6 — Profiles can be tagged/grouped (e.g. "Production", "Staging") ✅
 - FR-01.7 — Real-time search and filter by name or host ✅
+- FR-01.8 — Edit an existing profile's fields via an "Edit Profile" action accessible from the Profile Detail tab and from the profile card context menu on the Home page ✅
+
+### FR-01.8: Profile Edit
+
+**Priority:** High | **Status:** ✅ Implemented
+
+#### Requirements
+
+- FR-01.8.1 — An "Edit Profile" button is present in the Profile Detail tab header area ✅
+- FR-01.8.2 — A per-profile "Edit" option is available in the profile card context/action menu on the Home page (alongside Duplicate, Delete, Export) ✅
+- FR-01.8.3 — Activating either entry opens the existing `ProfileForm` dialog pre-populated with the current profile's values ✅
+- FR-01.8.4 — On save, the form issues `PUT /api/profiles/:id` with only the changed fields ✅
+- FR-01.8.5 — On successful save, TanStack Query caches for `['profiles']` and `['profile', profileId]` are invalidated so all views reflect the update immediately ✅
+- FR-01.8.6 — If the profile's `authMethod` changes (e.g. from Password to SSH Key), the form clears the irrelevant credential fields before submitting ✅
+- FR-01.8.7 — Form validation mirrors the create flow: Name, Host, Port, and Username are required; Port must be 1–65535 ✅
+
+#### Acceptance Criteria
+
+- [ ] Clicking "Edit" from the Profile Detail tab opens `ProfileForm` with all current field values pre-filled
+- [ ] Clicking "Edit" from a Home page profile card context menu opens the same form pre-filled
+- [ ] Saving changes calls `PUT /api/profiles/:id`; the Profile Detail tab and Home card both show updated values without a page reload
+- [ ] Changing auth method from Password → SSH Key clears the stored password field in the submitted payload
+- [ ] Submitting with a blank Name, Host, or Username shows inline validation errors and does not call the API
+- [ ] Submitting with Port outside 1–65535 shows a validation error
+- [ ] Cancelling the dialog leaves the profile unchanged
+
+#### Implementation Notes
+
+| Layer | File(s) | Change needed |
+|---|---|---|
+| Frontend form | `src/renderer/src/components/profiles/ProfileForm.tsx` | Pass `profile` prop for edit mode; wire `PUT /api/profiles/:id` mutation alongside existing create path |
+| Profile Detail tab | `src/renderer/src/components/profiles/ProfileDetailPane.tsx` | Add "Edit Profile" button (pencil icon); manage `editOpen` state; render `<ProfileForm profile={profile} …>` |
+| Home page card | `src/renderer/src/pages/Home.tsx` | Add "Edit" item to profile card dropdown/context menu; pass selected profile to `ProfileForm` |
+| API client | `src/renderer/src/lib/api.ts` | Add `updateProfile(id, data)` helper (wraps `api.put`) if one does not already exist |
+| Backend route | `backend/src/routes/profiles.routes.ts` | `PUT /api/profiles/:id` already exists — no change required |
+| Backend controller | `backend/src/controllers/profiles.controller.ts` | Verify partial-update (PATCH-style) is handled correctly; encrypted fields must re-encrypt on change |
+
+#### Out of Scope
+
+- Editing a profile that is currently connected — the edit form may be opened but the running session is unaffected until next connect
+- Bulk-editing multiple profiles at once
+- Renaming a profile group/tag directly from the edit form (tag editing follows existing FR-01.6 flow)
 
 ---
 

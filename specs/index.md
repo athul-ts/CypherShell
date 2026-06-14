@@ -27,6 +27,7 @@
 | FR-01.5 | One-click profile duplication | ✅ |
 | FR-01.6 | Profile tagging/grouping | ✅ |
 | FR-01.7 | Real-time search and filter | ✅ |
+| FR-01.8 | Edit existing profile fields from Profile Detail tab and Home page card menu | ✅ |
 
 ---
 
