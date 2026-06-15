@@ -58,7 +58,7 @@ export class TunnelService {
     if (!session) throw new Error('Session not found');
 
     return new Promise<void>((resolve, reject) => {
-      session.client.forwardIn('0.0.0.0', remotePort, (err) => {
+      session.client.forwardIn('127.0.0.1', remotePort, (err) => {
         if (err) return reject(err);
         
         // We only register the listener once per session
@@ -89,7 +89,7 @@ export class TunnelService {
   static async stopRemoteForward(sessionId: string, remotePort: number) {
     const session = SSHService.getSession(sessionId);
     if (!session) return;
-    session.client.unforwardIn('0.0.0.0', remotePort, () => {});
+    session.client.unforwardIn('127.0.0.1', remotePort, () => {});
   }
 
   static async startDynamicForward(sessionId: string, localPort: number) {
