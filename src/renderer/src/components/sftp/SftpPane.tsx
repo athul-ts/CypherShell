@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { useSFTPTransfer } from '../../hooks/useSFTPTransfer';
 import { useTransferStore } from '../../store/transferStore';
 import { LocalFilePane } from './LocalFilePane';
+import { PathBreadcrumb } from './PathBreadcrumb';
 
 interface SftpPaneProps {
   sessionId: string;
@@ -222,9 +223,7 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
               <Folder className="w-5 h-5" />
               <span className="sr-only">Up</span>
             </button>
-            <div className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-300 font-mono text-sm truncate">
-              {currentPath}
-            </div>
+            <PathBreadcrumb path={currentPath} onNavigate={setCurrentPath} />
             <button onClick={() => refetch()} className="text-slate-400 hover:text-slate-200">
               <RefreshCw className="w-4 h-4" />
             </button>

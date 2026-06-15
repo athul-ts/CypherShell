@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { File, Folder, RefreshCw } from 'lucide-react';
+import { PathBreadcrumb } from './PathBreadcrumb';
 
 interface LocalFilePaneProps {
   sessionId: string;
@@ -79,9 +80,7 @@ export function LocalFilePane({ sessionId: _sessionId, showHidden, onUpload: _on
           <Folder className="w-5 h-5" />
           <span className="sr-only">Up</span>
         </button>
-        <div className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-300 font-mono text-sm truncate" title={currentPath}>
-          {currentPath}
-        </div>
+        <PathBreadcrumb path={currentPath} onNavigate={fetchDir} />
         <button onClick={() => fetchDir(currentPath)} className="text-slate-400 hover:text-slate-200">
           <RefreshCw className="w-4 h-4" />
         </button>
