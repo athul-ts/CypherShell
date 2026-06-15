@@ -3,11 +3,12 @@ import { File, Folder, RefreshCw } from 'lucide-react';
 
 interface LocalFilePaneProps {
   sessionId: string;
+  showHidden: boolean;
   onUpload: (localPath: string) => void;
   onDownload: (remotePath: string, localPath: string, filename: string, size: number) => void;
 }
 
-export function LocalFilePane({ sessionId: _sessionId, onUpload: _onUpload, onDownload }: LocalFilePaneProps) {
+export function LocalFilePane({ sessionId: _sessionId, showHidden, onUpload: _onUpload, onDownload }: LocalFilePaneProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [files, setFiles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -98,7 +99,7 @@ export function LocalFilePane({ sessionId: _sessionId, onUpload: _onUpload, onDo
               </tr>
             </thead>
             <tbody>
-              {files.map((f: any) => (
+              {files.filter(f => showHidden || !f.name.startsWith('.')).map((f: any) => (
                 <tr 
                   key={f.name} 
                   onDoubleClick={() => handleNavigate(f)}

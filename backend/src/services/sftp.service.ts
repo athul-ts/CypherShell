@@ -62,25 +62,25 @@ export class SftpService {
     });
   }
 
-  static async list(sessionId: string, targetPath: string = '.') {
+  static async list(sessionId: string, targetPath: string = '.', showHidden: boolean = false) {
     const sftp = await this.getClient(sessionId);
-    // Since we hacked ssh2-sftp-client, some methods might not work if they check state.
-    // To do it properly, we just use the raw sftp stream.
     const stream = (sftp as any).sftp;
-    
+
     return new Promise((resolve, reject) => {
       stream.readdir(targetPath, (err: any, list: any[]) => {
         if (err) return reject(err);
-        
-        const files = list.map(item => ({
-          name: item.filename,
-          type: item.longname.startsWith('d') ? 'd' : '-',
-          size: item.attrs.size,
-          modifyTime: item.attrs.mtime * 1000,
-          accessTime: item.attrs.atime * 1000,
-          permissions: item.attrs.mode,
-        }));
-        
+
+        const files = list
+          .filter((item: any) => showHidden || !item.filename.startsWith('.'))
+          .map((item: any) => ({
+            name: item.filename,
+            type: item.longname.startsWith('d') ? 'd' : '-',
+            size: item.attrs.size,
+            modifyTime: item.attrs.mtime * 1000,
+            accessTime: item.attrs.atime * 1000,
+            permissions: item.attrs.mode,
+          }));
+
         resolve(files);
       });
     });

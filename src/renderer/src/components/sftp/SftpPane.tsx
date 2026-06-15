@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { File, Folder, HardDriveUpload, RefreshCw, Trash2, Download, CheckCircle, XCircle, Loader2, FolderPlus, Edit, Shield, X } from 'lucide-react';
+import { File, Folder, HardDriveUpload, RefreshCw, Trash2, Download, CheckCircle, XCircle, Loader2, FolderPlus, Edit, Shield, X, Eye, EyeOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { useSFTPTransfer } from '../../hooks/useSFTPTransfer';
 import { useTransferStore } from '../../store/transferStore';
@@ -14,12 +14,15 @@ interface SftpPaneProps {
 export function SftpPane({ sessionId }: SftpPaneProps) {
   const [currentPath, setCurrentPath] = useState('.');
   const [selectedFile, setSelectedFile] = useState<any>(null);
+  const [showHidden, setShowHidden] = useState(false);
   const remoteRef = useRef<HTMLDivElement>(null);
 
   const { data: files, isLoading, refetch, isError, error } = useQuery({
-    queryKey: ['sftp', sessionId, currentPath],
+    queryKey: ['sftp', sessionId, currentPath, showHidden],
     queryFn: async () => {
-      const res = await api.get(`/sftp/${sessionId}/list`, { params: { path: currentPath } });
+      const res = await api.get(`/sftp/${sessionId}/list`, {
+        params: { path: currentPath, showHidden: String(showHidden) },
+      });
       return res.data.files;
     },
   });
@@ -204,7 +207,7 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
       <div className="flex flex-1 overflow-hidden">
         {/* Left Pane: Local File System */}
         <div className="w-1/2 min-w-[300px]">
-          <LocalFilePane sessionId={sessionId} onUpload={executeUpload} onDownload={executeDownload} />
+          <LocalFilePane sessionId={sessionId} showHidden={showHidden} onUpload={executeUpload} onDownload={executeDownload} />
         </div>
 
         {/* Right Pane: Remote File System */}
@@ -224,6 +227,13 @@ export function SftpPane({ sessionId }: SftpPaneProps) {
             </div>
             <button onClick={() => refetch()} className="text-slate-400 hover:text-slate-200">
               <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowHidden(v => !v)}
+              title={showHidden ? 'Hide dotfiles' : 'Show dotfiles'}
+              className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${showHidden ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              {showHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
             </button>
             <button onClick={handleMkdir} className="text-emerald-500 hover:text-emerald-400 flex items-center gap-2 text-sm font-medium">
               <FolderPlus className="w-4 h-4" /> New Folder

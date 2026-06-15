@@ -3,10 +3,11 @@ import { SftpService } from '../services/sftp.service';
 
 export async function listDirectory(req: Request, res: Response) {
   const sessionId = req.params.sessionId as string;
-  const targetPath = req.query.path as string || '.';
-  
+  const targetPath = (req.query.path as string) || '.';
+  const showHidden = req.query.showHidden === 'true';
+
   try {
-    const files = await SftpService.list(sessionId, targetPath);
+    const files = await SftpService.list(sessionId, targetPath, showHidden);
     res.json({ files });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'SFTP list failed' });
