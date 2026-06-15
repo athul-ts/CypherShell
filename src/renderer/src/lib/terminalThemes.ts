@@ -1,5 +1,7 @@
 // Terminal color themes for xterm.js
-export const TERMINAL_THEMES: Record<string, any> = {
+import type { ITheme } from '@xterm/xterm'
+
+export const TERMINAL_THEMES: Record<string, ITheme> = {
   dark: {
     background: '#0f1117',
     foreground: '#e2e8f0',
@@ -20,7 +22,7 @@ export const TERMINAL_THEMES: Record<string, any> = {
     brightBlue: '#93c5fd',
     brightMagenta: '#d8b4fe',
     brightCyan: '#6ee7b7',
-    brightWhite: '#f8fafc',
+    brightWhite: '#f8fafc'
   },
   dracula: {
     background: '#282a36',
@@ -42,7 +44,7 @@ export const TERMINAL_THEMES: Record<string, any> = {
     brightBlue: '#d6acff',
     brightMagenta: '#ff92df',
     brightCyan: '#a4ffff',
-    brightWhite: '#ffffff',
+    brightWhite: '#ffffff'
   },
   nord: {
     background: '#2e3440',
@@ -64,7 +66,7 @@ export const TERMINAL_THEMES: Record<string, any> = {
     brightBlue: '#81a1c1',
     brightMagenta: '#b48ead',
     brightCyan: '#8fbcbb',
-    brightWhite: '#eceff4',
+    brightWhite: '#eceff4'
   },
   solarized_dark: {
     background: '#002b36',
@@ -86,7 +88,7 @@ export const TERMINAL_THEMES: Record<string, any> = {
     brightBlue: '#839496',
     brightMagenta: '#6c71c4',
     brightCyan: '#93a1a1',
-    brightWhite: '#fdf6e3',
+    brightWhite: '#fdf6e3'
   },
   monokai: {
     background: '#272822',
@@ -108,7 +110,7 @@ export const TERMINAL_THEMES: Record<string, any> = {
     brightBlue: '#66d9e8',
     brightMagenta: '#ae81ff',
     brightCyan: '#a1efe4',
-    brightWhite: '#f9f8f5',
+    brightWhite: '#f9f8f5'
   },
   one_dark: {
     background: '#282c34',
@@ -130,9 +132,9 @@ export const TERMINAL_THEMES: Record<string, any> = {
     brightBlue: '#61afef',
     brightMagenta: '#c678dd',
     brightCyan: '#56b6c2',
-    brightWhite: '#ffffff',
-  },
-};
+    brightWhite: '#ffffff'
+  }
+}
 
 export const THEME_LABELS: Record<string, string> = {
   dark: 'Default Dark',
@@ -140,5 +142,5 @@ export const THEME_LABELS: Record<string, string> = {
   nord: 'Nord',
   solarized_dark: 'Solarized Dark',
   monokai: 'Monokai',
-  one_dark: 'One Dark',
-};
+  one_dark: 'One Dark'
+}

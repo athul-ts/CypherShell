@@ -1,50 +1,60 @@
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
-import { UploadCloud, X, Save, FileText } from 'lucide-react';
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../../lib/api'
+import { UploadCloud, X, Save, FileText } from 'lucide-react'
 
 interface KeyImportModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
-export function KeyImportModal({ open, onOpenChange }: KeyImportModalProps) {
-  const queryClient = useQueryClient();
-  const [formData, setFormData] = useState({
+interface ImportKeyData {
+  name: string
+  description: string
+  privateKey: string
+  passphrase: string
+}
+
+export function KeyImportModal({
+  open,
+  onOpenChange
+}: KeyImportModalProps): React.JSX.Element | null {
+  const queryClient = useQueryClient()
+  const [formData, setFormData] = useState<ImportKeyData>({
     name: '',
     description: '',
     privateKey: '',
-    passphrase: '',
-  });
+    passphrase: ''
+  })
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      return api.post('/keys/import', data);
+    mutationFn: async (data: ImportKeyData) => {
+      return api.post('/keys/import', data)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['keys'] });
-      onOpenChange(false);
-      setFormData({ name: '', description: '', privateKey: '', passphrase: '' });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    mutation.mutate(formData);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setFormData({ ...formData, privateKey: ev.target?.result as string });
-      };
-      reader.readAsText(file);
+      queryClient.invalidateQueries({ queryKey: ['keys'] })
+      onOpenChange(false)
+      setFormData({ name: '', description: '', privateKey: '', passphrase: '' })
     }
-  };
+  })
 
-  if (!open) return null;
+  const handleSubmit = (e: React.FormEvent): void => {
+    e.preventDefault()
+    mutation.mutate(formData)
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        setFormData({ ...formData, privateKey: ev.target?.result as string })
+      }
+      reader.readAsText(file)
+    }
+  }
+
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -56,7 +66,10 @@ export function KeyImportModal({ open, onOpenChange }: KeyImportModalProps) {
             </div>
             <h2 className="text-lg font-semibold text-slate-200">Import SSH Key</h2>
           </div>
-          <button onClick={() => onOpenChange(false)} className="text-slate-500 hover:text-slate-300">
+          <button
+            onClick={() => onOpenChange(false)}
+            className="text-slate-500 hover:text-slate-300"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -75,7 +88,9 @@ export function KeyImportModal({ open, onOpenChange }: KeyImportModalProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Private Key (PEM format)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Private Key (PEM format)
+            </label>
             <div className="relative">
               <textarea
                 required
@@ -93,7 +108,9 @@ export function KeyImportModal({ open, onOpenChange }: KeyImportModalProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Passphrase (If encrypted)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Passphrase (If encrypted)
+            </label>
             <input
               type="password"
               value={formData.passphrase}
@@ -104,7 +121,9 @@ export function KeyImportModal({ open, onOpenChange }: KeyImportModalProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Description (Optional)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Description (Optional)
+            </label>
             <input
               type="text"
               value={formData.description}
@@ -115,7 +134,7 @@ export function KeyImportModal({ open, onOpenChange }: KeyImportModalProps) {
 
           {mutation.error && (
             <div className="text-red-500 text-sm mt-2">
-              Failed to import key. {(mutation.error as any).message}
+              Failed to import key. {(mutation.error as Error).message}
             </div>
           )}
 
@@ -139,5 +158,5 @@ export function KeyImportModal({ open, onOpenChange }: KeyImportModalProps) {
         </form>
       </div>
     </div>
-  );
+  )
 }

@@ -1,54 +1,54 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react'
 
 interface Segment {
-  label: string;
-  path: string;
+  label: string
+  path: string
 }
 
 interface PathBreadcrumbProps {
-  path: string;
-  onNavigate: (path: string) => void;
+  path: string
+  onNavigate: (path: string) => void
 }
 
 function buildSegments(path: string): Segment[] {
   if (!path || path === '.') {
-    return [{ label: '~', path: '.' }];
+    return [{ label: '~', path: '.' }]
   }
 
-  const isWindows = path.includes('\\');
+  const isWindows = path.includes('\\')
 
   if (isWindows) {
-    const parts = path.split('\\').filter(Boolean);
+    const parts = path.split('\\').filter(Boolean)
     return parts.map((part, i) => ({
       label: part,
-      path: i === 0 ? part + '\\' : parts.slice(0, i + 1).join('\\'),
-    }));
+      path: i === 0 ? part + '\\' : parts.slice(0, i + 1).join('\\')
+    }))
   }
 
   if (path.startsWith('/')) {
-    const parts = path.split('/').filter(Boolean);
+    const parts = path.split('/').filter(Boolean)
     return [
       { label: '/', path: '/' },
       ...parts.map((part, i) => ({
         label: part,
-        path: '/' + parts.slice(0, i + 1).join('/'),
-      })),
-    ];
+        path: '/' + parts.slice(0, i + 1).join('/')
+      }))
+    ]
   }
 
   // Relative remote path (e.g. "home/user/docs")
-  const parts = path.split('/').filter(Boolean);
+  const parts = path.split('/').filter(Boolean)
   return [
     { label: '~', path: '.' },
     ...parts.map((part, i) => ({
       label: part,
-      path: parts.slice(0, i + 1).join('/'),
-    })),
-  ];
+      path: parts.slice(0, i + 1).join('/')
+    }))
+  ]
 }
 
-export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps) {
-  const segments = buildSegments(path);
+export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps): React.JSX.Element {
+  const segments = buildSegments(path)
 
   return (
     <div className="flex items-center flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 font-mono text-sm min-w-0 overflow-x-auto">
@@ -64,5 +64,5 @@ export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps) {
         </span>
       ))}
     </div>
-  );
+  )
 }

@@ -1,20 +1,37 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
-import { Settings as SettingsIcon, Save, Monitor, Clock, FileText, Lock, Terminal } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { useTerminalThemeStore } from '../store/terminalThemeStore';
-import { TERMINAL_THEMES, THEME_LABELS } from '../lib/terminalThemes';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../lib/api'
+import {
+  Settings as SettingsIcon,
+  Save,
+  Monitor,
+  Clock,
+  FileText,
+  Lock,
+  Terminal
+} from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useTerminalThemeStore } from '../store/terminalThemeStore'
+import { TERMINAL_THEMES, THEME_LABELS } from '../lib/terminalThemes'
 
-export default function Settings() {
-  const queryClient = useQueryClient();
-  
+interface AppConfig {
+  theme: string
+  defaultFont: string
+  defaultFontSize: number
+  logRetentionDays: number
+  lockEnabled: boolean
+  autoLockMinutes: number
+}
+
+export default function Settings(): React.JSX.Element {
+  const queryClient = useQueryClient()
+
   const { data: config, isLoading } = useQuery({
     queryKey: ['config'],
-    queryFn: async () => {
-      const res = await api.get('/config');
-      return res.data;
-    },
-  });
+    queryFn: async (): Promise<AppConfig> => {
+      const res = await api.get<AppConfig>('/config')
+      return res.data
+    }
+  })
 
   const [formData, setFormData] = useState({
     theme: 'dark',
@@ -22,44 +39,48 @@ export default function Settings() {
     defaultFontSize: 14,
     logRetentionDays: 90,
     lockEnabled: false,
-    autoLockMinutes: 15,
-  });
+    autoLockMinutes: 15
+  })
 
   useEffect(() => {
     if (config) {
+      // Safe one-time sync of the editable form from server-fetched config; the
+      // `config` reference only changes when the query data changes, so this does
+      // not cascade on every render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData({
         theme: config.theme,
         defaultFont: config.defaultFont,
         defaultFontSize: config.defaultFontSize,
         logRetentionDays: config.logRetentionDays,
         lockEnabled: config.lockEnabled,
-        autoLockMinutes: config.autoLockMinutes,
-      });
+        autoLockMinutes: config.autoLockMinutes
+      })
     }
-  }, [config]);
+  }, [config])
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      return api.put('/config', data);
+    mutationFn: async (data: AppConfig) => {
+      return api.put('/config', data)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config'] });
-      alert('Settings saved successfully!');
+      queryClient.invalidateQueries({ queryKey: ['config'] })
+      alert('Settings saved successfully!')
     },
     onError: () => {
-      alert('Failed to save settings');
+      alert('Failed to save settings')
     }
-  });
+  })
 
-  const terminalThemeStore = useTerminalThemeStore();
+  const terminalThemeStore = useTerminalThemeStore()
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    mutation.mutate(formData);
-  };
+  const handleSubmit = (e: React.FormEvent): void => {
+    e.preventDefault()
+    mutation.mutate(formData)
+  }
 
   if (isLoading) {
-    return <div className="p-8 text-slate-500">Loading settings...</div>;
+    return <div className="p-8 text-slate-500">Loading settings...</div>
   }
 
   return (
@@ -108,7 +129,7 @@ export default function Settings() {
               <label className="block text-sm font-medium text-slate-400 mb-2">Color Theme</label>
               <div className="grid grid-cols-3 gap-3">
                 {Object.entries(THEME_LABELS).map(([key, label]) => {
-                  const colors = TERMINAL_THEMES[key];
+                  const colors = TERMINAL_THEMES[key]
                   return (
                     <button
                       key={key}
@@ -125,7 +146,11 @@ export default function Settings() {
                         style={{ backgroundColor: colors.background }}
                       >
                         {[colors.green, colors.blue, colors.red, colors.yellow].map((c, i) => (
-                          <div key={i} className="w-3 h-3 rounded-full" style={{ backgroundColor: c }} />
+                          <div
+                            key={i}
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: c }}
+                          />
                         ))}
                       </div>
                       <span className="text-xs font-medium text-slate-300">{label}</span>
@@ -133,14 +158,16 @@ export default function Settings() {
                         <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-blue-500" />
                       )}
                     </button>
-                  );
+                  )
                 })}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">Font Size (px)</label>
+                <label className="block text-sm font-medium text-slate-400 mb-1">
+                  Font Size (px)
+                </label>
                 <input
                   type="number"
                   min="10"
@@ -166,7 +193,9 @@ export default function Settings() {
                 </select>
               </div>
             </div>
-            <p className="text-xs text-slate-500">Theme and font changes apply to new terminal sessions.</p>
+            <p className="text-xs text-slate-500">
+              Theme and font changes apply to new terminal sessions.
+            </p>
           </div>
         </div>
 
@@ -180,12 +209,14 @@ export default function Settings() {
             <div className="flex items-center justify-between p-4 bg-[#1a1c23] rounded-lg border border-slate-800">
               <div>
                 <div className="font-medium text-slate-200">App Lock</div>
-                <div className="text-sm text-slate-500 mt-1">Require master password when opening the app</div>
+                <div className="text-sm text-slate-500 mt-1">
+                  Require master password when opening the app
+                </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer" 
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
                   checked={formData.lockEnabled}
                   onChange={(e) => setFormData({ ...formData, lockEnabled: e.target.checked })}
                 />
@@ -196,7 +227,9 @@ export default function Settings() {
             {formData.lockEnabled && (
               <div className="grid grid-cols-2 gap-6 pt-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-1">Auto-Lock Time (Minutes)</label>
+                  <label className="block text-sm font-medium text-slate-400 mb-1">
+                    Auto-Lock Time (Minutes)
+                  </label>
                   <div className="relative">
                     <Clock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
@@ -204,7 +237,9 @@ export default function Settings() {
                       min="1"
                       max="1440"
                       value={formData.autoLockMinutes}
-                      onChange={(e) => setFormData({ ...formData, autoLockMinutes: parseInt(e.target.value) })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, autoLockMinutes: parseInt(e.target.value) })
+                      }
                       className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors"
                     />
                   </div>
@@ -222,10 +257,14 @@ export default function Settings() {
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Audit Log Retention (Days)</label>
+              <label className="block text-sm font-medium text-slate-400 mb-1">
+                Audit Log Retention (Days)
+              </label>
               <select
                 value={formData.logRetentionDays}
-                onChange={(e) => setFormData({ ...formData, logRetentionDays: parseInt(e.target.value) })}
+                onChange={(e) =>
+                  setFormData({ ...formData, logRetentionDays: parseInt(e.target.value) })
+                }
                 className="w-full max-w-xs bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors"
               >
                 <option value={7}>7 Days</option>
@@ -233,7 +272,9 @@ export default function Settings() {
                 <option value={90}>90 Days</option>
                 <option value={365}>1 Year</option>
               </select>
-              <p className="text-xs text-slate-500 mt-2">Logs older than the selected duration will be automatically deleted.</p>
+              <p className="text-xs text-slate-500 mt-2">
+                Logs older than the selected duration will be automatically deleted.
+              </p>
             </div>
           </div>
         </div>
@@ -250,5 +291,5 @@ export default function Settings() {
         </div>
       </form>
     </div>
-  );
+  )
 }

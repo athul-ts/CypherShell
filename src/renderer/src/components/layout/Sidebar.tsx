@@ -1,14 +1,14 @@
-import { NavLink } from 'react-router-dom';
-import { Home, Key, FileText, Settings, TerminalSquare } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { NavLink } from 'react-router-dom'
+import { Home, Key, FileText, Settings, TerminalSquare } from 'lucide-react'
+import { cn } from '../../lib/utils'
 
-export function Sidebar() {
+export function Sidebar(): React.JSX.Element {
   const links = [
     { name: 'Profiles', to: '/', icon: Home },
     { name: 'Keys', to: '/keys', icon: Key },
     { name: 'Logs', to: '/logs', icon: FileText },
-    { name: 'Settings', to: '/settings', icon: Settings },
-  ];
+    { name: 'Settings', to: '/settings', icon: Settings }
+  ]
 
   return (
     <div className="w-16 md:w-56 h-full border-r border-slate-800 bg-[#0f1117] flex flex-col items-center md:items-start py-4">
@@ -37,5 +37,5 @@ export function Sidebar() {
         ))}
       </div>
     </div>
-  );
+  )
 }

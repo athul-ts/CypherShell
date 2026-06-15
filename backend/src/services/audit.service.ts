@@ -1,7 +1,18 @@
-import { prisma } from '../config/db';
+import { prisma } from '../config/db'
+import { AuditLog, Prisma } from '@prisma/client'
+
+type AuditLogWithProfile = Prisma.AuditLogGetPayload<{
+  include: { profile: { select: { name: true } } }
+}>
 
 export class AuditService {
-  static async logConnection(profileId: string | null, profileName: string | null, host: string | null, success: boolean, errorMessage?: string) {
+  static async logConnection(
+    profileId: string | null,
+    profileName: string | null,
+    host: string | null,
+    success: boolean,
+    errorMessage?: string
+  ): Promise<AuditLog> {
     return prisma.auditLog.create({
       data: {
         type: 'connection',
@@ -10,12 +21,18 @@ export class AuditService {
         host,
         detail: success ? 'Connected successfully' : 'Connection failed',
         success,
-        errorMessage,
+        errorMessage
       }
-    });
+    })
   }
 
-  static async logDisconnect(profileId: string | null, profileName: string | null, host: string | null, reason: string, durationMs?: number) {
+  static async logDisconnect(
+    profileId: string | null,
+    profileName: string | null,
+    host: string | null,
+    reason: string,
+    durationMs?: number
+  ): Promise<AuditLog> {
     return prisma.auditLog.create({
       data: {
         type: 'disconnection',
@@ -24,12 +41,19 @@ export class AuditService {
         host,
         detail: `Disconnected: ${reason}`,
         success: true,
-        durationMs,
+        durationMs
       }
-    });
+    })
   }
 
-  static async logSftpTransfer(profileId: string | null, type: 'sftp_upload' | 'sftp_download', detail: string, success: boolean, fileSizeBytes?: number, errorMessage?: string) {
+  static async logSftpTransfer(
+    profileId: string | null,
+    type: 'sftp_upload' | 'sftp_download',
+    detail: string,
+    success: boolean,
+    fileSizeBytes?: number,
+    errorMessage?: string
+  ): Promise<AuditLog> {
     return prisma.auditLog.create({
       data: {
         type,
@@ -37,54 +61,54 @@ export class AuditService {
         detail,
         success,
         fileSizeBytes,
-        errorMessage,
+        errorMessage
       }
-    });
+    })
   }
 
-  static async getLogs(limit: number = 100) {
+  static async getLogs(limit: number = 100): Promise<AuditLogWithProfile[]> {
     return prisma.auditLog.findMany({
       orderBy: { timestamp: 'desc' },
       take: limit,
       include: {
         profile: { select: { name: true } }
       }
-    });
+    })
   }
 
-  static async exportCSV() {
+  static async exportCSV(): Promise<string> {
     const logs = await prisma.auditLog.findMany({
-      orderBy: { timestamp: 'desc' },
-    });
+      orderBy: { timestamp: 'desc' }
+    })
 
-    const header = 'Timestamp,Type,Profile,Host,Detail,Success,Error,Size\n';
-    const rows = logs.map(log => {
-      const time = log.timestamp.toISOString();
-      const type = log.type;
-      const profile = `"${log.profileName || ''}"`;
-      const host = `"${log.host || ''}"`;
-      const detail = `"${log.detail.replace(/"/g, '""')}"`;
-      const success = log.success ? 'Yes' : 'No';
-      const error = `"${log.errorMessage || ''}"`;
-      const size = log.fileSizeBytes || '';
-      return `${time},${type},${profile},${host},${detail},${success},${error},${size}`;
-    });
+    const header = 'Timestamp,Type,Profile,Host,Detail,Success,Error,Size\n'
+    const rows = logs.map((log) => {
+      const time = log.timestamp.toISOString()
+      const type = log.type
+      const profile = `"${log.profileName || ''}"`
+      const host = `"${log.host || ''}"`
+      const detail = `"${log.detail.replace(/"/g, '""')}"`
+      const success = log.success ? 'Yes' : 'No'
+      const error = `"${log.errorMessage || ''}"`
+      const size = log.fileSizeBytes || ''
+      return `${time},${type},${profile},${host},${detail},${success},${error},${size}`
+    })
 
-    return header + rows.join('\n');
+    return header + rows.join('\n')
   }
 
-  static async clearAllLogs() {
-    return prisma.auditLog.deleteMany({});
+  static async clearAllLogs(): Promise<Prisma.BatchPayload> {
+    return prisma.auditLog.deleteMany({})
   }
 
-  static async clearOldLogs(retentionDays: number) {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - retentionDays);
-    
+  static async clearOldLogs(retentionDays: number): Promise<Prisma.BatchPayload> {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - retentionDays)
+
     return prisma.auditLog.deleteMany({
       where: {
         timestamp: { lt: cutoff }
       }
-    });
+    })
   }
 }

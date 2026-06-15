@@ -1,10 +1,10 @@
-import { Router } from 'express';
-import { getLogs, exportLogs, clearAllLogs } from '../controllers/audit.controller';
+import { Router } from 'express'
+import { getLogs, exportLogs, clearAllLogs } from '../controllers/audit.controller'
 
-const router = Router();
+const router = Router()
 
-router.get('/', getLogs);
-router.get('/export', exportLogs);
-router.delete('/', clearAllLogs);
+router.get('/', getLogs)
+router.get('/export', exportLogs)
+router.delete('/', clearAllLogs)
 
-export default router;
+export default router

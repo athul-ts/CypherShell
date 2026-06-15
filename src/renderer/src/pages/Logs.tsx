@@ -1,63 +1,76 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
-import { FileText, Download, CheckCircle2, XCircle, Search, Trash2 } from 'lucide-react';
-import { format, isAfter, subDays, subMonths } from 'date-fns';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from '../lib/api'
+import { FileText, Download, CheckCircle2, XCircle, Search, Trash2 } from 'lucide-react'
+import { format, isAfter, subDays, subMonths } from 'date-fns'
+import { useState } from 'react'
 
-export default function Logs() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [filterDate, setFilterDate] = useState('all');
-  const queryClient = useQueryClient();
+interface LogEntry {
+  id: string
+  type: string
+  detail: string
+  profileName?: string | null
+  timestamp: string
+  errorMessage?: string | null
+  success: boolean
+}
+
+export default function Logs(): React.JSX.Element {
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState('all')
+  const [filterDate, setFilterDate] = useState('all')
+  const queryClient = useQueryClient()
 
   const { data: logs, isLoading } = useQuery({
     queryKey: ['logs'],
-    queryFn: async () => {
-      const res = await api.get('/audit');
-      return res.data;
+    queryFn: async (): Promise<LogEntry[]> => {
+      const res = await api.get<LogEntry[]>('/audit')
+      return res.data
     },
-    refetchInterval: 5000, // Refresh every 5s just in case
-  });
+    refetchInterval: 5000 // Refresh every 5s just in case
+  })
 
-  const handleExport = () => {
-    const backendPort = (window as any).api.backendPort;
-    window.location.href = `http://127.0.0.1:${backendPort}/api/audit/export`;
-  };
+  const handleExport = (): void => {
+    const backendPort = window.api.backendPort
+    window.location.href = `http://127.0.0.1:${backendPort}/api/audit/export`
+  }
 
-  const handleClearAll = async () => {
-    if (!confirm('Delete all audit logs permanently? This cannot be undone.')) return;
-    await api.delete('/audit');
-    queryClient.invalidateQueries({ queryKey: ['logs'] });
-  };
+  const handleClearAll = async (): Promise<void> => {
+    if (!confirm('Delete all audit logs permanently? This cannot be undone.')) return
+    await api.delete('/audit')
+    queryClient.invalidateQueries({ queryKey: ['logs'] })
+  }
 
-  const filteredLogs = logs?.filter((log: any) => {
+  const filteredLogs = logs?.filter((log: LogEntry) => {
     // Text search
-    const matchesSearch = log.detail.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch =
+      log.detail.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (log.profileName && log.profileName.toLowerCase().includes(searchTerm.toLowerCase()));
-      
+      (log.profileName && log.profileName.toLowerCase().includes(searchTerm.toLowerCase()))
+
     // Type filter
-    const matchesType = filterType === 'all' || log.type === filterType;
-    
+    const matchesType = filterType === 'all' || log.type === filterType
+
     // Date filter
-    let matchesDate = true;
+    let matchesDate = true
     if (filterDate !== 'all') {
-      const logDate = new Date(log.timestamp);
-      const now = new Date();
-      if (filterDate === 'today') matchesDate = isAfter(logDate, subDays(now, 1));
-      else if (filterDate === 'week') matchesDate = isAfter(logDate, subDays(now, 7));
-      else if (filterDate === 'month') matchesDate = isAfter(logDate, subMonths(now, 1));
+      const logDate = new Date(log.timestamp)
+      const now = new Date()
+      if (filterDate === 'today') matchesDate = isAfter(logDate, subDays(now, 1))
+      else if (filterDate === 'week') matchesDate = isAfter(logDate, subDays(now, 7))
+      else if (filterDate === 'month') matchesDate = isAfter(logDate, subMonths(now, 1))
     }
-    
-    return matchesSearch && matchesType && matchesDate;
-  });
+
+    return matchesSearch && matchesType && matchesDate
+  })
 
   return (
     <div className="flex-1 p-8 bg-[#0a0a0f] h-full flex flex-col overflow-hidden">
       <div className="flex items-center justify-between mb-8 shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-slate-200">Audit Logs</h1>
-          <p className="text-slate-500 mt-1">Review connection history and file transfer activity.</p>
+          <p className="text-slate-500 mt-1">
+            Review connection history and file transfer activity.
+          </p>
         </div>
         <button
           onClick={handleClearAll}
@@ -128,8 +141,11 @@ export default function Logs() {
                 </tr>
               </thead>
               <tbody>
-                {filteredLogs?.map((log: any) => (
-                  <tr key={log.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                {filteredLogs?.map((log: LogEntry) => (
+                  <tr
+                    key={log.id}
+                    className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
+                  >
                     <td className="px-6 py-3 text-slate-400 whitespace-nowrap">
                       {format(new Date(log.timestamp), 'MMM d, yyyy HH:mm:ss')}
                     </td>
@@ -146,7 +162,10 @@ export default function Logs() {
                         {log.detail}
                       </div>
                       {log.errorMessage && (
-                        <div className="text-red-400 text-xs mt-1 truncate max-w-md" title={log.errorMessage}>
+                        <div
+                          className="text-red-400 text-xs mt-1 truncate max-w-md"
+                          title={log.errorMessage}
+                        >
                           {log.errorMessage}
                         </div>
                       )}
@@ -170,5 +189,5 @@ export default function Logs() {
         </div>
       </div>
     </div>
-  );
+  )
 }

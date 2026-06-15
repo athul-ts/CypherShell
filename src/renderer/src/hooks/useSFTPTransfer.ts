@@ -1,7 +1,12 @@
-import { useTransferStore, TransferEvent } from '../store/transferStore';
+import { useTransferStore, TransferEvent, Transfer } from '../store/transferStore'
 
-export function useSFTPTransfer(sessionId: string) {
-  const { addTransfer, updateProgress } = useTransferStore();
+interface UseSFTPTransfer {
+  listenToTransfer: (transferId: string) => Promise<void>
+  addTransfer: (t: Transfer) => void
+}
+
+export function useSFTPTransfer(sessionId: string): UseSFTPTransfer {
+  const { addTransfer, updateProgress } = useTransferStore()
 
   /**
    * Opens the SSE stream FIRST and returns a Promise that resolves once the
@@ -10,37 +15,43 @@ export function useSFTPTransfer(sessionId: string) {
    */
   const listenToTransfer = (transferId: string): Promise<void> => {
     return new Promise((resolve) => {
-      const backendPort = (window as any).api.backendPort;
+      const backendPort = window.api.backendPort
       // EventSource cannot send custom headers, so we pass the JWT as a query param
-      const token = sessionStorage.getItem('jwt') || '';
-      const url = `http://127.0.0.1:${backendPort}/api/sftp/${sessionId}/progress/${transferId}?token=${encodeURIComponent(token)}`;
-      const source = new EventSource(url);
+      const token = sessionStorage.getItem('jwt') || ''
+      const url = `http://127.0.0.1:${backendPort}/api/sftp/${sessionId}/progress/${transferId}?token=${encodeURIComponent(token)}`
+      const source = new EventSource(url)
 
       // Resolve the promise the moment the SSE connection is established
-      source.onopen = () => resolve();
+      source.onopen = (): void => resolve()
 
-      source.onmessage = (e) => {
+      source.onmessage = (e: MessageEvent<string>): void => {
         try {
-          const event: TransferEvent = JSON.parse(e.data);
-          updateProgress(event);
-          if (event.status === 'complete' || event.status === 'error' || event.status === 'cancelled') {
-            source.close();
+          const event: TransferEvent = JSON.parse(e.data)
+          updateProgress(event)
+          if (
+            event.status === 'complete' ||
+            event.status === 'error' ||
+            event.status === 'cancelled'
+          ) {
+            source.close()
           }
         } catch (err) {
-          console.error('Failed to parse SSE event', err);
+          console.error('Failed to parse SSE event', err)
         }
-      };
+      }
 
-      source.onerror = () => {
+      source.onerror = (): void => {
         // Server no longer closes the connection on complete, so onerror is a genuine failure
-        const currentStatus = useTransferStore.getState().transfers.find(x => x.id === transferId)?.status;
+        const currentStatus = useTransferStore
+          .getState()
+          .transfers.find((x) => x.id === transferId)?.status
         if (currentStatus !== 'complete') {
-          updateProgress({ transferId, status: 'error', message: 'SSE connection lost' });
+          updateProgress({ transferId, status: 'error', message: 'SSE connection lost' })
         }
-        source.close();
-      };
-    });
-  };
+        source.close()
+      }
+    })
+  }
 
-  return { listenToTransfer, addTransfer };
+  return { listenToTransfer, addTransfer }
 }

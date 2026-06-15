@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
+interface LocalFileOpArgs {
+  path?: string
+  oldPath?: string
+  newPath?: string
+  content?: string
+}
+
 // Custom APIs for renderer
 const api = {
   backendPort: ipcRenderer.sendSync('get-backend-port'),
@@ -10,9 +17,9 @@ const api = {
   openJsonFileDialog: () => ipcRenderer.invoke('dialog:openJsonFile'),
   openCskbFileDialog: () => ipcRenderer.invoke('dialog:openCskbFile'),
   appVersion: process.env.APP_VERSION || '1.0.0',
-  openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) => 
+  openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) =>
     ipcRenderer.invoke('window:openTerminal', { sessionId, profileId, title, token }),
-  openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) => 
+  openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) =>
     ipcRenderer.invoke('window:openSftp', { sessionId, profileId, title, token }),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   onUpdateAvailable: (cb: () => void) => {
@@ -24,7 +31,8 @@ const api = {
     return () => ipcRenderer.removeListener('update:downloaded', cb)
   },
   readLocalDir: (dirPath?: string) => ipcRenderer.invoke('fs:readDir', dirPath),
-  executeLocalFileOp: (op: string, args: any) => ipcRenderer.invoke('fs:executeOp', op, args)
+  executeLocalFileOp: (op: string, args: LocalFileOpArgs) =>
+    ipcRenderer.invoke('fs:executeOp', op, args)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

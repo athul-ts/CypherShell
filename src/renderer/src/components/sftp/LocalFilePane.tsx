@@ -1,76 +1,102 @@
-import { useState, useEffect } from 'react';
-import { File, Folder, RefreshCw } from 'lucide-react';
-import { PathBreadcrumb } from './PathBreadcrumb';
+import { useState, useEffect } from 'react'
+import { File, Folder, RefreshCw } from 'lucide-react'
+import { PathBreadcrumb } from './PathBreadcrumb'
 
-interface LocalFilePaneProps {
-  sessionId: string;
-  showHidden: boolean;
-  onUpload: (localPath: string) => void;
-  onDownload: (remotePath: string, localPath: string, filename: string, size: number) => void;
+interface LocalFileEntry {
+  name: string
+  type: 'd' | 'f'
+  size: number
+  modifyTime: string
+  permissions: number
 }
 
-export function LocalFilePane({ sessionId: _sessionId, showHidden, onUpload: _onUpload, onDownload }: LocalFilePaneProps) {
-  const [currentPath, setCurrentPath] = useState<string>('');
-  const [files, setFiles] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+interface ReadLocalDirResult {
+  path: string
+  files: LocalFileEntry[]
+}
 
-  const fetchDir = async (path?: string) => {
-    setIsLoading(true);
+type LocalDirApi = {
+  readLocalDir: (dirPath?: string) => Promise<ReadLocalDirResult>
+}
+
+interface LocalFilePaneProps {
+  sessionId: string
+  showHidden: boolean
+  onUpload: (localPath: string) => void
+  onDownload: (remotePath: string, localPath: string, filename: string, size: number) => void
+}
+
+export function LocalFilePane({ showHidden, onDownload }: LocalFilePaneProps): React.JSX.Element {
+  const [currentPath, setCurrentPath] = useState<string>('')
+  const [files, setFiles] = useState<LocalFileEntry[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+
+  const fetchDir = async (path?: string): Promise<void> => {
+    setIsLoading(true)
     try {
-      const res = await (window as any).api.readLocalDir(path || currentPath);
-      setCurrentPath(res.path);
-      setFiles(res.files);
+      const localApi = (window as unknown as { api: LocalDirApi }).api
+      const res = await localApi.readLocalDir(path || currentPath)
+      setCurrentPath(res.path)
+      setFiles(res.files)
     } catch (err) {
-      console.error(err);
+      console.error(err)
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchDir('');
-  }, []);
+    // One-shot initial directory load. fetchDir flips a loading flag and then
+    // resolves asynchronously; this is a genuine external-system fetch, not
+    // derived render state, so the synchronous setState here is safe and intended.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchDir('')
+  }, [])
 
-  const handleNavigate = (file: any) => {
+  const handleNavigate = (file: LocalFileEntry): void => {
     if (file.type === 'd') {
-      const sep = currentPath.includes('\\') ? '\\' : '/';
-      fetchDir(`${currentPath}${sep}${file.name}`);
+      const sep = currentPath.includes('\\') ? '\\' : '/'
+      fetchDir(`${currentPath}${sep}${file.name}`)
     }
-  };
+  }
 
-  const handleUp = () => {
-    const sep = currentPath.includes('\\') ? '\\' : '/';
-    const parts = currentPath.split(sep).filter(Boolean);
+  const handleUp = (): void => {
+    const sep = currentPath.includes('\\') ? '\\' : '/'
+    const parts = currentPath.split(sep).filter(Boolean)
     if (parts.length > 1) {
-      parts.pop();
-      fetchDir(parts.join(sep) + (currentPath.startsWith(sep) ? '' : sep));
+      parts.pop()
+      fetchDir(parts.join(sep) + (currentPath.startsWith(sep) ? '' : sep))
     } else {
-      fetchDir(sep);
+      fetchDir(sep)
     }
-  };
+  }
 
-  const handleDragStart = (e: React.DragEvent, file: any) => {
-    const sep = currentPath.includes('\\') ? '\\' : '/';
-    e.dataTransfer.setData('text/plain', `${currentPath}${sep}${file.name}`);
-    e.dataTransfer.effectAllowed = 'copy';
-  };
+  const handleDragStart = (e: React.DragEvent, file: LocalFileEntry): void => {
+    const sep = currentPath.includes('\\') ? '\\' : '/'
+    e.dataTransfer.setData('text/plain', `${currentPath}${sep}${file.name}`)
+    e.dataTransfer.effectAllowed = 'copy'
+  }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const data = e.dataTransfer.getData('application/x-remote-file');
-    if (!data) return;
-    const { filename, remotePath, size } = JSON.parse(data);
-    const sep = currentPath.includes('\\') ? '\\' : '/';
-    const localPath = `${currentPath}${sep}${filename}`;
-    onDownload(remotePath, localPath, filename, size);
-  };
+  const handleDrop = (e: React.DragEvent): void => {
+    e.preventDefault()
+    const data = e.dataTransfer.getData('application/x-remote-file')
+    if (!data) return
+    const { filename, remotePath, size } = JSON.parse(data) as {
+      filename: string
+      remotePath: string
+      size: number
+    }
+    const sep = currentPath.includes('\\') ? '\\' : '/'
+    const localPath = `${currentPath}${sep}${filename}`
+    onDownload(remotePath, localPath, filename, size)
+  }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
+  const handleDragOver = (e: React.DragEvent): void => {
+    e.preventDefault()
+  }
 
   return (
-    <div 
+    <div
       className="flex flex-col h-full bg-[#0f1117] border-r border-slate-800"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
@@ -81,7 +107,10 @@ export function LocalFilePane({ sessionId: _sessionId, showHidden, onUpload: _on
           <span className="sr-only">Up</span>
         </button>
         <PathBreadcrumb path={currentPath} onNavigate={fetchDir} />
-        <button onClick={() => fetchDir(currentPath)} className="text-slate-400 hover:text-slate-200">
+        <button
+          onClick={() => fetchDir(currentPath)}
+          className="text-slate-400 hover:text-slate-200"
+        >
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
@@ -98,30 +127,37 @@ export function LocalFilePane({ sessionId: _sessionId, showHidden, onUpload: _on
               </tr>
             </thead>
             <tbody>
-              {files.filter(f => showHidden || !f.name.startsWith('.')).map((f: any) => (
-                <tr 
-                  key={f.name} 
-                  onDoubleClick={() => handleNavigate(f)}
-                  draggable={f.type !== 'd'}
-                  onDragStart={(e) => handleDragStart(e, f)}
-                  className="border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer group transition-colors"
-                >
-                  <td className="px-4 py-2 font-medium text-slate-300 flex items-center gap-3 truncate max-w-[200px]" title={f.name}>
-                    {f.type === 'd' ? (
-                      <Folder className="w-4 h-4 text-emerald-500 shrink-0" />
-                    ) : (
-                      <File className="w-4 h-4 text-slate-500 shrink-0" />
-                    )}
-                    <span className="truncate">{f.name}</span>
-                  </td>
-                  <td className="px-4 py-2 text-slate-400 whitespace-nowrap">
-                    {f.type === 'd' ? '--' : (f.size / 1024).toFixed(1) + ' KB'}
-                  </td>
-                </tr>
-              ))}
+              {files
+                .filter((f) => showHidden || !f.name.startsWith('.'))
+                .map((f) => (
+                  <tr
+                    key={f.name}
+                    onDoubleClick={() => handleNavigate(f)}
+                    draggable={f.type !== 'd'}
+                    onDragStart={(e) => handleDragStart(e, f)}
+                    className="border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer group transition-colors"
+                  >
+                    <td
+                      className="px-4 py-2 font-medium text-slate-300 flex items-center gap-3 truncate max-w-[200px]"
+                      title={f.name}
+                    >
+                      {f.type === 'd' ? (
+                        <Folder className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <File className="w-4 h-4 text-slate-500 shrink-0" />
+                      )}
+                      <span className="truncate">{f.name}</span>
+                    </td>
+                    <td className="px-4 py-2 text-slate-400 whitespace-nowrap">
+                      {f.type === 'd' ? '--' : (f.size / 1024).toFixed(1) + ' KB'}
+                    </td>
+                  </tr>
+                ))}
               {files.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="text-center py-8 text-slate-500">Empty directory</td>
+                  <td colSpan={2} className="text-center py-8 text-slate-500">
+                    Empty directory
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -129,5 +165,5 @@ export function LocalFilePane({ sessionId: _sessionId, showHidden, onUpload: _on
         )}
       </div>
     </div>
-  );
+  )
 }

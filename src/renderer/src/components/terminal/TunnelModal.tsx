@@ -1,46 +1,59 @@
-import { useState } from 'react';
-import { api } from '../../lib/api';
-import { Network, X, Play, Square, ArrowRightLeft } from 'lucide-react';
+import { useState } from 'react'
+import { api } from '../../lib/api'
+import { Network, X, Play, Square, ArrowRightLeft } from 'lucide-react'
 
 interface TunnelModalProps {
-  sessionId: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  sessionId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
-export function TunnelModal({ sessionId, open, onOpenChange }: TunnelModalProps) {
-  const [activeForwards, setActiveForwards] = useState<any[]>([]);
+interface Forward {
+  id: number
+  type: string
+  localPort: string
+  remoteHost: string
+  remotePort: string
+}
+
+export function TunnelModal({
+  sessionId,
+  open,
+  onOpenChange
+}: TunnelModalProps): React.JSX.Element | null {
+  const [activeForwards, setActiveForwards] = useState<Forward[]>([])
   const [formData, setFormData] = useState({
     type: 'local',
     localPort: '',
     remoteHost: '127.0.0.1',
-    remotePort: '',
-  });
+    remotePort: ''
+  })
 
-  const handleStart = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleStart = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
     try {
-      await api.post(`/tunnels/${sessionId}/start`, formData);
-      setActiveForwards([...activeForwards, { ...formData, id: Date.now() }]);
-      setFormData({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' });
-    } catch (err: any) {
-      alert(err?.response?.data?.error ?? 'Failed to start tunnel');
+      await api.post(`/tunnels/${sessionId}/start`, formData)
+      setActiveForwards([...activeForwards, { ...formData, id: Date.now() }])
+      setFormData({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' })
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      alert(msg ?? 'Failed to start tunnel')
     }
-  };
+  }
 
-  const handleStop = async (forward: any) => {
+  const handleStop = async (forward: Forward): Promise<void> => {
     try {
       await api.post(`/tunnels/${sessionId}/stop`, {
         type: forward.type,
-        port: forward.type === 'local' ? forward.localPort : forward.remotePort,
-      });
-      setActiveForwards(activeForwards.filter(f => f.id !== forward.id));
-    } catch (err) {
-      alert('Failed to stop tunnel');
+        port: forward.type === 'local' ? forward.localPort : forward.remotePort
+      })
+      setActiveForwards(activeForwards.filter((f) => f.id !== forward.id))
+    } catch {
+      alert('Failed to stop tunnel')
     }
-  };
+  }
 
-  if (!open) return null;
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -52,15 +65,21 @@ export function TunnelModal({ sessionId, open, onOpenChange }: TunnelModalProps)
             </div>
             <h2 className="text-lg font-semibold text-slate-200">Port Forwarding</h2>
           </div>
-          <button onClick={() => onOpenChange(false)} className="text-slate-500 hover:text-slate-300">
+          <button
+            onClick={() => onOpenChange(false)}
+            className="text-slate-500 hover:text-slate-300"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-6">
-          <form onSubmit={handleStart} className="space-y-4 bg-[#151821] p-4 rounded-lg border border-slate-800">
+          <form
+            onSubmit={handleStart}
+            className="space-y-4 bg-[#151821] p-4 rounded-lg border border-slate-800"
+          >
             <h3 className="text-sm font-medium text-slate-300">Create New Forward</h3>
-            
+
             <div className="flex gap-4">
               <div className="flex-1">
                 <label className="block text-xs text-slate-500 mb-1">Type</label>
@@ -87,13 +106,15 @@ export function TunnelModal({ sessionId, open, onOpenChange }: TunnelModalProps)
                   placeholder="e.g. 8080"
                 />
               </div>
-              
+
               <div className="pt-4 px-2 text-slate-600">
                 <ArrowRightLeft className="w-4 h-4" />
               </div>
 
               <div className="flex-[2]">
-                <label className="block text-xs text-slate-500 mb-1">Remote Target (Host:Port)</label>
+                <label className="block text-xs text-slate-500 mb-1">
+                  Remote Target (Host:Port)
+                </label>
                 <div className="flex gap-2">
                   <input
                     required
@@ -116,7 +137,10 @@ export function TunnelModal({ sessionId, open, onOpenChange }: TunnelModalProps)
               </div>
             </div>
 
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors text-sm">
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors text-sm"
+            >
               <Play className="w-4 h-4" /> Start Forwarding
             </button>
           </form>
@@ -130,16 +154,24 @@ export function TunnelModal({ sessionId, open, onOpenChange }: TunnelModalProps)
             ) : (
               <div className="space-y-2">
                 {activeForwards.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between bg-[#151821] border border-slate-800 rounded-lg p-3">
+                  <div
+                    key={f.id}
+                    className="flex items-center justify-between bg-[#151821] border border-slate-800 rounded-lg p-3"
+                  >
                     <div className="flex items-center gap-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${f.type === 'local' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-purple-500/10 text-purple-500'}`}>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-bold ${f.type === 'local' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-purple-500/10 text-purple-500'}`}
+                      >
                         {f.type === 'local' ? 'L' : 'R'}
                       </span>
                       <span className="text-slate-300 text-sm font-mono">
                         {f.localPort} ↔ {f.remoteHost}:{f.remotePort}
                       </span>
                     </div>
-                    <button onClick={() => handleStop(f)} className="text-red-400 hover:text-red-300 p-1.5 hover:bg-red-500/10 rounded transition-colors">
+                    <button
+                      onClick={() => handleStop(f)}
+                      className="text-red-400 hover:text-red-300 p-1.5 hover:bg-red-500/10 rounded transition-colors"
+                    >
                       <Square className="w-4 h-4" />
                     </button>
                   </div>
@@ -150,5 +182,5 @@ export function TunnelModal({ sessionId, open, onOpenChange }: TunnelModalProps)
         </div>
       </div>
     </div>
-  );
+  )
 }

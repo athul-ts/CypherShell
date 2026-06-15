@@ -1,39 +1,49 @@
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
-import { Key, X, Save } from 'lucide-react';
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../../lib/api'
+import { Key, X, Save } from 'lucide-react'
 
 interface KeyGeneratorModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
-export function KeyGeneratorModal({ open, onOpenChange }: KeyGeneratorModalProps) {
-  const queryClient = useQueryClient();
-  const [formData, setFormData] = useState({
+interface GenerateKeyData {
+  name: string
+  description: string
+  type: string
+  passphrase: string
+}
+
+export function KeyGeneratorModal({
+  open,
+  onOpenChange
+}: KeyGeneratorModalProps): React.JSX.Element | null {
+  const queryClient = useQueryClient()
+  const [formData, setFormData] = useState<GenerateKeyData>({
     name: '',
     description: '',
     type: 'ed25519',
-    passphrase: '',
-  });
+    passphrase: ''
+  })
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      return api.post('/keys/generate', data);
+    mutationFn: async (data: GenerateKeyData) => {
+      return api.post('/keys/generate', data)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['keys'] });
-      onOpenChange(false);
-      setFormData({ name: '', description: '', type: 'ed25519', passphrase: '' });
-    },
-  });
+      queryClient.invalidateQueries({ queryKey: ['keys'] })
+      onOpenChange(false)
+      setFormData({ name: '', description: '', type: 'ed25519', passphrase: '' })
+    }
+  })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    mutation.mutate(formData);
-  };
+  const handleSubmit = (e: React.FormEvent): void => {
+    e.preventDefault()
+    mutation.mutate(formData)
+  }
 
-  if (!open) return null;
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -45,7 +55,10 @@ export function KeyGeneratorModal({ open, onOpenChange }: KeyGeneratorModalProps
             </div>
             <h2 className="text-lg font-semibold text-slate-200">Generate SSH Key</h2>
           </div>
-          <button onClick={() => onOpenChange(false)} className="text-slate-500 hover:text-slate-300">
+          <button
+            onClick={() => onOpenChange(false)}
+            className="text-slate-500 hover:text-slate-300"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -76,7 +89,9 @@ export function KeyGeneratorModal({ open, onOpenChange }: KeyGeneratorModalProps
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Passphrase (Optional)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Passphrase (Optional)
+            </label>
             <input
               type="password"
               value={formData.passphrase}
@@ -87,7 +102,9 @@ export function KeyGeneratorModal({ open, onOpenChange }: KeyGeneratorModalProps
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Description (Optional)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Description (Optional)
+            </label>
             <input
               type="text"
               value={formData.description}
@@ -99,7 +116,7 @@ export function KeyGeneratorModal({ open, onOpenChange }: KeyGeneratorModalProps
 
           {mutation.error && (
             <div className="text-red-500 text-sm mt-2">
-              Failed to generate key. {(mutation.error as any).message}
+              Failed to generate key. {(mutation.error as Error).message}
             </div>
           )}
 
@@ -123,5 +140,5 @@ export function KeyGeneratorModal({ open, onOpenChange }: KeyGeneratorModalProps
         </form>
       </div>
     </div>
-  );
+  )
 }

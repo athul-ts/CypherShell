@@ -1,9 +1,9 @@
-import { Router } from 'express';
-import { startForward, stopForward } from '../controllers/tunnel.controller';
+import { Router } from 'express'
+import { startForward, stopForward } from '../controllers/tunnel.controller'
 
-const router = Router();
+const router = Router()
 
-router.post('/:sessionId/start', startForward);
-router.post('/:sessionId/stop', stopForward);
+router.post('/:sessionId/start', startForward)
+router.post('/:sessionId/stop', stopForward)
 
-export default router;
+export default router

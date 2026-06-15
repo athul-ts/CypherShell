@@ -1,24 +1,59 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
-import { Server, Save, X } from 'lucide-react';
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../../lib/api'
+import { Server, Save, X } from 'lucide-react'
 
-interface ProfileFormProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  profile?: any;
+type AuthMethod = 'password' | 'key'
+
+interface Profile {
+  id: string
+  name: string
+  group?: string | null
+  host: string
+  port: number
+  username: string
+  authMethod: AuthMethod
+  sshKeyId?: string | null
+  hasPassword?: boolean
 }
 
-export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
-  const queryClient = useQueryClient();
+interface SshKeySummary {
+  id: string
+  name: string
+  keyType: string
+}
 
-  const { data: keys } = useQuery({
+interface ProfilePayload {
+  name: string
+  group: string
+  host: string
+  port: number
+  username: string
+  authMethod: AuthMethod
+  password: string
+  sshKeyId: string | undefined
+}
+
+interface ProfileFormProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  profile?: Profile
+}
+
+export function ProfileForm({
+  open,
+  onOpenChange,
+  profile
+}: ProfileFormProps): React.JSX.Element | null {
+  const queryClient = useQueryClient()
+
+  const { data: keys } = useQuery<SshKeySummary[]>({
     queryKey: ['keys'],
     queryFn: async () => {
-      const res = await api.get('/keys');
-      return res.data;
-    },
-  });
+      const res = await api.get('/keys')
+      return res.data
+    }
+  })
 
   const [formData, setFormData] = useState({
     name: profile?.name || '',
@@ -28,35 +63,36 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
     username: profile?.username || '',
     authMethod: profile?.authMethod || 'password',
     password: '',
-    sshKeyId: profile?.sshKeyId || '',
-  });
+    sshKeyId: profile?.sshKeyId || ''
+  })
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: ProfilePayload) => {
       if (profile) {
-        return api.put(`/profiles/${profile.id}`, data);
+        return api.put(`/profiles/${profile.id}`, data)
       }
-      return api.post('/profiles', data);
+      return api.post('/profiles', data)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] })
       if (profile?.id) {
-        queryClient.invalidateQueries({ queryKey: ['profile', profile.id] });
+        queryClient.invalidateQueries({ queryKey: ['profile', profile.id] })
       }
-      onOpenChange(false);
-    },
-  });
+      onOpenChange(false)
+    }
+  })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e: React.FormEvent): void => {
+    e.preventDefault()
     const submitData = {
       ...formData,
-      sshKeyId: formData.authMethod === 'password' || !formData.sshKeyId ? undefined : formData.sshKeyId,
-    };
-    mutation.mutate(submitData);
-  };
+      sshKeyId:
+        formData.authMethod === 'password' || !formData.sshKeyId ? undefined : formData.sshKeyId
+    }
+    mutation.mutate(submitData)
+  }
 
-  if (!open) return null;
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -66,9 +102,14 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
             <div className="w-8 h-8 rounded bg-emerald-500/10 flex items-center justify-center">
               <Server className="w-4 h-4 text-emerald-500" />
             </div>
-            <h2 className="text-lg font-semibold text-slate-200">{profile ? 'Edit Profile' : 'New Profile'}</h2>
+            <h2 className="text-lg font-semibold text-slate-200">
+              {profile ? 'Edit Profile' : 'New Profile'}
+            </h2>
           </div>
-          <button onClick={() => onOpenChange(false)} className="text-slate-500 hover:text-slate-300">
+          <button
+            onClick={() => onOpenChange(false)}
+            className="text-slate-500 hover:text-slate-300"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -97,7 +138,7 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
                 placeholder="e.g. Production, Staging, Personal"
               />
             </div>
-            
+
             <div className="flex gap-4">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-slate-400 mb-1">Host</label>
@@ -138,7 +179,9 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
               <label className="block text-sm font-medium text-slate-400 mb-1">Auth Method</label>
               <select
                 value={formData.authMethod}
-                onChange={(e) => setFormData({ ...formData, authMethod: e.target.value as any })}
+                onChange={(e) =>
+                  setFormData({ ...formData, authMethod: e.target.value as AuthMethod })
+                }
                 className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
               >
                 <option value="password">Password</option>
@@ -155,12 +198,18 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
-                  placeholder={profile?.hasPassword ? "•••••••• (Leave blank to keep existing)" : "Secret password"}
+                  placeholder={
+                    profile?.hasPassword
+                      ? '•••••••• (Leave blank to keep existing)'
+                      : 'Secret password'
+                  }
                 />
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">Select SSH Key</label>
+                <label className="block text-sm font-medium text-slate-400 mb-1">
+                  Select SSH Key
+                </label>
                 <select
                   required
                   value={formData.sshKeyId || ''}
@@ -168,13 +217,15 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 >
                   <option value="">Select a key...</option>
-                  {keys?.map((k: any) => (
-                    <option key={k.id} value={k.id}>{k.name} ({k.keyType})</option>
+                  {keys?.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name} ({k.keyType})
+                    </option>
                   ))}
                 </select>
               </div>
             )}
-            
+
             {mutation.error && (
               <div className="text-red-500 text-sm mt-2">
                 Failed to save profile. Please check the inputs.
@@ -202,5 +253,5 @@ export function ProfileForm({ open, onOpenChange, profile }: ProfileFormProps) {
         </form>
       </div>
     </div>
-  );
+  )
 }

@@ -1,60 +1,77 @@
-import { useState } from 'react';
-import { api } from '../../lib/api';
-import { PackageOpen, X, Lock } from 'lucide-react';
+import { useState } from 'react'
+import { api } from '../../lib/api'
+import { PackageOpen, X, Lock } from 'lucide-react'
 
 interface Props {
-  open: boolean;
-  keyId: string;
-  keyName: string;
-  onOpenChange: (open: boolean) => void;
+  open: boolean
+  keyId: string
+  keyName: string
+  onOpenChange: (open: boolean) => void
 }
 
-export function ExportKeyBundleDialog({ open, keyId, keyName, onOpenChange }: Props) {
-  const [passphrase, setPassphrase] = useState('');
-  const [confirmPassphrase, setConfirmPassphrase] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+interface ApiErrorResponse {
+  message?: string
+  response?: { data?: { error?: string } }
+}
 
-  const reset = () => {
-    setPassphrase('');
-    setConfirmPassphrase('');
-    setError('');
-  };
+type LocalFileOpApi = {
+  saveFileDialog: (defaultName: string) => Promise<string | null>
+  executeLocalFileOp: (op: string, args: { path: string; content: string }) => Promise<void>
+}
 
-  const handleClose = () => {
-    reset();
-    onOpenChange(false);
-  };
+export function ExportKeyBundleDialog({
+  open,
+  keyId,
+  keyName,
+  onOpenChange
+}: Props): React.JSX.Element | null {
+  const [passphrase, setPassphrase] = useState('')
+  const [confirmPassphrase, setConfirmPassphrase] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const handleExport = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const reset = (): void => {
+    setPassphrase('')
+    setConfirmPassphrase('')
+    setError('')
+  }
+
+  const handleClose = (): void => {
+    reset()
+    onOpenChange(false)
+  }
+
+  const handleExport = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
     if (passphrase !== confirmPassphrase) {
-      setError('Passphrases do not match');
-      return;
+      setError('Passphrases do not match')
+      return
     }
-    setLoading(true);
-    setError('');
+    setLoading(true)
+    setError('')
     try {
       const { data: bundle } = await api.post(`/keys/${keyId}/export-bundle`, {
         passphrase,
-        confirmPassphrase,
-      });
-      const defaultName = `${keyName.replace(/[^a-zA-Z0-9_-]/g, '_')}.cskb`;
-      const savePath = await window.api.saveFileDialog(defaultName);
-      if (!savePath) return;
-      await (window as any).api.executeLocalFileOp('writeFile', {
+        confirmPassphrase
+      })
+      const defaultName = `${keyName.replace(/[^a-zA-Z0-9_-]/g, '_')}.cskb`
+      const localApi = (window as unknown as { api: LocalFileOpApi }).api
+      const savePath = await localApi.saveFileDialog(defaultName)
+      if (!savePath) return
+      await localApi.executeLocalFileOp('writeFile', {
         path: savePath,
-        content: JSON.stringify(bundle, null, 2),
-      });
-      handleClose();
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? err?.message ?? 'Export failed');
+        content: JSON.stringify(bundle, null, 2)
+      })
+      handleClose()
+    } catch (err) {
+      const error = err as ApiErrorResponse
+      setError(error?.response?.data?.error ?? error?.message ?? 'Export failed')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  if (!open) return null;
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -78,12 +95,15 @@ export function ExportKeyBundleDialog({ open, keyId, keyName, onOpenChange }: Pr
           <div className="flex items-start gap-3 bg-amber-500/5 border border-amber-500/20 rounded-lg px-4 py-3">
             <Lock className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
             <p className="text-xs text-amber-300 leading-relaxed">
-              The private key will be encrypted with your passphrase before being written to disk. Keep this passphrase safe — it is required to import the bundle.
+              The private key will be encrypted with your passphrase before being written to disk.
+              Keep this passphrase safe — it is required to import the bundle.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Export Passphrase</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Export Passphrase
+            </label>
             <input
               required
               type="password"
@@ -95,7 +115,9 @@ export function ExportKeyBundleDialog({ open, keyId, keyName, onOpenChange }: Pr
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Confirm Passphrase</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Confirm Passphrase
+            </label>
             <input
               required
               type="password"
@@ -128,5 +150,5 @@ export function ExportKeyBundleDialog({ open, keyId, keyName, onOpenChange }: Pr
         </form>
       </div>
     </div>
-  );
+  )
 }

@@ -1,91 +1,109 @@
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
-import { PackageOpen, X, AlertTriangle } from 'lucide-react';
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../../lib/api'
+import { PackageOpen, X, AlertTriangle } from 'lucide-react'
 
-type Resolution = 'skip' | 'rename' | 'overwrite';
+type Resolution = 'skip' | 'rename' | 'overwrite'
 
 interface Props {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
-export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
-  const queryClient = useQueryClient();
-  const [bundle, setBundle] = useState<object | null>(null);
-  const [bundleFileName, setBundleFileName] = useState('');
-  const [passphrase, setPassphrase] = useState('');
-  const [conflict, setConflict] = useState<string | null>(null);
-  const [conflictProfileCount, setConflictProfileCount] = useState(0);
-  const [resolution, setResolution] = useState<Resolution>('skip');
-  const [error, setError] = useState('');
+interface ImportBundleResponse {
+  status?: string
+  conflictName?: string
+  profileCount?: number
+}
 
-  const reset = () => {
-    setBundle(null);
-    setBundleFileName('');
-    setPassphrase('');
-    setConflict(null);
-    setConflictProfileCount(0);
-    setError('');
-  };
+interface ApiError {
+  response?: {
+    status?: number
+    data?: { status?: string; conflictName?: string; profileCount?: number; error?: string }
+  }
+}
 
-  const handleClose = () => {
-    reset();
-    onOpenChange(false);
-  };
+type LocalFileOpApi = {
+  executeLocalFileOp: (op: string, args: { path: string }) => Promise<string>
+}
 
-  const handlePickFile = async () => {
-    const paths = await window.api.openCskbFileDialog();
-    if (!paths || paths.length === 0) return;
+export function ImportKeyBundleDialog({ open, onOpenChange }: Props): React.JSX.Element | null {
+  const queryClient = useQueryClient()
+  const [bundle, setBundle] = useState<object | null>(null)
+  const [bundleFileName, setBundleFileName] = useState('')
+  const [passphrase, setPassphrase] = useState('')
+  const [conflict, setConflict] = useState<string | null>(null)
+  const [conflictProfileCount, setConflictProfileCount] = useState(0)
+  const [resolution, setResolution] = useState<Resolution>('skip')
+  const [error, setError] = useState('')
+
+  const reset = (): void => {
+    setBundle(null)
+    setBundleFileName('')
+    setPassphrase('')
+    setConflict(null)
+    setConflictProfileCount(0)
+    setError('')
+  }
+
+  const handleClose = (): void => {
+    reset()
+    onOpenChange(false)
+  }
+
+  const handlePickFile = async (): Promise<void> => {
+    const paths = await window.api.openCskbFileDialog()
+    if (!paths || paths.length === 0) return
     try {
-      const content = await (window as any).api.executeLocalFileOp('readFile', { path: paths[0] });
-      setBundle(JSON.parse(content));
-      setBundleFileName(paths[0].split(/[\\/]/).pop() ?? paths[0]);
-      setError('');
+      const localApi = (window as unknown as { api: LocalFileOpApi }).api
+      const content = await localApi.executeLocalFileOp('readFile', { path: paths[0] })
+      setBundle(JSON.parse(content))
+      setBundleFileName(paths[0].split(/[\\/]/).pop() ?? paths[0])
+      setError('')
     } catch {
-      setError('Failed to read or parse the selected file. Make sure it is a valid .cskb bundle.');
+      setError('Failed to read or parse the selected file. Make sure it is a valid .cskb bundle.')
     }
-  };
+  }
 
   const doImport = useMutation({
     mutationFn: async (res: Resolution | null) => {
       return api.post('/keys/import-bundle', {
         bundle,
         passphrase,
-        resolution: res,
-      });
+        resolution: res
+      })
     },
-    onSuccess: ({ data }) => {
+    onSuccess: ({ data }: { data: ImportBundleResponse }) => {
       if (data.status === 'conflict') {
-        setConflict(data.conflictName);
-        setConflictProfileCount(data.profileCount ?? 0);
-        return;
+        setConflict(data.conflictName ?? null)
+        setConflictProfileCount(data.profileCount ?? 0)
+        return
       }
-      queryClient.invalidateQueries({ queryKey: ['keys'] });
-      handleClose();
+      queryClient.invalidateQueries({ queryKey: ['keys'] })
+      handleClose()
     },
-    onError: (err: any) => {
+    onError: (err: ApiError) => {
       if (err?.response?.status === 409 && err?.response?.data?.status === 'conflict') {
-        setConflict(err.response.data.conflictName);
-        setConflictProfileCount(err.response.data.profileCount ?? 0);
-        return;
+        setConflict(err.response.data.conflictName ?? null)
+        setConflictProfileCount(err.response.data.profileCount ?? 0)
+        return
       }
-      setError(err?.response?.data?.error ?? 'Import failed');
-    },
-  });
+      setError(err?.response?.data?.error ?? 'Import failed')
+    }
+  })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    doImport.mutate(null);
-  };
+  const handleSubmit = (e: React.FormEvent): void => {
+    e.preventDefault()
+    setError('')
+    doImport.mutate(null)
+  }
 
-  const handleResolve = () => {
-    setConflict(null);
-    doImport.mutate(resolution);
-  };
+  const handleResolve = (): void => {
+    setConflict(null)
+    doImport.mutate(resolution)
+  }
 
-  if (!open) return null;
+  if (!open) return null
 
   if (conflict) {
     return (
@@ -104,7 +122,9 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
           </div>
           <div className="p-6 space-y-4">
             <p className="text-sm text-slate-400">
-              A key named <span className="font-semibold text-slate-200">"{conflict}"</span> already exists. Choose how to proceed:
+              A key named{' '}
+              <span className="font-semibold text-slate-200">&quot;{conflict}&quot;</span> already
+              exists. Choose how to proceed:
             </p>
             <div className="flex gap-2">
               {(['skip', 'rename', 'overwrite'] as Resolution[]).map((action) => (
@@ -116,8 +136,8 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
                       ? action === 'overwrite'
                         ? 'bg-red-500/20 text-red-400 border border-red-500/50'
                         : action === 'rename'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
-                        : 'bg-slate-700 text-slate-200 border border-slate-600'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
+                          : 'bg-slate-700 text-slate-200 border border-slate-600'
                       : 'bg-slate-800 text-slate-500 border border-transparent hover:text-slate-300'
                   }`}
                 >
@@ -128,11 +148,15 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
             {resolution === 'overwrite' && (
               <p className="text-xs text-red-400">
                 The existing key will be permanently deleted.
-                {conflictProfileCount > 0 && ` ${conflictProfileCount} profile${conflictProfileCount === 1 ? '' : 's'} using it will lose their key assignment.`}
+                {conflictProfileCount > 0 &&
+                  ` ${conflictProfileCount} profile${conflictProfileCount === 1 ? '' : 's'} using it will lose their key assignment.`}
               </p>
             )}
             <div className="flex justify-end gap-3 pt-2 border-t border-slate-800 mt-2">
-              <button onClick={handleClose} className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+              <button
+                onClick={handleClose}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+              >
                 Cancel
               </button>
               <button
@@ -146,7 +170,7 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -166,7 +190,9 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Bundle File (.cskb)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Bundle File (.cskb)
+            </label>
             <div className="flex items-center gap-3">
               <div className="flex-1 bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-400 truncate">
                 {bundleFileName || 'No file selected'}
@@ -182,7 +208,9 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Export Passphrase</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              Export Passphrase
+            </label>
             <input
               required
               type="password"
@@ -215,5 +243,5 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
         </form>
       </div>
     </div>
-  );
+  )
 }

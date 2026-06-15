@@ -1,31 +1,33 @@
-import { useEffect, useState } from 'react';
-import { Download, RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react'
+import { Download, RefreshCw } from 'lucide-react'
 
-export function UpdateBanner() {
-  const [updateState, setUpdateState] = useState<'idle' | 'available' | 'downloaded'>('idle');
+export function UpdateBanner(): React.JSX.Element | null {
+  const [updateState, setUpdateState] = useState<'idle' | 'available' | 'downloaded'>('idle')
 
   useEffect(() => {
     const removeAvailable = window.api.onUpdateAvailable(() => {
-      setUpdateState('available');
-    });
+      setUpdateState('available')
+    })
     const removeDownloaded = window.api.onUpdateDownloaded(() => {
-      setUpdateState('downloaded');
-    });
+      setUpdateState('downloaded')
+    })
 
     return () => {
-      removeAvailable();
-      removeDownloaded();
-    };
-  }, []);
+      removeAvailable()
+      removeDownloaded()
+    }
+  }, [])
 
-  if (updateState === 'idle') return null;
+  if (updateState === 'idle') return null
 
   return (
-    <div className={`flex items-center justify-between px-4 py-2 text-sm border-b shrink-0 ${
-      updateState === 'downloaded'
-        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-        : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
-    }`}>
+    <div
+      className={`flex items-center justify-between px-4 py-2 text-sm border-b shrink-0 ${
+        updateState === 'downloaded'
+          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+          : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+      }`}
+    >
       <div className="flex items-center gap-2">
         <Download className="w-4 h-4" />
         {updateState === 'available'
@@ -41,5 +43,5 @@ export function UpdateBanner() {
         </button>
       )}
     </div>
-  );
+  )
 }

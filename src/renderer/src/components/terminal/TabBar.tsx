@@ -1,43 +1,43 @@
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { useTabStore } from '../../store/tabStore';
-import { X, Home, Server } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { cn } from '../../lib/utils';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
+import { useTabStore, type Tab } from '../../store/tabStore'
+import { X, Home, Server } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { cn } from '../../lib/utils'
 
+export function TabBar(): React.JSX.Element | null {
+  const { tabs, activeTabId, setActiveTab, removeTab, reorderTabs } = useTabStore()
+  const navigate = useNavigate()
 
-export function TabBar() {
-  const { tabs, activeTabId, setActiveTab, removeTab, reorderTabs } = useTabStore();
-  const navigate = useNavigate();
+  const handleDragEnd = (result: DropResult): void => {
+    if (!result.destination) return
+    reorderTabs(result.source.index, result.destination.index)
+  }
 
-  const handleDragEnd = (result: any) => {
-    if (!result.destination) return;
-    reorderTabs(result.source.index, result.destination.index);
-  };
-
-  const handleClose = async (e: React.MouseEvent, tab: any) => {
-    e.stopPropagation();
-    if (tab.id === 'home') return;
-    removeTab(tab.id);
+  const handleClose = async (e: React.MouseEvent, tab: Tab): Promise<void> => {
+    e.stopPropagation()
+    if (tab.id === 'home') return
+    removeTab(tab.id)
     // If no tabs left, go home
     if (tabs.length === 1) {
-      navigate('/');
+      navigate('/')
     }
-  };
+  }
 
-  if (tabs.length === 0) return null;
+  if (tabs.length === 0) return null
 
   return (
     <div className="flex bg-[#0a0a0f] border-b border-slate-800 h-10 overflow-x-auto no-scrollbar">
       <DragDropContext onDragEnd={handleDragEnd}>
         <Droppable droppableId="tab-bar" direction="horizontal">
           {(provided) => (
-            <div
-              ref={provided.innerRef}
-              {...provided.droppableProps}
-              className="flex w-full"
-            >
+            <div ref={provided.innerRef} {...provided.droppableProps} className="flex w-full">
               {tabs.map((tab, index) => (
-                <Draggable key={tab.id} draggableId={tab.id} index={index} isDragDisabled={tab.id === 'home'}>
+                <Draggable
+                  key={tab.id}
+                  draggableId={tab.id}
+                  index={index}
+                  isDragDisabled={tab.id === 'home'}
+                >
                   {(provided) => (
                     <div
                       ref={provided.innerRef}
@@ -53,9 +53,9 @@ export function TabBar() {
                     >
                       {tab.type === 'profile-detail' && <Server className="w-4 h-4 shrink-0" />}
                       {tab.type === 'home' && <Home className="w-4 h-4 shrink-0" />}
-                      
+
                       <span className="text-sm font-medium truncate flex-1">{tab.title}</span>
-                      
+
                       {tab.id !== 'home' && (
                         <button
                           onClick={(e) => handleClose(e, tab)}
@@ -74,5 +74,5 @@ export function TabBar() {
         </Droppable>
       </DragDropContext>
     </div>
-  );
+  )
 }

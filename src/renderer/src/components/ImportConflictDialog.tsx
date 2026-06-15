@@ -1,31 +1,41 @@
-import * as Dialog from '@radix-ui/react-dialog';
-import { useState } from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog'
+import { useState } from 'react'
+import { AlertTriangle, X } from 'lucide-react'
 
-type Resolution = 'skip' | 'rename' | 'overwrite';
+type Resolution = 'skip' | 'rename' | 'overwrite'
 
 interface Props {
-  open: boolean;
-  conflicts: string[];
-  onResolve: (resolutions: Record<string, Resolution>) => void;
-  onCancel: () => void;
+  open: boolean
+  conflicts: string[]
+  onResolve: (resolutions: Record<string, Resolution>) => void
+  onCancel: () => void
 }
 
-export function ImportConflictDialog({ open, conflicts, onResolve, onCancel }: Props) {
+export function ImportConflictDialog({
+  open,
+  conflicts,
+  onResolve,
+  onCancel
+}: Props): React.JSX.Element {
   const [resolutions, setResolutions] = useState<Record<string, Resolution>>(() =>
-    Object.fromEntries(conflicts.map(name => [name, 'skip' as Resolution]))
-  );
+    Object.fromEntries(conflicts.map((name) => [name, 'skip' as Resolution]))
+  )
 
-  const handleResolve = (name: string, value: Resolution) => {
-    setResolutions(prev => ({ ...prev, [name]: value }));
-  };
+  const handleResolve = (name: string, value: Resolution): void => {
+    setResolutions((prev) => ({ ...prev, [name]: value }))
+  }
 
-  const handleApply = () => {
-    onResolve(resolutions);
-  };
+  const handleApply = (): void => {
+    onResolve(resolutions)
+  }
 
   return (
-    <Dialog.Root open={open} onOpenChange={open => { if (!open) onCancel(); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onCancel()
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-[#1a1c23] border border-slate-800 rounded-xl shadow-2xl w-full max-w-lg p-6">
@@ -39,21 +49,25 @@ export function ImportConflictDialog({ open, conflicts, onResolve, onCancel }: P
                   Import Conflicts
                 </Dialog.Title>
                 <Dialog.Description className="text-sm text-slate-500 mt-0.5">
-                  {conflicts.length} profile{conflicts.length !== 1 ? 's' : ''} already exist. Choose an action for each.
+                  {conflicts.length} profile{conflicts.length !== 1 ? 's' : ''} already exist.
+                  Choose an action for each.
                 </Dialog.Description>
               </div>
             </div>
-            <button onClick={onCancel} className="text-slate-500 hover:text-slate-300 transition-colors">
+            <button
+              onClick={onCancel}
+              className="text-slate-500 hover:text-slate-300 transition-colors"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-            {conflicts.map(name => (
+            {conflicts.map((name) => (
               <div key={name} className="bg-slate-900 border border-slate-800 rounded-lg p-3">
                 <p className="text-sm font-medium text-slate-200 mb-2 truncate">{name}</p>
                 <div className="flex gap-2">
-                  {(['skip', 'rename', 'overwrite'] as Resolution[]).map(action => (
+                  {(['skip', 'rename', 'overwrite'] as Resolution[]).map((action) => (
                     <button
                       key={action}
                       onClick={() => handleResolve(name, action)}
@@ -62,8 +76,8 @@ export function ImportConflictDialog({ open, conflicts, onResolve, onCancel }: P
                           ? action === 'overwrite'
                             ? 'bg-red-500/20 text-red-400 border border-red-500/50'
                             : action === 'rename'
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
-                            : 'bg-slate-700 text-slate-200 border border-slate-600'
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
+                              : 'bg-slate-700 text-slate-200 border border-slate-600'
                           : 'bg-slate-800 text-slate-500 border border-transparent hover:text-slate-300'
                       }`}
                     >
@@ -92,5 +106,5 @@ export function ImportConflictDialog({ open, conflicts, onResolve, onCancel }: P
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  );
+  )
 }

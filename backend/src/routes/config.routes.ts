@@ -1,9 +1,9 @@
-import { Router } from 'express';
-import { getConfig, updateConfig } from '../controllers/config.controller';
+import { Router } from 'express'
+import { getConfig, updateConfig } from '../controllers/config.controller'
 
-const router = Router();
+const router = Router()
 
-router.get('/', getConfig);
-router.put('/', updateConfig);
+router.get('/', getConfig)
+router.put('/', updateConfig)
 
-export default router;
+export default router

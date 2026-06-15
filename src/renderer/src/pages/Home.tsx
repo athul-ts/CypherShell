@@ -1,120 +1,182 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
-import { Server, Play, MoreVertical, Copy, Trash, Download, Upload, FileDown, Pencil } from 'lucide-react';
-import { useState, useMemo } from 'react';
-import { ProfileForm } from '../components/profiles/ProfileForm';
-import { useTabStore } from '../store/tabStore';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ImportConflictDialog } from '../components/ImportConflictDialog';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../lib/api'
+import {
+  Server,
+  Play,
+  MoreVertical,
+  Copy,
+  Trash,
+  Download,
+  Upload,
+  FileDown,
+  Pencil
+} from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { ProfileForm } from '../components/profiles/ProfileForm'
+import { useTabStore } from '../store/tabStore'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { ImportConflictDialog } from '../components/ImportConflictDialog'
 
-type ConflictResolution = 'skip' | 'rename' | 'overwrite';
+type ConflictResolution = 'skip' | 'rename' | 'overwrite'
 
-async function handleExportProfiles(ids?: string[]) {
-  const params = ids && ids.length > 0 ? { ids: ids.join(',') } : {};
-  const { data } = await api.get('/profiles/export', { params });
-  const json = JSON.stringify(data, null, 2);
-  const defaultName = ids?.length === 1 ? `profile-export.json` : 'profiles-export.json';
-  const savePath = await window.api.saveFileDialog(defaultName);
-  if (!savePath) return;
-  await (window as any).api.executeLocalFileOp('writeFile', { path: savePath, content: json });
+interface Profile {
+  id: string
+  name: string
+  group?: string | null
+  host: string
+  port: number
+  username: string
+  authMethod: 'password' | 'key'
+  sshKeyId?: string | null
+  hasPassword?: boolean
 }
 
-export default function Home() {
-  const { data: profiles, isLoading } = useQuery({
+interface LocalFileOpApi {
+  executeLocalFileOp: (op: string, args: { path: string; content?: string }) => Promise<string>
+}
+
+interface ImportResult {
+  status?: string
+  conflicts: string[]
+  created: number
+  skipped: number
+  overwritten: number
+}
+
+function getErrorMessage(err: unknown): string | undefined {
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    'response' in err &&
+    typeof (err as { response?: unknown }).response === 'object'
+  ) {
+    const response = (err as { response?: { data?: { error?: unknown } } }).response
+    const message = response?.data?.error
+    if (typeof message === 'string') return message
+  }
+  return undefined
+}
+
+async function handleExportProfiles(ids?: string[]): Promise<void> {
+  const params = ids && ids.length > 0 ? { ids: ids.join(',') } : {}
+  const { data } = await api.get('/profiles/export', { params })
+  const json = JSON.stringify(data, null, 2)
+  const defaultName = ids?.length === 1 ? `profile-export.json` : 'profiles-export.json'
+  const savePath = await window.api.saveFileDialog(defaultName)
+  if (!savePath) return
+  await (window.api as unknown as LocalFileOpApi).executeLocalFileOp('writeFile', {
+    path: savePath,
+    content: json
+  })
+}
+
+export default function Home(): React.JSX.Element {
+  const { data: profiles, isLoading } = useQuery<Profile[]>({
     queryKey: ['profiles'],
     queryFn: async () => {
-      const res = await api.get('/profiles');
-      return res.data;
-    },
-  });
+      const res = await api.get('/profiles')
+      return res.data
+    }
+  })
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editProfile, setEditProfile] = useState<any>(null);
-  const addTab = useTabStore(s => s.addTab);
-  const queryClient = useQueryClient();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [formOpen, setFormOpen] = useState(false)
+  const [editProfile, setEditProfile] = useState<Profile | null>(null)
+  const addTab = useTabStore((s) => s.addTab)
+  const queryClient = useQueryClient()
+  const [searchQuery, setSearchQuery] = useState('')
   const [importState, setImportState] = useState<{
-    open: boolean;
-    conflicts: string[];
-    pendingProfiles: unknown[];
-  }>({ open: false, conflicts: [], pendingProfiles: [] });
+    open: boolean
+    conflicts: string[]
+    pendingProfiles: unknown[]
+  }>({ open: false, conflicts: [], pendingProfiles: [] })
 
   const filteredProfiles = useMemo(() => {
-    if (!profiles) return [];
-    const lowerQ = searchQuery.toLowerCase();
-    return profiles.filter((p: any) =>
-      p.name.toLowerCase().includes(lowerQ) ||
-      p.host.toLowerCase().includes(lowerQ) ||
-      (p.group && p.group.toLowerCase().includes(lowerQ))
-    );
-  }, [profiles, searchQuery]);
+    if (!profiles) return []
+    const lowerQ = searchQuery.toLowerCase()
+    return profiles.filter(
+      (p) =>
+        p.name.toLowerCase().includes(lowerQ) ||
+        p.host.toLowerCase().includes(lowerQ) ||
+        (p.group && p.group.toLowerCase().includes(lowerQ))
+    )
+  }, [profiles, searchQuery])
 
   const duplicateMutation = useMutation({
     mutationFn: (id: string) => api.post(`/profiles/${id}/duplicate`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] }),
-  });
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] })
+  })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/profiles/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] }),
-  });
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] })
+  })
 
-  const handleOpenProfile = (profile: any) => {
+  const handleOpenProfile = (profile: Profile): void => {
     addTab({
       id: `profile-${profile.id}`,
       type: 'profile-detail',
       title: profile.name,
-      profileId: profile.id,
-    });
-  };
+      profileId: profile.id
+    })
+  }
 
-  const handleImport = async () => {
-    const paths = await window.api.openJsonFileDialog();
-    if (!paths || paths.length === 0) return;
-    let content: string;
+  const handleImport = async (): Promise<void> => {
+    const paths = await window.api.openJsonFileDialog()
+    if (!paths || paths.length === 0) return
+    let content: string
     try {
-      content = await (window as any).api.executeLocalFileOp('readFile', { path: paths[0] });
+      content = await (window.api as unknown as LocalFileOpApi).executeLocalFileOp('readFile', {
+        path: paths[0]
+      })
     } catch {
-      alert('Failed to read the selected file.');
-      return;
+      alert('Failed to read the selected file.')
+      return
     }
-    let bundle: any;
+    let bundle: { profiles?: unknown[] }
     try {
-      bundle = JSON.parse(content);
+      bundle = JSON.parse(content)
     } catch {
-      alert('Invalid JSON file. Please select a valid CypherShell profile export.');
-      return;
+      alert('Invalid JSON file. Please select a valid CypherShell profile export.')
+      return
     }
     if (!Array.isArray(bundle?.profiles) || bundle.profiles.length === 0) {
-      alert('No profiles found in the selected file.');
-      return;
+      alert('No profiles found in the selected file.')
+      return
     }
     try {
-      const { data } = await api.post('/profiles/import', { profiles: bundle.profiles });
+      const { data } = await api.post<ImportResult>('/profiles/import', {
+        profiles: bundle.profiles
+      })
       if (data.status === 'conflicts') {
-        setImportState({ open: true, conflicts: data.conflicts, pendingProfiles: bundle.profiles });
+        setImportState({ open: true, conflicts: data.conflicts, pendingProfiles: bundle.profiles })
       } else {
-        queryClient.invalidateQueries({ queryKey: ['profiles'] });
-        alert(`Import complete: ${data.created} created, ${data.skipped} skipped, ${data.overwritten} overwritten.`);
+        queryClient.invalidateQueries({ queryKey: ['profiles'] })
+        alert(
+          `Import complete: ${data.created} created, ${data.skipped} skipped, ${data.overwritten} overwritten.`
+        )
       }
-    } catch (err: any) {
-      alert(err?.response?.data?.error ?? 'Import failed.');
+    } catch (err) {
+      alert(getErrorMessage(err) ?? 'Import failed.')
     }
-  };
+  }
 
-  const handleConflictResolve = async (resolutions: Record<string, ConflictResolution>) => {
-    setImportState(prev => ({ ...prev, open: false }));
+  const handleConflictResolve = async (
+    resolutions: Record<string, ConflictResolution>
+  ): Promise<void> => {
+    setImportState((prev) => ({ ...prev, open: false }))
     try {
-      const { data } = await api.post('/profiles/import', {
+      const { data } = await api.post<ImportResult>('/profiles/import', {
         profiles: importState.pendingProfiles,
-        resolutions,
-      });
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      alert(`Import complete: ${data.created} created, ${data.skipped} skipped, ${data.overwritten} overwritten.`);
-    } catch (err: any) {
-      alert(err?.response?.data?.error ?? 'Import failed.');
+        resolutions
+      })
+      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      alert(
+        `Import complete: ${data.created} created, ${data.skipped} skipped, ${data.overwritten} overwritten.`
+      )
+    } catch (err) {
+      alert(getErrorMessage(err) ?? 'Import failed.')
     }
-  };
+  }
 
   return (
     <div className="flex-1 p-8 bg-[#0a0a0f] h-full overflow-auto">
@@ -128,7 +190,7 @@ export default function Home() {
             type="text"
             placeholder="Search profiles..."
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors w-64"
           />
           <button
@@ -158,16 +220,18 @@ export default function Home() {
       <ProfileForm open={formOpen} onOpenChange={setFormOpen} />
       <ProfileForm
         key={editProfile?.id}
-        profile={editProfile}
+        profile={editProfile ?? undefined}
         open={!!editProfile}
-        onOpenChange={(open) => { if (!open) setEditProfile(null); }}
+        onOpenChange={(open) => {
+          if (!open) setEditProfile(null)
+        }}
       />
 
       <ImportConflictDialog
         open={importState.open}
         conflicts={importState.conflicts}
         onResolve={handleConflictResolve}
-        onCancel={() => setImportState(prev => ({ ...prev, open: false }))}
+        onCancel={() => setImportState((prev) => ({ ...prev, open: false }))}
       />
 
       {isLoading ? (
@@ -176,12 +240,19 @@ export default function Home() {
         <div className="text-center py-20 bg-slate-900/50 rounded-xl border border-slate-800 border-dashed">
           <Server className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-slate-300">No profiles found</h3>
-          <p className="text-slate-500 mt-1">{profiles?.length === 0 ? "Create your first connection profile to get started." : "Try adjusting your search filter."}</p>
+          <p className="text-slate-500 mt-1">
+            {profiles?.length === 0
+              ? 'Create your first connection profile to get started.'
+              : 'Try adjusting your search filter.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProfiles.map((profile: any) => (
-            <div key={profile.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-emerald-500/50 transition-colors group relative">
+          {filteredProfiles.map((profile) => (
+            <div
+              key={profile.id}
+              className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-emerald-500/50 transition-colors group relative"
+            >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
@@ -196,7 +267,9 @@ export default function Home() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-slate-500">{profile.username}@{profile.host}</p>
+                    <p className="text-sm text-slate-500">
+                      {profile.username}@{profile.host}
+                    </p>
                   </div>
                 </div>
 
@@ -207,7 +280,10 @@ export default function Home() {
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
-                    <DropdownMenu.Content align="end" className="bg-[#1a1c23] border border-slate-800 rounded-lg p-1 min-w-[160px] shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+                    <DropdownMenu.Content
+                      align="end"
+                      className="bg-[#1a1c23] border border-slate-800 rounded-lg p-1 min-w-[160px] shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
+                    >
                       <DropdownMenu.Item
                         onClick={() => setEditProfile(profile)}
                         className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-md cursor-default outline-none select-none"
@@ -255,5 +331,5 @@ export default function Home() {
         </div>
       )}
     </div>
-  );
+  )
 }

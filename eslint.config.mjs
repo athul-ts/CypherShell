@@ -25,7 +25,17 @@ export default defineConfig(
     },
     rules: {
       ...eslintPluginReactHooks.configs.recommended.rules,
-      ...eslintPluginReactRefresh.configs.vite.rules
+      ...eslintPluginReactRefresh.configs.vite.rules,
+      // TypeScript provides prop validation; the JS-era prop-types rule is redundant.
+      'react/prop-types': 'off'
+    }
+  },
+  {
+    // CommonJS build/tooling scripts — mirror the toolkit's treatment of *.js/*.mjs.
+    files: ['**/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off'
     }
   },
   eslintConfigPrettier
