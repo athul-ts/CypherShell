@@ -65,6 +65,11 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props) {
       handleClose();
     },
     onError: (err: any) => {
+      if (err?.response?.status === 409 && err?.response?.data?.status === 'conflict') {
+        setConflict(err.response.data.conflictName);
+        setConflictProfileCount(err.response.data.profileCount ?? 0);
+        return;
+      }
       setError(err?.response?.data?.error ?? 'Import failed');
     },
   });
