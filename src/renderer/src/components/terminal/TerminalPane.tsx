@@ -55,19 +55,19 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     })
 
     // Right-click pastes clipboard content into the terminal
-    terminalRef.current.addEventListener('contextmenu', async (e) => {
+    const contextmenuHandler = (e: MouseEvent): void => {
       e.preventDefault()
-      try {
-        const text = await navigator.clipboard.readText()
-        if (text && ws.current?.readyState === WebSocket.OPEN) {
-          const bytes = new TextEncoder().encode(text)
-          const binary = Array.from(bytes, (b) => String.fromCodePoint(b)).join('')
-          ws.current.send(JSON.stringify({ type: 'input', data: btoa(binary) }))
-        }
-      } catch {
-        // Clipboard access denied — ignore silently
-      }
-    })
+      navigator.clipboard.readText()
+        .then((text) => {
+          if (text && ws.current?.readyState === WebSocket.OPEN) {
+            const bytes = new TextEncoder().encode(text)
+            const binary = Array.from(bytes, (b) => String.fromCodePoint(b)).join('')
+            ws.current!.send(JSON.stringify({ type: 'input', data: btoa(binary) }))
+          }
+        })
+        .catch(() => { /* Clipboard access denied — ignore silently */ })
+    }
+    terminalRef.current.addEventListener('contextmenu', contextmenuHandler)
 
     // Connect WebSocket with JWT auth token (SEC-03)
     const backendPort = window.api.backendPort
@@ -75,8 +75,11 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`
     ws.current = new WebSocket(wsUrl)
 
+    let wsDisconnected = false
+
     ws.current.onopen = () => {
       setStatus('connected')
+      wsDisconnected = false
       if (fitAddon.current && term.current) {
         ws.current?.send(
           JSON.stringify({ type: 'resize', cols: term.current.cols, rows: term.current.rows })
@@ -97,8 +100,19 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     }
 
     ws.current.onclose = () => {
-      setStatus('disconnected')
-      term.current?.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n')
+      if (!wsDisconnected) {
+        wsDisconnected = true
+        setStatus('disconnected')
+        term.current?.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n')
+      }
+    }
+
+    // CODE-14: Handle WebSocket errors gracefully
+    ws.current.onerror = () => {
+      if (!wsDisconnected) {
+        wsDisconnected = true
+        setStatus('error')
+      }
     }
 
     // Handle user input
@@ -122,7 +136,11 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     resizeObserver.observe(terminalRef.current)
 
     return () => {
+      wsDisconnected = true
       resizeObserver.disconnect()
+      if (terminalRef.current) {
+        terminalRef.current.removeEventListener('contextmenu', contextmenuHandler)
+      }
       ws.current?.close()
       term.current?.dispose()
     }

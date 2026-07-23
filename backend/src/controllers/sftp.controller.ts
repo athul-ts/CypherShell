@@ -112,9 +112,19 @@ export function progressStream(req: Request, res: Response): void {
 
   SftpService.transferEvents.on(transferId, onProgress)
 
+  // CODE-06b: Clean up listener on client disconnect
   req.on('close', () => {
     SftpService.transferEvents.off(transferId, onProgress)
   })
+
+  // FUN-19: Idle timeout — auto-close SSE if no progress event within 5 minutes
+  // to prevent lingering listeners for orphaned transfers.
+  const idleTimeout = setTimeout(() => {
+    SftpService.transferEvents.off(transferId, onProgress)
+    res.end()
+  }, 5 * 60 * 1000)
+
+  req.on('close', () => clearTimeout(idleTimeout))
 }
 
 export async function cancelTransfer(req: Request, res: Response): Promise<void> {

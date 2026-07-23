@@ -3,6 +3,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import { logger } from '../services/logger.service'
 import crypto from 'crypto'
 
 const dbUrl = process.env.DATABASE_URL ?? 'file:./dev.db'
@@ -14,10 +15,11 @@ export let prisma: PrismaClient
  *  - dev:        backend/src/config/db.ts  → ../../prisma/migrations
  *  - production: backend/dist/index.js     → ../prisma/migrations
  */
+/** CODE-12: Check dev path first (most common), then production path. */
 function resolveMigrationsDir(): string | null {
   const candidates = [
-    path.join(__dirname, '../prisma/migrations'),
-    path.join(__dirname, '../../prisma/migrations')
+    path.join(__dirname, '../../prisma/migrations'), // dev
+    path.join(__dirname, '../prisma/migrations')     // production
   ]
   return candidates.find((p) => fs.existsSync(p)) ?? null
 }
@@ -34,7 +36,7 @@ function resolveMigrationsDir(): string | null {
 function applyMigrations(dbFilePath: string): void {
   const migrationsDir = resolveMigrationsDir()
   if (!migrationsDir) {
-    console.warn('No migrations directory found; skipping migration step.')
+    logger.warn('No migrations directory found; skipping migration step.')
     return
   }
 
@@ -82,7 +84,7 @@ function applyMigrations(dbFilePath: string): void {
         ).run(id, checksum, name)
       })
       runMigration()
-      console.log(`Applied migration: ${name}`)
+      logger.info(`Applied migration: ${name}`)
     }
   } finally {
     db.close()
@@ -98,11 +100,13 @@ export async function initDatabase(): Promise<void> {
     // Apply any pending migrations before opening the Prisma client.
     applyMigrations(dbFilePath)
 
+    // `as never`: PrismaClient's generic adapter type doesn't match
+    // PrismaBetterSqlite3's interface exactly, but it works at runtime.
     const adapter = new PrismaBetterSqlite3({ url: dbUrl })
     prisma = new PrismaClient({ adapter } as never)
 
     await prisma.$connect()
-    console.log('DB ready:', dbUrl)
+    logger.info(`DB ready: ${dbUrl}`)
 
     // Run background log cleanup
     try {
@@ -114,14 +118,14 @@ export async function initDatabase(): Promise<void> {
           where: { timestamp: { lt: cutoffDate } }
         })
         if (deleted.count > 0) {
-          console.log(`Cleaned up ${deleted.count} old audit logs.`)
+          logger.info(`Cleaned up ${deleted.count} old audit logs.`)
         }
       }
     } catch (e) {
-      console.error('Failed to run log cleanup:', e)
+      logger.error('Failed to run log cleanup: ' + (e instanceof Error ? e.message : String(e)))
     }
   } catch (error) {
-    console.error('Database initialization failed:', error)
+    logger.error('Database initialization failed: ' + (error instanceof Error ? error.message : String(error)))
     process.exit(1)
   }
 }

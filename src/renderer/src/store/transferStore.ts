@@ -57,6 +57,7 @@ export const useTransferStore = create<TransferState>((set) => ({
       )
     })),
 
+  // CODE-13: Clear all finished transfers (complete, error, cancelled)
   clearCompleted: () =>
     set((state) => ({
       transfers: state.transfers.filter((t) => t.status === 'progress')

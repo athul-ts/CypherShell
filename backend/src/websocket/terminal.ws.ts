@@ -3,6 +3,7 @@ import { Server } from 'http'
 import jwt from 'jsonwebtoken'
 import { env } from '../config/env'
 import { SSHService } from '../services/ssh.service'
+import { logger } from '../services/logger.service'
 
 export function setupTerminalWebSocket(server: Server): void {
   const wss = new WebSocketServer({ noServer: true })
@@ -35,6 +36,20 @@ export function setupTerminalWebSocket(server: Server): void {
     }
   })
 
+  // CODE-06: Server-side ping interval — detects half-open sockets
+  const pingInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if ((ws as WebSocket & { isAlive?: boolean }).isAlive === false) {
+        ws.terminate()
+        return
+      }
+      ;(ws as WebSocket & { isAlive?: boolean }).isAlive = false
+      ws.ping()
+    })
+  }, 30_000)
+
+  wss.on('close', () => clearInterval(pingInterval))
+
   wss.on('connection', (ws: WebSocket, request) => {
     const sessionId = request.url?.split('/').pop()
     if (!sessionId) {
@@ -47,6 +62,11 @@ export function setupTerminalWebSocket(server: Server): void {
       ws.close(1008, 'Invalid session ID')
       return
     }
+
+    ;(ws as WebSocket & { isAlive?: boolean }).isAlive = true
+    ws.on('pong', () => {
+      ;(ws as WebSocket & { isAlive?: boolean }).isAlive = true
+    })
 
     session.client.shell({ term: 'xterm-256color' }, (err, stream) => {
       if (err) {
@@ -61,6 +81,16 @@ export function setupTerminalWebSocket(server: Server): void {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'output', data: data.toString('base64') }))
         }
+      })
+
+      stream.on('error', (streamErr) => {
+        logger.error('Shell stream error: ' + streamErr.message)
+        stream.end()
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
+          ws.close(1011, 'Shell error')
+        }
+        SSHService.removeSession(sessionId)
       })
 
       stream.on('close', () => {
@@ -82,12 +112,18 @@ export function setupTerminalWebSocket(server: Server): void {
             ws.send(JSON.stringify({ type: 'pong' }))
           }
         } catch (e) {
-          console.error('WebSocket message error:', e)
+          logger.error('WebSocket message error: ' + (e instanceof Error ? e.message : String(e)))
         }
       })
 
       ws.on('close', () => {
         stream.end()
+      })
+
+      ws.on('error', (wsErr) => {
+        logger.error('WebSocket error: ' + wsErr.message)
+        stream.end()
+        SSHService.removeSession(sessionId)
       })
     })
   })

@@ -37,9 +37,11 @@ interface RemoteFileEntry {
   permissions: number
 }
 
-// Module-scoped so the impure Date.now() call lives outside React's render path.
+/** FUN-06: Collision-resistant transfer ID using crypto.getRandomValues. */
 function makeTransferId(prefix: 'up' | 'dn'): string {
-  return `${prefix}-${Date.now()}`
+  const buf = new Uint32Array(2)
+  crypto.getRandomValues(buf)
+  return `${prefix}-${buf[0].toString(36)}${buf[1].toString(36)}`
 }
 
 /** FUN-14: Normalize a remote SFTP path, handling '.', '..', and extra slashes. */

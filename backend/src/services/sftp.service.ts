@@ -23,6 +23,7 @@ function getStream(client: SftpClient): SFTPWrapper {
 
 export class SftpService {
   static transferEvents = new EventEmitter()
+  static { SftpService.transferEvents.setMaxListeners(100) } // CODE-07
   // Maps transferId → the raw ssh2 SFTPWrapper so cancelTransfer() can destroy it
   static activeTransfers = new Map<string, SFTPWrapper>()
   // Transfers explicitly cancelled — guards against emitting 'error' after cancel
@@ -50,6 +51,11 @@ export class SftpService {
       stream.destroy()
       this.activeTransfers.delete(transferId)
     }
+    // CODE-02: Safety cleanup — remove cancelled id after 30s in case
+    // the transfer-completion callback never fires after stream.destroy().
+    setTimeout(() => {
+      this.cancelledTransfers.delete(transferId)
+    }, 30_000)
   }
 
   static async getClient(sessionId: string): Promise<SftpClient> {
@@ -64,6 +70,8 @@ export class SftpService {
       session.client.sftp((err, sftpStream) => {
         if (err) return reject(err)
 
+        // Cast hack: ssh2-sftp-client hides its backing ssh2 SFTPWrapper/client.
+        // We stash them to reuse the SSH connection (FUN-03).
         const client = new SftpClient()
         ;(client as unknown as { sftp: SFTPWrapper }).sftp = sftpStream
         ;(client as unknown as { client: typeof session.client }).client = session.client

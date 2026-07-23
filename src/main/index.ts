@@ -14,6 +14,8 @@ import * as os from 'os'
 
 let backendPort = 4000
 let backendProcess: ChildProcess | null = null
+/** CODE-15: Track app-lifetime intervals so they can be cleared on shutdown. */
+const appIntervals: ReturnType<typeof setInterval>[] = []
 
 function logToFile(message: string): void {
   try {
@@ -175,7 +177,7 @@ function setupAutoUpdater(mainWindow: BrowserWindow): void {
     console.error(err)
   })
 
-  setInterval(
+  const updaterInterval = setInterval(
     () => {
       autoUpdater.checkForUpdates().catch((err) => {
         logToFile(`AutoUpdater periodic check error: ${err.message || err}`)
@@ -184,6 +186,7 @@ function setupAutoUpdater(mainWindow: BrowserWindow): void {
     },
     4 * 60 * 60 * 1000
   )
+  appIntervals.push(updaterInterval)
 }
 
 function createConnectionWindow(
@@ -489,24 +492,46 @@ ipcMain.handle('get-connection-token', (_event, sessionId: string) => {
   return null
 })
 
+/** CODE-08: Kill the backend child process with SIGTERM + SIGKILL fallback. */
+function killBackendProcess(): void {
+  if (!backendProcess) return
+  try {
+    backendProcess.kill('SIGTERM')
+    // Force SIGKILL after 3s if still running (SIGTERM-only can orphan a hung backend)
+    const forceTimer = setTimeout(() => {
+      try {
+        if (backendProcess?.exitCode === null) {
+          if (process.platform !== 'win32') {
+            backendProcess.kill('SIGKILL')
+          } else {
+            backendProcess.kill() // TerminateProcess on Windows
+          }
+        }
+      } catch {
+        // Process already exited
+      }
+    }, 3000)
+    backendProcess.once('exit', () => clearTimeout(forceTimer))
+  } catch {
+    // Process already exited or not owned
+  }
+}
+
 // Clean up the backend process when Electron quits
 app.on('will-quit', () => {
-  if (backendProcess) {
-    logToFile('will-quit event triggered: Killing backend process...')
-    try {
-      backendProcess.kill()
-    } catch (e) {
-      console.error('Failed to kill backend:', e)
-    }
-  }
+  logToFile('will-quit event triggered: Cleaning up...')
+  // CODE-15: Clear app-lifetime intervals
+  for (const id of appIntervals) clearInterval(id)
+  appIntervals.length = 0
+  killBackendProcess()
 })
 
 process.on('exit', () => {
   if (backendProcess) {
     try {
-      backendProcess.kill()
+      backendProcess.kill('SIGTERM')
     } catch {
-      // Ignore
+      // Ignore — process exiting anyway
     }
   }
 })

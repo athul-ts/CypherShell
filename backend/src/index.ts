@@ -15,6 +15,7 @@ import { AuditService } from './services/audit.service'
 import { progressStream } from './controllers/sftp.controller'
 import { setupTerminalWebSocket } from './websocket/terminal.ws'
 import rateLimit from 'express-rate-limit'
+import { logger } from './services/logger.service'
 
 async function bootstrap(): Promise<void> {
   await initDatabase()
@@ -85,7 +86,7 @@ async function bootstrap(): Promise<void> {
     if (err.message === 'Encryption key not loaded. App is locked.') {
       res.status(401).json({ error: 'App is locked. Unlock to continue.' })
     } else {
-      console.error('Unhandled error:', err)
+      logger.error('Unhandled error: ' + err.message)
       res.status(500).json({ error: 'Internal server error' })
     }
   })
@@ -93,7 +94,7 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT) || 4000
 
   const server = app.listen(port, '127.0.0.1', () => {
-    console.log(`Backend listening on 127.0.0.1:${port}`)
+    logger.info(`Backend listening on 127.0.0.1:${port}`)
   })
 
   setupTerminalWebSocket(server)
@@ -104,11 +105,13 @@ async function bootstrap(): Promise<void> {
       await AuditService.clearOldLogs(config.logRetentionDays)
     }
   }
-  runPurge().catch(console.error)
-  setInterval(() => runPurge().catch(console.error), 24 * 60 * 60 * 1000)
+  runPurge().catch((err) => logger.error('Log purge failed: ' + err))
+  const purgeInterval = setInterval(() => runPurge().catch((err) => logger.error('Log purge failed: ' + err)), 24 * 60 * 60 * 1000)
+  // CODE-15: Clear interval on server stop
+  server.once('close', () => clearInterval(purgeInterval))
 }
 
 bootstrap().catch((err) => {
-  console.error(err)
+  logger.error('Backend bootstrap failed: ' + (err instanceof Error ? err.message : String(err)))
   process.exit(1)
 })
