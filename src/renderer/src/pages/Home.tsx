@@ -183,7 +183,7 @@ export default function Home(): React.JSX.Element {
     <div className="flex-1 p-8 bg-[#0a0a0f] h-full overflow-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-200">Connection Profiles</h1>
+          <h1 className="text-2xl font-bold text-slate-200">Profiles</h1>
           <p className="text-slate-500 mt-1">Manage and connect to your saved SSH hosts.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -236,7 +236,17 @@ export default function Home(): React.JSX.Element {
       />
 
       {isLoading ? (
-        <div className="text-slate-500">Loading profiles...</div>
+        <div className="space-y-3 p-8">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-4 p-4 bg-[#151821] border border-slate-800 rounded-xl animate-pulse">
+              <div className="w-10 h-10 rounded-lg bg-slate-700" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-1/3 rounded bg-slate-700" />
+                <div className="h-3 w-1/4 rounded bg-slate-800" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : filteredProfiles.length === 0 ? (
         <div className="text-center py-20 bg-slate-900/50 rounded-xl border border-slate-800 border-dashed">
           <Server className="w-12 h-12 text-slate-600 mx-auto mb-4" />

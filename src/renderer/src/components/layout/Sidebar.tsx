@@ -30,6 +30,7 @@ export function Sidebar(): React.JSX.Element {
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               )
             }
+            title={link.name}
           >
             <link.icon className="w-5 h-5 shrink-0" />
             <span className="hidden md:block font-medium">{link.name}</span>

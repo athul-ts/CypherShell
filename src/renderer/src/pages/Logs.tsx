@@ -73,16 +73,16 @@ export default function Logs(): React.JSX.Element {
           </p>
         </div>
         <button
-          onClick={handleClearAll}
-          className="bg-slate-800 hover:bg-red-500/20 hover:text-red-400 text-slate-300 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors border border-slate-700"
-        >
-          <Trash2 className="w-4 h-4" /> Clear All
-        </button>
-        <button
           onClick={handleExport}
           className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
         >
           <Download className="w-4 h-4" /> Export CSV
+        </button>
+        <button
+          onClick={handleClearAll}
+          className="bg-slate-800 hover:bg-red-500/20 hover:text-red-400 text-slate-300 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors border border-slate-700"
+        >
+          <Trash2 className="w-4 h-4" /> Clear All
         </button>
       </div>
 

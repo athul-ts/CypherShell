@@ -64,6 +64,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const [currentPath, setCurrentPath] = useState('.')
   const [selectedFile, setSelectedFile] = useState<RemoteFileEntry | null>(null)
   const [showHidden, setShowHidden] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const remoteRef = useRef<HTMLDivElement>(null)
 
   const {
@@ -138,6 +139,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   const handleDropToRemote = async (e: React.DragEvent): Promise<void> => {
     e.preventDefault()
+    setDragOver(false)
     const localPath = e.dataTransfer.getData('text/plain')
     if (localPath) {
       await executeUpload(localPath)
@@ -145,10 +147,6 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       // Electron exposes the absolute path on dropped File objects via a non-standard `path` field
       await executeUpload((e.dataTransfer.files[0] as File & { path: string }).path)
     }
-  }
-
-  const handleDragOver = (e: React.DragEvent): void => {
-    e.preventDefault()
   }
 
   const handleDownload = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
@@ -315,12 +313,13 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
         {/* Right Pane: Remote File System */}
         <div
           ref={remoteRef}
-          className="w-1/2 flex flex-col min-w-[300px] border-l border-slate-800"
-          onDrop={handleDropToRemote}
-          onDragOver={handleDragOver}
+          className={`w-1/2 flex flex-col min-w-[300px] border-l border-slate-800 transition-colors ${dragOver ? 'bg-emerald-500/5 border-emerald-500/40' : ''}`}
+          onDrop={(e) => { setDragOver(false); handleDropToRemote(e) }}
+          onDragOver={(e) => { setDragOver(true); e.preventDefault() }}
+          onDragLeave={() => setDragOver(false)}
         >
           <div className="flex items-center gap-4 px-4 py-3 border-b border-slate-800 bg-[#151821]">
-            <button onClick={handleUp} className="text-slate-400 hover:text-slate-200">
+            <button onClick={handleUp} title="Parent directory" className="text-slate-400 hover:text-slate-200">
               <Folder className="w-5 h-5" />
               <span className="sr-only">Up</span>
             </button>

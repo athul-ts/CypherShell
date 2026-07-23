@@ -97,6 +97,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
       await api.delete(`/sessions/${sessionId}`)
     } catch (error) {
       console.error('Failed to disconnect:', error)
+      toast.error('Failed to disconnect gracefully. The session may still be active.')
     } finally {
       setSessionId(null)
       setActiveForwards([])
@@ -263,6 +264,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
           <button
             onClick={handleOpenTerminal}
             disabled={status !== 'connected'}
+            title={status !== 'connected' ? 'Connect to the host first' : 'Open Terminal'}
             className={cn(
               'w-full flex items-center gap-5 p-6 rounded-2xl border transition-all duration-300 text-left group',
               status === 'connected'
@@ -300,6 +302,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
           <button
             onClick={handleOpenSftp}
             disabled={status !== 'connected'}
+            title={status !== 'connected' ? 'Connect to the host first' : 'Open SFTP'}
             className={cn(
               'w-full flex items-center gap-5 p-6 rounded-2xl border transition-all duration-300 text-left group',
               status === 'connected'
