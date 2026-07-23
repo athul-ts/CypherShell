@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -63,7 +64,7 @@ export default function Keys(): React.JSX.Element {
       refetch()
     } catch (err) {
       const error = err as ApiErrorResponse
-      alert(error?.response?.data?.error ?? 'Failed to delete key')
+      toast.error(error?.response?.data?.error ?? 'Failed to delete key')
     }
   }
 
@@ -82,9 +83,9 @@ export default function Keys(): React.JSX.Element {
         path: localPath,
         content: key.publicKey
       })
-      alert('Key exported successfully!')
+      toast.success('Key exported successfully!')
     } catch {
-      alert('Failed to export key')
+      toast.error('Failed to export key')
     }
   }
 

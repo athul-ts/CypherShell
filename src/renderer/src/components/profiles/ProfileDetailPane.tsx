@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
@@ -31,8 +32,7 @@ interface Profile {
   host: string
   port: number
   username: string
-  authType: string
-  authMethod: 'password' | 'key'
+  authMethod: 'password' | 'key' | 'key+passphrase'
   sshKeyId?: string | null
   hasPassword?: boolean
 }
@@ -85,7 +85,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
       setStatus('connected')
     } catch (error) {
       console.error('Failed to connect:', error)
-      alert('Connection failed. Please check the profile settings and try again.')
+      toast.error('Connection failed. Please check the profile settings and try again.')
       setStatus('disconnected')
     }
   }
@@ -134,7 +134,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
       setActiveForwards([...activeForwards, { ...tunnelForm, id: Date.now() }])
       setTunnelForm({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' })
     } catch {
-      alert('Failed to start tunnel')
+      toast.error('Failed to start tunnel')
     }
   }
 
@@ -147,7 +147,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
       })
       setActiveForwards(activeForwards.filter((f) => f.id !== forward.id))
     } catch {
-      alert('Failed to stop tunnel')
+      toast.error('Failed to stop tunnel')
     }
   }
 
@@ -357,7 +357,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
                 <div>
                   <p className="text-sm text-slate-500">Authentication Method</p>
                   <p className="font-medium text-slate-200">
-                    {profile.authType === 'password' ? 'Password Based' : 'SSH Key Pair'}
+                    {profile.authMethod === 'password' ? 'Password Based' : 'SSH Key Pair'}
                   </p>
                 </div>
               </div>

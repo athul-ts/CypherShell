@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import {
@@ -65,10 +66,10 @@ export default function Settings(): React.JSX.Element {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config'] })
-      alert('Settings saved successfully!')
+      toast.success('Settings saved successfully!')
     },
     onError: () => {
-      alert('Failed to save settings')
+      toast.error('Failed to save settings')
     }
   })
 

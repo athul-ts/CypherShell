@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import {
@@ -152,7 +153,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   const handleDownload = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
     e.stopPropagation()
-    if (file.type === 'd') return alert('Directory download not supported yet')
+    if (file.type === 'd') { toast.error('Directory download not supported yet'); return }
 
     const localPath = await window.api.saveFileDialog(file.name)
     if (!localPath) return
@@ -200,7 +201,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       await api.post(`/sftp/${sessionId}/delete`, { remotePath })
       refetch()
     } catch {
-      alert('Delete failed')
+      toast.error('Delete failed')
     }
   }
 
@@ -219,7 +220,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       await api.post(`/sftp/${sessionId}/mkdir`, { remotePath })
       refetch()
     } catch {
-      alert('Failed to create folder')
+      toast.error('Failed to create folder')
     }
   }
 
@@ -241,7 +242,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
           await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
           refetch()
         } catch {
-          alert('Rename failed')
+          toast.error('Rename failed')
         }
       }
       if (e.ctrlKey && e.shiftKey && e.key === 'N') {
@@ -264,7 +265,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
       refetch()
     } catch {
-      alert('Rename failed')
+      toast.error('Rename failed')
     }
   }
 
@@ -279,7 +280,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       await api.post(`/sftp/${sessionId}/chmod`, { remotePath, mode: newMode })
       refetch()
     } catch {
-      alert('Chmod failed')
+      toast.error('Chmod failed')
     }
   }
 

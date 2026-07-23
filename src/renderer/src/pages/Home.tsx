@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import {
@@ -129,18 +130,18 @@ export default function Home(): React.JSX.Element {
         path: paths[0]
       })
     } catch {
-      alert('Failed to read the selected file.')
+      toast.error('Failed to read the selected file.')
       return
     }
     let bundle: { profiles?: unknown[] }
     try {
       bundle = JSON.parse(content)
     } catch {
-      alert('Invalid JSON file. Please select a valid CypherShell profile export.')
+      toast.error('Invalid JSON file. Please select a valid CypherShell profile export.')
       return
     }
     if (!Array.isArray(bundle?.profiles) || bundle.profiles.length === 0) {
-      alert('No profiles found in the selected file.')
+      toast.error('No profiles found in the selected file.')
       return
     }
     try {
@@ -151,12 +152,12 @@ export default function Home(): React.JSX.Element {
         setImportState({ open: true, conflicts: data.conflicts, pendingProfiles: bundle.profiles })
       } else {
         queryClient.invalidateQueries({ queryKey: ['profiles'] })
-        alert(
+        toast.success(
           `Import complete: ${data.created} created, ${data.skipped} skipped, ${data.overwritten} overwritten.`
         )
       }
     } catch (err) {
-      alert(getErrorMessage(err) ?? 'Import failed.')
+      toast.error(getErrorMessage(err) ?? 'Import failed.')
     }
   }
 
@@ -170,11 +171,11 @@ export default function Home(): React.JSX.Element {
         resolutions
       })
       queryClient.invalidateQueries({ queryKey: ['profiles'] })
-      alert(
+      toast.success(
         `Import complete: ${data.created} created, ${data.skipped} skipped, ${data.overwritten} overwritten.`
       )
     } catch (err) {
-      alert(getErrorMessage(err) ?? 'Import failed.')
+      toast.error(getErrorMessage(err) ?? 'Import failed.')
     }
   }
 
@@ -306,7 +307,11 @@ export default function Home(): React.JSX.Element {
                         Export
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
-                        onClick={() => deleteMutation.mutate(profile.id)}
+                        onClick={() => {
+                          if (confirm(`Delete profile "${profile.name}"? This cannot be undone.`)) {
+                            deleteMutation.mutate(profile.id)
+                          }
+                        }}
                         className="flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md cursor-default outline-none select-none"
                       >
                         <Trash className="w-4 h-4" />

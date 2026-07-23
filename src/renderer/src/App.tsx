@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Toaster } from './components/ui/sonner'
 import { api } from './lib/api'
 import LockScreen from './pages/LockScreen'
 import SetupWizard from './pages/SetupWizard'
@@ -45,6 +46,23 @@ function AppContent({ onLock }: { onLock: () => void }): React.JSX.Element {
       .then((res) => setConfig(res.data))
       .catch(console.error)
   }, [])
+
+  // UX-02: Apply theme class from config
+  useEffect(() => {
+    const cfg = config as { theme?: string } | null
+    const theme = cfg?.theme || 'dark'
+    document.documentElement.classList.toggle('light', theme === 'light')
+    if (theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: light)')
+      document.documentElement.classList.toggle('light', mq.matches)
+      const handleChange = (e: MediaQueryListEvent): void => {
+        document.documentElement.classList.toggle('light', e.matches)
+      }
+      mq.addEventListener('change', handleChange)
+      return (): void => mq.removeEventListener('change', handleChange)
+    }
+    return undefined
+  }, [config])
 
   useEffect(() => {
     if (!config || !config.lockEnabled) return
@@ -245,6 +263,7 @@ export default function App(): React.JSX.Element {
   return (
     <HashRouter>
       <AppContent onLock={() => setState('locked')} />
+      <Toaster position="bottom-right" richColors />
     </HashRouter>
   )
 }

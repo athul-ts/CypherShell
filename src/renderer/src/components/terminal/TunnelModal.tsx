@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { api } from '../../lib/api'
 import { Network, X, Play, Square, ArrowRightLeft } from 'lucide-react'
@@ -37,7 +38,7 @@ export function TunnelModal({
       setFormData({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      alert(msg ?? 'Failed to start tunnel')
+      toast.error(msg ?? 'Failed to start tunnel')
     }
   }
 
@@ -49,7 +50,7 @@ export function TunnelModal({
       })
       setActiveForwards(activeForwards.filter((f) => f.id !== forward.id))
     } catch {
-      alert('Failed to stop tunnel')
+      toast.error('Failed to stop tunnel')
     }
   }
 
