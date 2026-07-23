@@ -18,6 +18,10 @@ export interface Transfer {
   totalBytes: number
   percent: number
   error?: string
+  startedAt: number  // FR-04.10: for elapsed time and speed calculation
+  lastBytes?: number
+  lastTime?: number
+  speed?: number     // bytes/sec since last progress event
 }
 
 interface TransferState {
@@ -33,17 +37,30 @@ export const useTransferStore = create<TransferState>((set) => ({
 
   addTransfer: (t) => set((state) => ({ transfers: [...state.transfers, t] })),
 
+  // FR-04.10: Track transfer speed (bytes/sec) from progress delta
   updateProgress: (e) =>
     set((state) => ({
       transfers: state.transfers.map((t) => {
         if (t.id === e.transferId) {
+          const now = Date.now()
+          const bytes = e.bytesTransferred ?? t.bytesTransferred
+          let speed = t.speed
+          if (e.status === 'progress' && bytes > (t.lastBytes ?? 0)) {
+            const timeDelta = now - (t.lastTime ?? t.startedAt)
+            if (timeDelta > 0) {
+              speed = ((bytes - (t.lastBytes ?? 0)) / timeDelta) * 1000
+            }
+          }
           return {
             ...t,
             status: e.status,
-            bytesTransferred: e.bytesTransferred ?? t.bytesTransferred,
+            bytesTransferred: bytes,
             totalBytes: e.totalBytes ?? t.totalBytes,
             percent: e.percent ?? t.percent,
-            error: e.message
+            error: e.message,
+            speed,
+            lastBytes: bytes,
+            lastTime: now
           }
         }
         return t

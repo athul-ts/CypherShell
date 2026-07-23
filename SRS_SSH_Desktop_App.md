@@ -530,7 +530,7 @@ CypherShell/
 - FR-02.3 — PTY resizes dynamically when the standalone window resizes (`xterm-addon-fit`) ✅
 - FR-02.4 — Copy (Ctrl+Shift+C) supported; right-click paste **not yet implemented** ⚠️
 - FR-02.5 — Full keyboard support: Ctrl+C, Ctrl+Z, Tab, arrow keys, function keys ✅
-- FR-02.6 — Auto-reconnect on drop: exponential backoff, max 3 retries ✅
+- FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries; backend defers session cleanup for 15s to allow reconnect ✅
 - FR-02.7 — Connection status badge: connected / reconnecting / disconnected ✅
 - FR-02.8 — Closing standalone terminal window closes the backend PTY session ✅
 - FR-02.9 — JWT token passed via route parameter — no re-auth required in popup windows ✅
@@ -564,7 +564,7 @@ CypherShell/
 - FR-04.7 — Delete with confirmation ✅
 - FR-04.8 — Create new folder via button ✅; **Ctrl+Shift+N shortcut not yet implemented** ⚠️
 - FR-04.9 — Show and edit Unix permissions (chmod) ✅
-- FR-04.10 — Per-transfer progress via SSE: filename, bytes, %, speed, elapsed time ✅
+- FR-04.10 — Per-transfer progress via SSE: filename, bytes, %, speed + elapsed computed from progress deltas ✅
 - FR-04.11 — Multiple simultaneous transfers in a queue; each has its own SSE stream ✅
 - FR-04.12 — Transfer history: completed, active, and failed ✅
 - FR-04.13 — Failed transfers: one-click retry with error reason shown ✅

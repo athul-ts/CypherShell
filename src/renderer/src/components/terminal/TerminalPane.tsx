@@ -21,6 +21,9 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
   const term = useRef<Terminal | null>(null)
   const ws = useRef<WebSocket | null>(null)
   const fitAddon = useRef<FitAddon | null>(null)
+  const reconnectRef = useRef<{ attempt: number; timer?: ReturnType<typeof setTimeout> }>({
+    attempt: 0
+  })
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
     'connecting'
   )
@@ -69,51 +72,71 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     }
     terminalRef.current.addEventListener('contextmenu', contextmenuHandler)
 
-    // Connect WebSocket with JWT auth token (SEC-03)
     const backendPort = window.api.backendPort
     const wsToken = getWsToken()
-    const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`
-    ws.current = new WebSocket(wsUrl)
-
     let wsDisconnected = false
+    let intentionalClose = false
 
-    ws.current.onopen = () => {
-      setStatus('connected')
-      wsDisconnected = false
-      if (fitAddon.current && term.current) {
-        ws.current?.send(
-          JSON.stringify({ type: 'resize', cols: term.current.cols, rows: term.current.rows })
-        )
+    // FR-02.6 — Auto-reconnect with exponential backoff (max 3 attempts)
+    function connectWs(): void {
+      const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`
+      ws.current?.close()
+      ws.current = new WebSocket(wsUrl)
+
+      ws.current.onopen = () => {
+        setStatus('connected')
+        wsDisconnected = false
+        reconnectRef.current.attempt = 0
+        if (fitAddon.current && term.current) {
+          ws.current?.send(
+            JSON.stringify({ type: 'resize', cols: term.current.cols, rows: term.current.rows })
+          )
+        }
       }
-    }
 
-    ws.current.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
-      if (msg.type === 'output' && term.current) {
-        term.current.write(atob(msg.data))
-      } else if (msg.type === 'status') {
-        setStatus(msg.state)
-      } else if (msg.type === 'error') {
-        setStatus('error')
-        term.current?.write(`\r\n\x1b[31mError: ${msg.message}\x1b[0m\r\n`)
+      ws.current.onmessage = (event) => {
+        const msg = JSON.parse(event.data)
+        if (msg.type === 'output' && term.current) {
+          term.current.write(atob(msg.data))
+        } else if (msg.type === 'status') {
+          setStatus(msg.state)
+        } else if (msg.type === 'error') {
+          setStatus('error')
+          term.current?.write(`\r\n\x1b[31mError: ${msg.message}\x1b[0m\r\n`)
+        }
       }
-    }
 
-    ws.current.onclose = () => {
-      if (!wsDisconnected) {
+      ws.current.onclose = () => {
+        if (wsDisconnected) return
         wsDisconnected = true
         setStatus('disconnected')
-        term.current?.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n')
+
+        if (intentionalClose) {
+          term.current?.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n')
+          return
+        }
+
+        // Auto-reconnect with exponential backoff (FR-02.6)
+        const { attempt } = reconnectRef.current
+        if (attempt < 3) {
+          const delay = Math.pow(2, attempt) * 1000 // 1s, 2s, 4s
+          term.current?.write(`\r\n\x1b[33mConnection lost. Reconnecting in ${delay / 1000}s... (attempt ${attempt + 1}/3)\x1b[0m\r\n`)
+          reconnectRef.current.attempt = attempt + 1
+          reconnectRef.current.timer = setTimeout(connectWs, delay)
+        } else {
+          term.current?.write('\r\n\x1b[31mConnection lost. Max reconnect attempts reached.\x1b[0m\r\n')
+        }
+      }
+
+      ws.current.onerror = () => {
+        if (!wsDisconnected) {
+          wsDisconnected = true
+          setStatus('error')
+        }
       }
     }
 
-    // CODE-14: Handle WebSocket errors gracefully
-    ws.current.onerror = () => {
-      if (!wsDisconnected) {
-        wsDisconnected = true
-        setStatus('error')
-      }
-    }
+    connectWs()
 
     // Handle user input
     term.current.onData((data) => {
@@ -136,7 +159,10 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     resizeObserver.observe(terminalRef.current)
 
     return () => {
+      intentionalClose = true
       wsDisconnected = true
+      if (reconnectRef.current.timer) clearTimeout(reconnectRef.current.timer)
+      reconnectRef.current.attempt = 0
       resizeObserver.disconnect()
       if (terminalRef.current) {
         terminalRef.current.removeEventListener('contextmenu', contextmenuHandler)

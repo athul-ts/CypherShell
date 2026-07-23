@@ -120,7 +120,8 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       status: 'progress',
       bytesTransferred: 0,
       totalBytes: 0,
-      percent: 0
+      percent: 0,
+      startedAt: Date.now()
     })
 
     try {
@@ -175,7 +176,8 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       status: 'progress',
       bytesTransferred: 0,
       totalBytes: size,
-      percent: 0
+      percent: 0,
+      startedAt: Date.now()
     })
     try {
       // Open SSE listener FIRST so we don't miss events from fast transfers
@@ -474,19 +476,32 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        t.status === 'error'
-                          ? 'bg-red-500'
-                          : t.status === 'complete'
-                            ? 'bg-emerald-500'
-                            : t.status === 'cancelled'
-                              ? 'bg-slate-600'
-                              : 'bg-blue-500'
-                      }`}
-                      style={{ width: `${Math.max(0, Math.min(100, t.percent))}%` }}
-                    />
+                  <div className="flex-1">
+                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          t.status === 'error'
+                            ? 'bg-red-500'
+                            : t.status === 'complete'
+                              ? 'bg-emerald-500'
+                              : t.status === 'cancelled'
+                                ? 'bg-slate-600'
+                                : 'bg-blue-500'
+                        }`}
+                        style={{ width: `${Math.max(0, Math.min(100, t.percent))}%` }}
+                      />
+                    </div>
+                    {/* FR-04.10: Speed and elapsed time */}
+                    {t.status === 'progress' && (
+                      <div className="mt-1 flex gap-3 text-[10px] text-slate-600">
+                        {t.speed !== undefined && (
+                          <span>{t.speed >= 1_048_576
+                            ? `${(t.speed / 1_048_576).toFixed(1)} MB/s`
+                            : `${(t.speed / 1024).toFixed(0)} KB/s`}</span>
+                        )}
+                        <span>{Math.floor((Date.now() - t.startedAt) / 1000)}s elapsed</span>
+                      </div>
+                    )}
                   </div>
                   <div className="w-24 text-right text-xs flex items-center justify-end gap-1">
                     {t.status === 'progress' ? (

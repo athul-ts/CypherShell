@@ -83,6 +83,15 @@ export function setupTerminalWebSocket(server: Server): void {
         }
       })
 
+      // FR-02.6: Defer session cleanup so the WS can reconnect within
+      // a grace period. The session will be cleaned up by the orphan
+      // reaper (FUN-10, 60s idle timeout) if no reconnect arrives.
+      const scheduleCleanup = (): void => {
+        setTimeout(() => {
+          SSHService.removeSession(sessionId)
+        }, 15_000).unref()
+      }
+
       stream.on('error', (streamErr) => {
         logger.error('Shell stream error: ' + streamErr.message)
         stream.end()
@@ -90,7 +99,7 @@ export function setupTerminalWebSocket(server: Server): void {
           ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
           ws.close(1011, 'Shell error')
         }
-        SSHService.removeSession(sessionId)
+        scheduleCleanup()
       })
 
       stream.on('close', () => {
@@ -98,7 +107,7 @@ export function setupTerminalWebSocket(server: Server): void {
           ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
           ws.close(1000, 'Shell closed')
         }
-        SSHService.removeSession(sessionId)
+        scheduleCleanup()
       })
 
       ws.on('message', (message) => {
