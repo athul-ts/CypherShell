@@ -32,6 +32,14 @@ export class ConfigService {
     const { theme, defaultFont, defaultFontSize, logRetentionDays, lockEnabled, autoLockMinutes } =
       data
 
+    // FUN-02: Prevent enabling lock without a master password hash
+    if (lockEnabled === true) {
+      const current = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+      if (current && !current.masterPasswordHash) {
+        throw new Error('Set a master password before enabling app lock.')
+      }
+    }
+
     return prisma.appConfig.update({
       where: { id: 'singleton' },
       data: {

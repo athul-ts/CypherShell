@@ -28,6 +28,20 @@ export class SftpService {
   // Transfers explicitly cancelled — guards against emitting 'error' after cancel
   static cancelledTransfers = new Set<string>()
 
+  // FUN-03: Cache one long-lived SFTP client per sessionId instead of
+  // opening a new SFTP subsystem channel on every operation.
+  private static sftpClients = new Map<string, SftpClient>()
+
+  static async closeSession(sessionId: string): Promise<void> {
+    const client = this.sftpClients.get(sessionId)
+    if (client) {
+      try {
+        await client.end()
+      } catch { /* ignore close errors */ }
+      this.sftpClients.delete(sessionId)
+    }
+  }
+
   static cancelTransfer(transferId: string): void {
     this.cancelledTransfers.add(transferId)
     this.transferEvents.emit(transferId, { transferId, status: 'cancelled' })
@@ -39,38 +53,28 @@ export class SftpService {
   }
 
   static async getClient(sessionId: string): Promise<SftpClient> {
+    // Return cached client if available (FUN-03)
+    const cached = this.sftpClients.get(sessionId)
+    if (cached) return cached
+
     const session = SSHService.getSession(sessionId)
     if (!session) throw new Error('Invalid session ID')
 
-    // Re-use the existing ssh2 client connection.
-    // However, ssh2-sftp-client's connect expects config. If we pass the client object it uses it.
-    // Wait, ssh2-sftp-client allows using an existing ssh2 client?
-    // Let's create a new connection using the same profile for simplicity right now, or use the ssh2 client.
-    // Actually, creating a new connection for SFTP is safer to prevent blocking the terminal multiplexer.
-
-    // Instead of using ssh2-sftp-client with an existing client (which is sometimes flaky),
-    // we'll just connect using the same credentials.
-    // But since password might not be available here directly (we don't have the Profile here),
-    // let's fetch the profile or just pass the ssh2 client.
-
-    // According to ssh2-sftp-client docs, you can't easily pass an already connected ssh2.Client to `connect()`,
-    // but you can just use `sftp.client = session.client` and then `sftp.sftp(callback)`.
-    // Actually, `ssh2-sftp-client` doesn't natively support reusing an existing SSH2 Client created outside easily in v9+.
-    // We will do a hack for now, or better: just let the user open an SFTP channel on the existing SSH2 connection natively.
-
-    // Let's use the underlying ssh2 client's SFTP subsystem directly to get a wrapped SftpClient!
     return new Promise((resolve, reject) => {
       session.client.sftp((err, sftpStream) => {
         if (err) return reject(err)
 
-        // We will wrap this sftpStream using a new instance of SftpClient
-        // Wait, ssh2-sftp-client expects a connection config.
-        // We can just use the raw ssh2 sftpStream for directory listing for now.
-        // Or we can construct SftpClient and overwrite its `sftp` property.
-
         const client = new SftpClient()
         ;(client as unknown as { sftp: SFTPWrapper }).sftp = sftpStream
         ;(client as unknown as { client: typeof session.client }).client = session.client
+
+        // Cache the client for reuse (FUN-03)
+        this.sftpClients.set(sessionId, client)
+
+        // Clean up the cached client when the SSH connection drops
+        session.client.on('close', () => {
+          this.closeSession(sessionId).catch(() => {})
+        })
 
         resolve(client)
       })
@@ -105,6 +109,7 @@ export class SftpService {
     })
   }
 
+  /** FUN-15: Upload to a temp path, then rename on success; clean up on error/cancel. */
   static async upload(
     sessionId: string,
     localPath: string,
@@ -114,11 +119,12 @@ export class SftpService {
     const sftp = await this.getClient(sessionId)
     const stream = getStream(sftp)
     this.activeTransfers.set(transferId, stream)
+    const tempPath = `${remotePath}.partial`
 
     return new Promise<void>((resolve, reject) => {
       stream.fastPut(
         localPath,
-        remotePath,
+        tempPath,
         {
           step: (total_transferred: number, _chunk: number, total: number) => {
             if (this.cancelledTransfers.has(transferId)) return
@@ -133,13 +139,18 @@ export class SftpService {
         },
         (err?: Error | null) => {
           this.activeTransfers.delete(transferId)
+          const cleanup = (): void => { stream.unlink(tempPath, () => {}) }
           if (this.cancelledTransfers.has(transferId)) {
             this.cancelledTransfers.delete(transferId)
+            cleanup()
             return resolve()
           }
           const session = SSHService.getSession(sessionId)
           const profileId = session?.profileId || null
+          const profileName = session?.profileName
+          const host = session?.host
           if (err) {
+            cleanup()
             this.transferEvents.emit(transferId, {
               transferId,
               status: 'error',
@@ -151,21 +162,33 @@ export class SftpService {
               `Failed upload to ${remotePath}`,
               false,
               0,
-              err.message
+              err.message,
+              profileName,
+              host
             ).catch(console.error)
             return reject(err)
           }
-          this.transferEvents.emit(transferId, { transferId, status: 'complete', percent: 100 })
-          fs.stat(localPath, (_statErr, stats) => {
-            AuditService.logSftpTransfer(
-              profileId,
-              'sftp_upload',
-              `Uploaded ${localPath} to ${remotePath}`,
-              true,
-              stats?.size
-            ).catch(console.error)
+          // Rename temp → target on success
+          stream.rename(tempPath, remotePath, (renameErr?: Error | null) => {
+            if (renameErr) {
+              cleanup()
+              return reject(renameErr)
+            }
+            this.transferEvents.emit(transferId, { transferId, status: 'complete', percent: 100 })
+            fs.stat(localPath, (_statErr, stats) => {
+              AuditService.logSftpTransfer(
+                profileId,
+                'sftp_upload',
+                `Uploaded ${localPath} to ${remotePath}`,
+                true,
+                stats?.size,
+                undefined,
+                profileName,
+                host
+              ).catch(console.error)
+            })
+            resolve()
           })
-          resolve()
         }
       )
     })
@@ -205,6 +228,8 @@ export class SftpService {
           }
           const session = SSHService.getSession(sessionId)
           const profileId = session?.profileId || null
+          const profileName = session?.profileName
+          const host = session?.host
           if (err) {
             this.transferEvents.emit(transferId, {
               transferId,
@@ -217,7 +242,9 @@ export class SftpService {
               `Failed download from ${remotePath}`,
               false,
               0,
-              err.message
+              err.message,
+              profileName,
+              host
             ).catch(console.error)
             return reject(err)
           }
@@ -228,7 +255,10 @@ export class SftpService {
               'sftp_download',
               `Downloaded ${remotePath} to ${localPath}`,
               true,
-              stats?.size
+              stats?.size,
+              undefined,
+              profileName,
+              host
             ).catch(console.error)
           })
           resolve()

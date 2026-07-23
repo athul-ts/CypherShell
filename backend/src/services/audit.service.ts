@@ -52,12 +52,16 @@ export class AuditService {
     detail: string,
     success: boolean,
     fileSizeBytes?: number,
-    errorMessage?: string
+    errorMessage?: string,
+    profileName?: string, // FUN-17
+    host?: string // FUN-17
   ): Promise<AuditLog> {
     return prisma.auditLog.create({
       data: {
         type,
         profileId,
+        profileName,
+        host,
         detail,
         success,
         fileSizeBytes,

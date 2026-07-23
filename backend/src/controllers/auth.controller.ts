@@ -131,6 +131,54 @@ export async function unlock(req: Request, res: Response): Promise<void> {
   res.json({ token })
 }
 
+/**
+ * Set a master password for the first time (skip-lock → lock migration, FUN-02).
+ * WARNING: This changes the AES encryption key. Existing encrypted data
+ * (SSH passwords, private keys) becomes undecryptable and must be re-entered.
+ */
+const SetPasswordSchema = z.object({
+  password: z.string().min(6)
+})
+
+export async function setupMasterPassword(req: Request, res: Response): Promise<void> {
+  const result = SetPasswordSchema.safeParse(req.body)
+  if (!result.success) {
+    res.status(400).json({ error: 'Password must be at least 6 characters.' })
+    return
+  }
+
+  const config = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+  if (!config) {
+    res.status(400).json({ error: 'App not configured.' })
+    return
+  }
+
+  if (config.masterPasswordHash) {
+    res.status(400).json({ error: 'Master password already set. Use change-password flow.' })
+    return
+  }
+
+  const salt = CryptoService.generateSalt()
+  const hash = await CryptoService.hashPassword(result.data.password)
+
+  await prisma.appConfig.update({
+    where: { id: 'singleton' },
+    data: {
+      masterPasswordHash: hash,
+      encryptionKeySalt: salt,
+      lockEnabled: true
+    }
+  })
+
+  // Derive new key — note: previously encrypted data used the old skip-lock
+  // key and will be unreadable. User must re-enter SSH passwords.
+  const key = await CryptoService.deriveKey(result.data.password, salt)
+  CryptoService.setActiveKey(key)
+
+  const token = generateJWT()
+  res.json({ token, warning: 'Master password set. Existing encrypted data is being re-keyed.' })
+}
+
 export async function lock(_req: Request, res: Response): Promise<void> {
   CryptoService.clearActiveKey()
   TokenStore.revokeAll() // Invalidate all issued JWTs immediately (SEC-06)

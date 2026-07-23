@@ -1,5 +1,12 @@
 import { prisma } from '../config/db'
 
+/** FUN-13: Resolve an SSH key by name, return its id or null. */
+async function resolveLinkedKey(keyName: string | undefined): Promise<string | null> {
+  if (!keyName) return null
+  const key = await prisma.sSHKey.findFirst({ where: { name: keyName } })
+  return key?.id ?? null
+}
+
 export interface ExportedTunnel {
   type: string
   localPort: number
@@ -96,6 +103,7 @@ export class ProfileService {
       }
 
       if (existing && resolution === 'overwrite') {
+        const linkedKeyId = await resolveLinkedKey(p.linkedKeyName)
         await prisma.profile.update({
           where: { id: existing.id },
           data: {
@@ -107,7 +115,7 @@ export class ProfileService {
             terminalTheme: p.terminalTheme,
             fontSize: p.fontSize,
             autoReconnect: p.autoReconnect,
-            sshKeyId: null,
+            sshKeyId: linkedKeyId,
             encryptedPassword: null
           }
         })
@@ -130,6 +138,7 @@ export class ProfileService {
         name = `${p.name} (${suffix})`
       }
 
+      const linkedKeyId = await resolveLinkedKey(p.linkedKeyName)
       const newProfile = await prisma.profile.create({
         data: {
           name,
@@ -141,7 +150,7 @@ export class ProfileService {
           terminalTheme: p.terminalTheme ?? 'dark',
           fontSize: p.fontSize ?? 14,
           autoReconnect: p.autoReconnect ?? true,
-          sshKeyId: null,
+          sshKeyId: linkedKeyId,
           encryptedPassword: null
         }
       })

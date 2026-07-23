@@ -72,6 +72,47 @@ export default function Settings(): React.JSX.Element {
     }
   })
 
+  // FUN-02: Password-set dialog for skip-lock → lock migration
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [settingPassword, setSettingPassword] = useState(false)
+
+  const handleLockToggle = (checked: boolean): void => {
+    if (checked && config && !config.lockEnabled && !('masterPasswordHash' in (config || {}))) {
+      // Skip-lock mode: show password-set dialog first (FUN-02)
+      setNewPassword('')
+      setPasswordError('')
+      setPasswordDialogOpen(true)
+    } else {
+      setFormData({ ...formData, lockEnabled: checked })
+    }
+  }
+
+  const handleSetPassword = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters.')
+      return
+    }
+    setSettingPassword(true)
+    setPasswordError('')
+    try {
+      const { data } = await api.post('/auth/setup-password', { password: newPassword })
+      sessionStorage.setItem('jwt', data.token)
+      setPasswordDialogOpen(false)
+      setFormData((prev) => ({ ...prev, lockEnabled: true }))
+      queryClient.invalidateQueries({ queryKey: ['config'] })
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'Failed to set password.'
+      setPasswordError(msg)
+    } finally {
+      setSettingPassword(false)
+    }
+  }
+
   const terminalThemeStore = useTerminalThemeStore()
 
   const handleSubmit = (e: React.FormEvent): void => {
@@ -218,7 +259,7 @@ export default function Settings(): React.JSX.Element {
                   type="checkbox"
                   className="sr-only peer"
                   checked={formData.lockEnabled}
-                  onChange={(e) => setFormData({ ...formData, lockEnabled: e.target.checked })}
+                  onChange={(e) => handleLockToggle(e.target.checked)}
                 />
                 <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
@@ -278,6 +319,55 @@ export default function Settings(): React.JSX.Element {
             </div>
           </div>
         </div>
+
+        {/* FUN-02: Master Password Set Dialog */}
+        {passwordDialogOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+            <div className="bg-[#1a1d27] border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+              <h2 className="text-xl font-bold text-slate-200 mb-2">Set Master Password</h2>
+              <p className="text-sm text-slate-400 mb-6">
+                You chose &quot;Skip Lock&quot; during setup. Setting a master password will enable
+                app lock. Note: existing encrypted data (SSH passwords) will need to be re-entered.
+              </p>
+              <form onSubmit={handleSetPassword} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                    New Master Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
+                    autoFocus
+                    className="w-full bg-[#0f1117] border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                  />
+                </div>
+                {passwordError && (
+                  <div className="text-red-400 text-sm bg-red-950/30 border border-red-900/40 rounded-xl px-4 py-3">
+                    {passwordError}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPasswordDialogOpen(false)}
+                    className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 font-medium hover:bg-slate-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={settingPassword || newPassword.length < 6}
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+                  >
+                    {settingPassword ? 'Setting…' : 'Set Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end mt-8">
           <button

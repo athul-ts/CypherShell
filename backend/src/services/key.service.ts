@@ -79,10 +79,15 @@ export class KeyService {
   ): Promise<SSHKey> {
     let key: sshpk.PrivateKey
     try {
-      // Parse to ensure it's valid, and extract the public key
-      key = sshpk.parsePrivateKey(privateKeyPem, 'auto')
+      // FUN-07: Pass the passphrase so encrypted PEMs can be parsed
+      const opts = passphrase ? { passphrase } : undefined
+      key = sshpk.parsePrivateKey(privateKeyPem, 'auto', opts)
     } catch {
-      throw new Error('Invalid private key format')
+      throw new Error(
+        passphrase
+          ? 'Invalid private key or incorrect passphrase'
+          : 'Invalid private key format (key may be passphrase-protected)'
+      )
     }
 
     const publicKeyStr = key.toPublic().toString('ssh')

@@ -61,6 +61,8 @@ function AppContent({ onLock }: { onLock: () => void }): React.JSX.Element {
 
     const interval = setInterval(() => {
       if (Date.now() - lastActivity > config.autoLockMinutes * 60 * 1000) {
+        // FUN-01: Call server-side lock to clear the in-memory AES key
+        api.post('/auth/lock').catch(() => {})
         sessionStorage.removeItem('jwt')
         onLock()
       }

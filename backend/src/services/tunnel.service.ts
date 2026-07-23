@@ -169,4 +169,14 @@ export class TunnelService {
       this.localServers.delete(id)
     }
   }
+
+  /** FUN-05: Clean up all tunnel servers for a given session. */
+  static cleanupSession(sessionId: string): void {
+    for (const [id, server] of this.localServers) {
+      if (id.includes(`-${sessionId}-`)) {
+        try { server.close() } catch { /* ignore */ }
+        this.localServers.delete(id)
+      }
+    }
+  }
 }

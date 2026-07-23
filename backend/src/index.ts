@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import { initDatabase } from './config/db'
 import authRoutes from './routes/auth.routes'
@@ -78,6 +78,16 @@ async function bootstrap(): Promise<void> {
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() })
+  })
+
+  // FUN-16: Global Express error handler — map "key not loaded" to 401
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    if (err.message === 'Encryption key not loaded. App is locked.') {
+      res.status(401).json({ error: 'App is locked. Unlock to continue.' })
+    } else {
+      console.error('Unhandled error:', err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
   })
 
   const port = Number(process.env.PORT) || 4000

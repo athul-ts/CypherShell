@@ -42,6 +42,21 @@ function makeTransferId(prefix: 'up' | 'dn'): string {
   return `${prefix}-${Date.now()}`
 }
 
+/** FUN-14: Normalize a remote SFTP path, handling '.', '..', and extra slashes. */
+function normalizeSftpPath(base: string, name: string): string {
+  const joined = !base || base === '.' ? name : `${base}/${name}`
+  const parts = joined.split('/')
+  const result: string[] = []
+  for (const part of parts) {
+    if (part === '..') {
+      if (result.length > 0) result.pop()
+    } else if (part && part !== '.') {
+      result.push(part)
+    }
+  }
+  return result.join('/') || '.'
+}
+
 export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const [currentPath, setCurrentPath] = useState('.')
   const [selectedFile, setSelectedFile] = useState<RemoteFileEntry | null>(null)
@@ -80,7 +95,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   const handleNavigate = (file: RemoteFileEntry): void => {
     if (file.type === 'd') {
-      setCurrentPath(`${currentPath}/${file.name}`.replace(/^\.\//, ''))
+      setCurrentPath(normalizeSftpPath(currentPath, file.name))
     }
   }
 
@@ -93,7 +108,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const executeUpload = async (localPath: string): Promise<void> => {
     const filename = localPath.split('\\').pop() || localPath.split('/').pop() || 'unknown'
     const remotePath =
-      currentPath === '.' || currentPath === '' ? filename : `${currentPath}/${filename}`
+      normalizeSftpPath(currentPath, filename)
     const transferId = makeTransferId('up')
 
     addTransfer({
@@ -140,7 +155,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     if (!localPath) return
 
     const remotePath =
-      currentPath === '.' || currentPath === '' ? file.name : `${currentPath}/${file.name}`
+      normalizeSftpPath(currentPath, file.name)
     await executeDownload(remotePath, localPath, file.name, file.size)
   }
 
@@ -175,7 +190,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     e.stopPropagation()
     if (!confirm(`Are you sure you want to delete ${file.name}?`)) return
     const remotePath =
-      currentPath === '.' || currentPath === '' ? file.name : `${currentPath}/${file.name}`
+      normalizeSftpPath(currentPath, file.name)
 
     try {
       await api.post(`/sftp/${sessionId}/delete`, { remotePath })
@@ -195,7 +210,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const handleMkdir = async (): Promise<void> => {
     const name = prompt('New folder name:')
     if (!name) return
-    const remotePath = currentPath === '.' || currentPath === '' ? name : `${currentPath}/${name}`
+    const remotePath = normalizeSftpPath(currentPath, name)
     try {
       await api.post(`/sftp/${sessionId}/mkdir`, { remotePath })
       refetch()
@@ -216,11 +231,8 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
         const newName = prompt('Rename to:', selectedFile.name)
         if (!newName || newName === selectedFile.name) return
         const oldPath =
-          currentPath === '.' || currentPath === ''
-            ? selectedFile.name
-            : `${currentPath}/${selectedFile.name}`
-        const newPath =
-          currentPath === '.' || currentPath === '' ? newName : `${currentPath}/${newName}`
+          normalizeSftpPath(currentPath, selectedFile.name)
+        const newPath = normalizeSftpPath(currentPath, newName)
         try {
           await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
           refetch()
@@ -242,9 +254,8 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     const newName = prompt('Rename to:', file.name)
     if (!newName || newName === file.name) return
     const oldPath =
-      currentPath === '.' || currentPath === '' ? file.name : `${currentPath}/${file.name}`
-    const newPath =
-      currentPath === '.' || currentPath === '' ? newName : `${currentPath}/${newName}`
+      normalizeSftpPath(currentPath, file.name)
+    const newPath = normalizeSftpPath(currentPath, newName)
     try {
       await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
       refetch()
@@ -259,7 +270,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     const newMode = prompt('New permissions (octal, e.g. 755):', currentMode)
     if (!newMode || newMode === currentMode || !/^[0-7]{3,4}$/.test(newMode)) return
     const remotePath =
-      currentPath === '.' || currentPath === '' ? file.name : `${currentPath}/${file.name}`
+      normalizeSftpPath(currentPath, file.name)
     try {
       await api.post(`/sftp/${sessionId}/chmod`, { remotePath, mode: newMode })
       refetch()
@@ -271,7 +282,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const handleRemoteDragStart = (e: React.DragEvent, file: RemoteFileEntry): void => {
     if (file.type === 'd') return
     const remotePath =
-      currentPath === '.' || currentPath === '' ? file.name : `${currentPath}/${file.name}`
+      normalizeSftpPath(currentPath, file.name)
     e.dataTransfer.setData(
       'application/x-remote-file',
       JSON.stringify({

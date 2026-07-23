@@ -4,6 +4,8 @@ import { Profile } from '@prisma/client'
 import { CryptoService } from './crypto.service'
 import { prisma } from '../config/db'
 import { AuditService } from './audit.service'
+import { SftpService } from './sftp.service'
+import { TunnelService } from './tunnel.service'
 
 export interface SSHSession {
   id: string
@@ -13,10 +15,35 @@ export interface SSHSession {
   host: string
   connectedAt: Date
   hasTcpListener?: boolean
+  /** FUN-10: Last time a consumer (WS/SFTP) accessed this session */
+  lastConsumedAt: number
 }
 
 export class SSHService {
   private static sessions = new Map<string, SSHSession>()
+  /** FUN-10: Reap orphaned sessions with no consumer activity */
+  private static readonly ORPHAN_TIMEOUT_MS = 60_000
+
+  private static reaperInterval: ReturnType<typeof setInterval> | null = null
+
+  static startReaper(): void {
+    if (this.reaperInterval) return
+    this.reaperInterval = setInterval(() => {
+      const now = Date.now()
+      for (const [id, session] of this.sessions) {
+        if (now - session.lastConsumedAt > this.ORPHAN_TIMEOUT_MS) {
+          this.removeSession(id)
+        }
+      }
+    }, 15_000)
+  }
+
+  static stopReaper(): void {
+    if (this.reaperInterval) {
+      clearInterval(this.reaperInterval)
+      this.reaperInterval = null
+    }
+  }
 
   static async createSession(profile: Profile): Promise<SSHSession> {
     const client = new Client()
@@ -26,6 +53,7 @@ export class SSHService {
       host: profile.host,
       port: profile.port,
       username: profile.username,
+      readyTimeout: 10000, // FUN-09: timeout after 10s instead of ~20s default
       keepaliveInterval: 10000,
       keepaliveCountMax: 3
     }
@@ -60,9 +88,11 @@ export class SSHService {
           profileId: profile.id,
           profileName: profile.name,
           host: profile.host,
-          connectedAt
+          connectedAt,
+          lastConsumedAt: Date.now()
         }
         this.sessions.set(sessionId, session)
+        this.startReaper()
         AuditService.logConnection(profile.id, profile.name, profile.host, true).catch(
           console.error
         )
@@ -109,7 +139,11 @@ export class SSHService {
   }
 
   static getSession(sessionId: string): SSHSession | undefined {
-    return this.sessions.get(sessionId)
+    const session = this.sessions.get(sessionId)
+    if (session) {
+      session.lastConsumedAt = Date.now() // FUN-10: mark consumer activity
+    }
+    return session
   }
 
   static removeSession(sessionId: string): void {
@@ -118,5 +152,8 @@ export class SSHService {
       session.client.end()
       this.sessions.delete(sessionId)
     }
+    // Clean up cached SFTP client (FUN-03) and tunnel servers (FUN-05)
+    SftpService.closeSession(sessionId).catch(() => {})
+    TunnelService.cleanupSession(sessionId)
   }
 }
