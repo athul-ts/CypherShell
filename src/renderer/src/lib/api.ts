@@ -1,21 +1,7 @@
 import axios from 'axios'
 
-declare global {
-  interface Window {
-    api: {
-      backendPort: number
-      openFileDialog: () => Promise<string[]>
-      openDirectoryDialog: () => Promise<string | null>
-      saveFileDialog: (defaultName: string) => Promise<string | null>
-      openJsonFileDialog: () => Promise<string[]>
-      openCskbFileDialog: () => Promise<string[]>
-      appVersion: string
-      installUpdate: () => Promise<void>
-      onUpdateAvailable: (cb: () => void) => () => void
-      onUpdateDownloaded: (cb: () => void) => () => void
-    }
-  }
-}
+// Global Window.api type is declared in src/preload/index.d.ts
+// (shared across all renderer files). Do NOT redeclare it here.
 
 const BASE_URL = `http://127.0.0.1:${window.api?.backendPort ?? 4000}/api`
 

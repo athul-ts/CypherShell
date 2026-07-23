@@ -1,5 +1,5 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
+import { join, resolve, relative, isAbsolute, dirname, basename } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { spawn, type ChildProcess } from 'child_process'
@@ -7,8 +7,9 @@ import portfinder from 'portfinder'
 import iconPng from '../../resources/icon.png?asset'
 import iconIco from '../../build/icon.ico?asset'
 const icon = process.platform === 'win32' ? iconIco : iconPng
-import { writeFileSync, appendFileSync, readFileSync } from 'fs'
+import { writeFileSync, appendFileSync, readFileSync, realpathSync, existsSync, mkdirSync } from 'fs'
 import { stat, readdir, mkdir, rename, rm } from 'fs/promises'
+import * as crypto from 'crypto'
 import * as os from 'os'
 
 let backendPort = 4000
@@ -41,6 +42,55 @@ async function startBackend(): Promise<number> {
   logToFile(`Using backend port: ${backendPort}`)
   logToFile(`Using SQLite database path: ${dbPath}`)
 
+  // ─── Per-install random JWT secret (SEC-01) ────────────────────────
+  // Generate once, persist to userData. If the file is missing at boot
+  // (first launch, or user deleted it), we create a new one. This means
+  // existing JWTs are invalidated when the file is deleted.
+  const jwtSecretDir = join(app.getPath('userData'), 'secrets')
+  const jwtSecretPath = join(jwtSecretDir, 'jwt-secret')
+  let jwtSecret: string
+  try {
+    jwtSecret = readFileSync(jwtSecretPath, 'utf8').trim()
+  } catch {
+    mkdirSync(jwtSecretDir, { recursive: true })
+    jwtSecret = crypto.randomBytes(48).toString('hex')
+    writeFileSync(jwtSecretPath, jwtSecret, 'utf8')
+    // On POSIX: chmod 600 equivalent. On Windows this is handled by userData ACLs.
+    logToFile('Generated new JWT secret')
+  }
+  logToFile('JWT secret loaded from userData')
+
+  // ─── Per-install random storage key (SEC-05) ───────────────────────
+  // Used by the backend as the PBKDF2 password when the user chooses
+  // "skip lock" mode. Stored via Electron safeStorage (OS keychain:
+  // DPAPI on Windows, Keychain on macOS, libsecret on Linux) so the
+  // at-rest encryption key is never derived from a public constant.
+  const storageKeyPath = join(jwtSecretDir, 'storage-key')
+  let storageKey: string
+  if (safeStorage.isEncryptionAvailable()) {
+    try {
+      const encrypted = readFileSync(storageKeyPath)
+      storageKey = safeStorage.decryptString(encrypted)
+    } catch {
+      storageKey = crypto.randomBytes(32).toString('hex')
+      const encrypted = safeStorage.encryptString(storageKey)
+      mkdirSync(jwtSecretDir, { recursive: true })
+      writeFileSync(storageKeyPath, encrypted)
+      logToFile('Generated new storage key via safeStorage')
+    }
+  } else {
+    // Fallback: unencrypted file (Linux without keychain, etc.)
+    try {
+      storageKey = readFileSync(storageKeyPath, 'utf8').trim()
+    } catch {
+      storageKey = crypto.randomBytes(32).toString('hex')
+      mkdirSync(jwtSecretDir, { recursive: true })
+      writeFileSync(storageKeyPath, storageKey, 'utf8')
+      logToFile('Generated new storage key (safeStorage unavailable, file-based fallback)')
+    }
+  }
+  logToFile('Storage key loaded')
+
   // In dev: use system `node` and source paths.
   // In production: use Electron's own Node.js runtime (ELECTRON_RUN_AS_NODE=1)
   // so the packaged app has no dependency on the user having Node.js installed.
@@ -66,6 +116,8 @@ async function startBackend(): Promise<number> {
       ELECTRON_RUN_AS_NODE: '1', // Makes Electron binary behave as Node.js
       PORT: String(backendPort),
       DATABASE_URL: `file:${dbPath}`,
+      JWT_SECRET: jwtSecret,
+      STORAGE_KEY: storageKey,
       NODE_ENV: 'production'
     }
   })
@@ -156,7 +208,7 @@ function createConnectionWindow(
     icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -164,7 +216,11 @@ function createConnectionWindow(
     connWindow.show()
   })
 
-  const hashPath = `#/connection/${type}/${sessionId}?profileId=${profileId}&token=${token}`
+  // Store token for secure IPC retrieval — never embed in URL (SEC-07)
+  const timer = setTimeout(() => pendingConnectionTokens.delete(sessionId), 30_000)
+  pendingConnectionTokens.set(sessionId, { token, timer })
+
+  const hashPath = `#/connection/${type}/${sessionId}?profileId=${profileId}`
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     connWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}${hashPath}`)
@@ -190,7 +246,7 @@ function createWindow(): void {
     icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -201,7 +257,17 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // SEC-08: Only allow http(s): URLs through shell.openExternal
+    try {
+      const parsed = new URL(details.url)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(details.url)
+      } else {
+        logToFile(`Blocked openExternal for disallowed protocol: ${parsed.protocol}`)
+      }
+    } catch {
+      logToFile(`Blocked openExternal for invalid URL: ${details.url}`)
+    }
     return { action: 'deny' }
   })
 
@@ -289,9 +355,52 @@ app.whenReady().then(async () => {
     createConnectionWindow('sftp', sessionId, profileId, title, token)
   })
 
+  // ─── Path validation for local filesystem operations ────────────────
+  // Resolves user-supplied paths against allowed base directories to
+  // prevent path-traversal / arbitrary filesystem access (SEC-04).
+  const ALLOWED_BASE_DIRS: ReadonlySet<string> = new Set([
+    realpathSync(os.homedir())
+  ])
+
+  function validateFilePath(userPath: string): string {
+    if (!userPath || typeof userPath !== 'string') {
+      throw new Error('Invalid path')
+    }
+
+    // Resolve relative paths against homedir
+    const resolvedPath = isAbsolute(userPath) ? resolve(userPath) : resolve(os.homedir(), userPath)
+
+    // For existing paths, resolve symlinks and '..' to get the canonical path
+    let realPath: string
+    if (existsSync(resolvedPath)) {
+      realPath = realpathSync(resolvedPath)
+    } else {
+      // For new files/dirs, resolve the parent directory
+      const parentDir = dirname(resolvedPath)
+      // Verify the parent exists and is within bounds
+      if (!existsSync(parentDir)) {
+        throw new Error(`Parent directory does not exist: "${userPath}"`)
+      }
+      const realParent = realpathSync(parentDir)
+      realPath = join(realParent, basename(resolvedPath))
+    }
+
+    // Must be within one of the allowed base directories
+    const withinBounds = [...ALLOWED_BASE_DIRS].some((base) => {
+      const rel = relative(base, realPath)
+      return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+    })
+
+    if (!withinBounds) {
+      throw new Error(`Access denied: path is outside allowed directories`)
+    }
+
+    return realPath
+  }
+
   ipcMain.handle('fs:readDir', async (_, dirPath) => {
     try {
-      const p = dirPath || os.homedir()
+      const p = dirPath ? validateFilePath(dirPath) : realpathSync(os.homedir())
       const dirents = await readdir(p, { withFileTypes: true })
       const files = await Promise.all(
         dirents.map(async (d) => {
@@ -317,11 +426,29 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('fs:executeOp', async (_, op, args) => {
     try {
-      if (op === 'mkdir') await mkdir(args.path)
-      else if (op === 'rename') await rename(args.oldPath, args.newPath)
-      else if (op === 'delete') await rm(args.path, { recursive: true, force: true })
-      else if (op === 'writeFile') writeFileSync(args.path, args.content, 'utf8')
-      else if (op === 'readFile') return readFileSync(args.path, 'utf8')
+      // Validate all file paths against allowed base directories (SEC-04)
+      if (op === 'mkdir') {
+        const safePath = validateFilePath(args.path)
+        await mkdir(safePath)
+      } else if (op === 'rename') {
+        const safeOld = validateFilePath(args.oldPath)
+        const safeNew = validateFilePath(args.newPath)
+        await rename(safeOld, safeNew)
+      } else if (op === 'delete') {
+        const safePath = validateFilePath(args.path)
+        // Only allow deleting files, not recursive directories
+        const stat_result = await stat(safePath)
+        if (stat_result.isDirectory()) {
+          throw new Error('Directory deletion not allowed via this API')
+        }
+        await rm(safePath, { force: true })
+      } else if (op === 'writeFile') {
+        const safePath = validateFilePath(args.path)
+        writeFileSync(safePath, args.content, 'utf8')
+      } else if (op === 'readFile') {
+        const safePath = validateFilePath(args.path)
+        return readFileSync(safePath, 'utf8')
+      }
       return true
     } catch (err: unknown) {
       throw new Error(err instanceof Error ? err.message : String(err))
@@ -345,6 +472,21 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// ─── Connection-window token exchange (SEC-07) ─────────────────────
+// Holds JWTs briefly so child windows can retrieve them via IPC
+// instead of embedding the token in the loadable URL.
+const pendingConnectionTokens = new Map<string, { token: string; timer: NodeJS.Timeout }>()
+
+ipcMain.handle('get-connection-token', (_event, sessionId: string) => {
+  const entry = pendingConnectionTokens.get(sessionId)
+  if (entry) {
+    clearTimeout(entry.timer)
+    pendingConnectionTokens.delete(sessionId)
+    return entry.token
+  }
+  return null
 })
 
 // Clean up the backend process when Electron quits

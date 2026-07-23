@@ -125,16 +125,32 @@ export default function App(): React.JSX.Element {
   const [state, setState] = useState<AppState>('loading')
 
   useEffect(() => {
-    // Check if token is passed in the URL (hash or query)
-    const hash = window.location.hash
-    const searchParams = new URLSearchParams(
-      hash.includes('?') ? hash.split('?')[1] : window.location.search
-    )
-    const urlToken = searchParams.get('token')
-    if (urlToken) {
-      sessionStorage.setItem('jwt', urlToken)
+    async function initToken(): Promise<void> {
+      const hash = window.location.hash
+
+      // SEC-07: In connection windows, retrieve token via secure IPC
+      // instead of embedding it in the URL. Match /connection/<type>/<sessionId>
+      const connectionMatch = hash.match(/^#\/connection\/\w+\/([^?]+)/)
+      if (connectionMatch) {
+        const sessionId = connectionMatch[1]
+        const connectionToken = await window.api.getConnectionToken(sessionId)
+        if (connectionToken) {
+          sessionStorage.setItem('jwt', connectionToken)
+          return
+        }
+      }
+
+      // Fallback: legacy URL hash token (backward compat)
+      const searchParams = new URLSearchParams(
+        hash.includes('?') ? hash.split('?')[1] : window.location.search
+      )
+      const urlToken = searchParams.get('token')
+      if (urlToken) {
+        sessionStorage.setItem('jwt', urlToken)
+      }
     }
-    checkStatus(12) // 12 retries × 1 s = up to 12 s while backend starts
+
+    initToken().then(() => checkStatus(12)) // 12 retries × 1 s = up to 12 s while backend starts
   }, [])
 
   async function checkStatus(retriesLeft: number): Promise<void> {

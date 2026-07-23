@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { Client, ConnectConfig } from 'ssh2'
 import { Profile } from '@prisma/client'
 import { CryptoService } from './crypto.service'
@@ -19,7 +20,7 @@ export class SSHService {
 
   static async createSession(profile: Profile): Promise<SSHSession> {
     const client = new Client()
-    const sessionId = `session-${Date.now()}`
+    const sessionId = `session-${randomUUID()}`
 
     const connectConfig: ConnectConfig = {
       host: profile.host,

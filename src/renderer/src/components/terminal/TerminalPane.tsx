@@ -12,6 +12,10 @@ interface TerminalPaneProps {
   sessionId: string
 }
 
+function getWsToken(): string | null {
+  return sessionStorage.getItem('jwt')
+}
+
 export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Element {
   const terminalRef = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
@@ -65,9 +69,10 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
       }
     })
 
-    // Connect WebSocket
+    // Connect WebSocket with JWT auth token (SEC-03)
     const backendPort = window.api.backendPort
-    const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}`
+    const wsToken = getWsToken()
+    const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`
     ws.current = new WebSocket(wsUrl)
 
     ws.current.onopen = () => {

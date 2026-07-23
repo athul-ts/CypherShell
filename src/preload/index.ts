@@ -32,7 +32,8 @@ const api = {
   },
   readLocalDir: (dirPath?: string) => ipcRenderer.invoke('fs:readDir', dirPath),
   executeLocalFileOp: (op: string, args: LocalFileOpArgs) =>
-    ipcRenderer.invoke('fs:executeOp', op, args)
+    ipcRenderer.invoke('fs:executeOp', op, args),
+  getConnectionToken: (sessionId: string) => ipcRenderer.invoke('get-connection-token', sessionId)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { prisma } from '../config/db'
 import { CryptoService } from '../services/crypto.service'
+import { TokenStore } from '../services/token-store.service'
 import { env } from '../config/env'
 import { z } from 'zod'
 
@@ -14,7 +15,9 @@ const UnlockSchema = z.object({
 })
 
 function generateJWT(): string {
-  return jwt.sign({ session: 'active' }, env.jwtSecret, { expiresIn: '8h' })
+  // Include a random jti so tokens can be individually revoked on lock (SEC-06)
+  const jti = TokenStore.issue()
+  return jwt.sign({ session: 'active', jti }, env.jwtSecret, { expiresIn: '1h' })
 }
 
 export async function getStatus(_req: Request, res: Response): Promise<void> {
@@ -74,8 +77,9 @@ export async function setupSkip(_req: Request, res: Response): Promise<void> {
     }
   })
 
-  // Use a hardcoded dummy password since lock is disabled
-  const key = await CryptoService.deriveKey('UNLOCKED_NO_PASSWORD', salt)
+  // Use the OS-managed storage key (SEC-05 — never a public constant)
+  const skipPassword = process.env.STORAGE_KEY || 'UNLOCKED_NO_PASSWORD'
+  const key = await CryptoService.deriveKey(skipPassword, salt)
   CryptoService.setActiveKey(key)
 
   const token = generateJWT()
@@ -96,8 +100,9 @@ export async function unlock(req: Request, res: Response): Promise<void> {
   }
 
   if (!config.lockEnabled) {
-    // If lock is disabled, we just use the dummy key
-    const key = await CryptoService.deriveKey('UNLOCKED_NO_PASSWORD', config.encryptionKeySalt)
+    // If lock is disabled, derive key from the OS-managed storage key (SEC-05)
+    const skipPassword = process.env.STORAGE_KEY || 'UNLOCKED_NO_PASSWORD'
+    const key = await CryptoService.deriveKey(skipPassword, config.encryptionKeySalt)
     CryptoService.setActiveKey(key)
     res.json({ token: generateJWT() })
     return
@@ -128,6 +133,6 @@ export async function unlock(req: Request, res: Response): Promise<void> {
 
 export async function lock(_req: Request, res: Response): Promise<void> {
   CryptoService.clearActiveKey()
-  // Client should clear its JWT token; server is stateless
+  TokenStore.revokeAll() // Invalidate all issued JWTs immediately (SEC-06)
   res.json({ success: true })
 }

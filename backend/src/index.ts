@@ -9,8 +9,7 @@ import keyRoutes from './routes/key.routes'
 import tunnelRoutes from './routes/tunnel.routes'
 import auditRoutes from './routes/audit.routes'
 import configRoutes from './routes/config.routes'
-import { requireAuth } from './middleware/auth.middleware'
-import { requireAuthFlexible } from './middleware/auth.middleware'
+import { requireAuth, requireAuthFlexible } from './middleware/auth.middleware'
 import { ConfigService } from './services/config.service'
 import { AuditService } from './services/audit.service'
 import { progressStream } from './controllers/sftp.controller'
@@ -22,7 +21,30 @@ async function bootstrap(): Promise<void> {
 
   const app = express()
 
-  app.use(cors({ origin: '*' }))
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow server-to-server (no origin) — curl, health checks
+      if (!origin) return callback(null, true)
+
+      // In dev mode, the Vite dev server origin comes via env
+      const allowedFromEnv = process.env.ALLOWED_CORS_ORIGINS
+      if (allowedFromEnv) {
+        const origins = new Set(allowedFromEnv.split(',').map((o) => o.trim().replace(/\/$/, '')))
+        if (origins.has(origin) || origins.has('*')) return callback(null, true)
+      }
+
+      // Allow file:// and null (production renderer via HashRouter)
+      if (origin === 'file://' || origin === 'null') return callback(null, true)
+
+      // Allow any localhost origin (dev mode fallback)
+      if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin)) {
+        return callback(null, true)
+      }
+
+      callback(new Error('Not allowed by CORS'))
+    }
+  }))
+  app.disable('x-powered-by') // SEC: don't leak framework version
   app.use(express.json())
 
   // Rate limiting — per SRS §10.5

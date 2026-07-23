@@ -1,6 +1,25 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { env } from '../config/env'
+import { TokenStore } from '../services/token-store.service'
+
+interface JwtPayload {
+  session: string
+  jti?: string
+  iat?: number
+  exp?: number
+}
+
+function verifyToken(token: string): JwtPayload {
+  const payload = jwt.verify(token, env.jwtSecret) as JwtPayload
+
+  // Reject revoked tokens (SEC-06)
+  if (payload.jti && !TokenStore.validate(payload.jti)) {
+    throw new Error('Token revoked')
+  }
+
+  return payload
+}
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization
@@ -10,7 +29,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
   const token = authHeader.slice(7)
   try {
-    jwt.verify(token, env.jwtSecret)
+    verifyToken(token)
     next()
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' })
@@ -33,7 +52,7 @@ export function requireAuthFlexible(req: Request, res: Response, next: NextFunct
     return
   }
   try {
-    jwt.verify(token, env.jwtSecret)
+    verifyToken(token)
     next()
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' })

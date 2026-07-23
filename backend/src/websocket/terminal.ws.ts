@@ -1,5 +1,7 @@
 import WebSocket, { WebSocketServer } from 'ws'
 import { Server } from 'http'
+import jwt from 'jsonwebtoken'
+import { env } from '../config/env'
 import { SSHService } from '../services/ssh.service'
 
 export function setupTerminalWebSocket(server: Server): void {
@@ -7,6 +9,24 @@ export function setupTerminalWebSocket(server: Server): void {
 
   server.on('upgrade', (request, socket, head) => {
     if (request.url?.startsWith('/ws/terminal/')) {
+      // Extract token from query parameter (SEC-03)
+      const urlObj = new URL(request.url, 'http://localhost')
+      const token = urlObj.searchParams.get('token')
+
+      if (!token) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        socket.destroy()
+        return
+      }
+
+      try {
+        jwt.verify(token, env.jwtSecret)
+      } catch {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        socket.destroy()
+        return
+      }
+
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request)
       })
