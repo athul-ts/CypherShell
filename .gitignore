@@ -78,6 +78,12 @@ backend/generated/prisma/
 # ========================
 coverage/
 .nyc_output/
+tests/backend/test.db
+tests/backend/test.db-shm
+tests/backend/test.db-wal
+tests/e2e/screenshots/
+tests/e2e/report/
+playwright-report/
 
 # ========================
 # Package Manager Locks (uncomment one to ignore)

@@ -28,3 +28,35 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install root dependencies (with native rebuild for better-sqlite3)
+        run: npm ci
+
+      - name: Rebuild better-sqlite3 for current Node version
+        run: npm rebuild better-sqlite3 --prefix backend
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+
+      - name: Run backend tests
+        run: npm run test:backend
+
+      - name: Run renderer tests
+        run: npm run test:renderer
