@@ -643,7 +643,7 @@ Export and import connection profiles as JSON files for backup, sharing, and mig
 - FR-09.2 — Exported JSON includes all profile metadata: `name`, `host`, `port`, `username`, `authMethod`, `group`, `description`, and port-forwarding rules ✅
 - FR-09.3 — Exported JSON explicitly excludes all SSH key material (no private key, passphrase, or encrypted blob); if a profile has a linked key, only the key's display name is noted in a `linkedKeyName` field as a user hint ✅
 - FR-09.4 — Import profiles from a CypherShell profile export `.json` file via native file picker ✅
-- FR-09.5 — On import, if `linkedKeyName` is present, the profile is created with `sshKeyId = null` and a visible per-profile notice tells the user to re-link the key manually ✅
+- FR-09.5 — On import, if `linkedKeyName` is present, the backend resolves it against existing SSH keys by name and links the profile automatically. ✅
 - FR-09.6 — A single export file may contain multiple profiles; all are imported in one operation ✅
 - FR-09.7 — On import conflict (profile name already exists), the user is shown a per-profile choice: **Skip**, **Rename** (append suffix), or **Overwrite** ✅
 - FR-09.8 — Export action is accessible from the Profiles list page — both a global "Export All" and a per-profile context menu "Export" ✅
@@ -653,7 +653,7 @@ Export and import connection profiles as JSON files for backup, sharing, and mig
 
 - [ ] Exporting a profile that uses key-based auth produces a JSON file with no private key or passphrase field — only `linkedKeyName` with the key's display name
 - [ ] Exporting a profile that uses password auth produces a JSON file with no password field (passwords are never exported)
-- [ ] Importing a valid export file creates all profiles in the database; profiles with `linkedKeyName` show a "re-link key" notice in the UI
+- [ ] Importing a valid export file creates all profiles in the database; profiles with `linkedKeyName` are automatically linked to matching SSH keys by name
 - [ ] Importing with a conflict (duplicate name) shows the Skip / Rename / Overwrite dialog — not a silent overwrite
 - [ ] Import and export round-trip: export a profile, delete it, re-import — profile appears with correct metadata and `sshKeyId = null`
 

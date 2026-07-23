@@ -160,7 +160,7 @@
 | FR-09.2 | Export includes metadata: name, host, port, username, authMethod, group, description, port-forwarding rules | ✅ |
 | FR-09.3 | Export explicitly excludes all SSH key material; `linkedKeyName` included as hint only | ✅ |
 | FR-09.4 | Import profiles from a CypherShell profile export `.json` file | ✅ |
-| FR-09.5 | On import, profiles with `linkedKeyName` created with `sshKeyId = null` + visible re-link notice | ✅ |
+| FR-09.5 | On import, profiles with `linkedKeyName` resolve to existing SSH key by name and link automatically | ✅ |
 | FR-09.6 | Single export file may contain multiple profiles; all imported in one operation | ✅ |
 | FR-09.7 | Import conflict (name exists): user chooses Skip / Rename / Overwrite per profile | ✅ |
 | FR-09.8 | Export action in Profiles list page (global "Export All" + per-profile context menu) | ✅ |
