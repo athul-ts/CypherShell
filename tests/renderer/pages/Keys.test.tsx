@@ -60,9 +60,9 @@ describe('Keys page', () => {
     renderWithQuery(<Keys />)
     await waitFor(() => screen.getAllByText('My SSH Key'))
 
-    const trashButtons = screen.getAllByRole('button').filter((b) =>
-      b.querySelector('svg') !== null
-    )
+    const trashButtons = screen
+      .getAllByRole('button')
+      .filter((b) => b.querySelector('svg') !== null)
     // Click the last icon button (typically the delete/trash action)
     if (trashButtons.length > 0) {
       fireEvent.click(trashButtons[trashButtons.length - 1])

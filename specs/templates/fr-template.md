@@ -31,16 +31,16 @@
 
 > Where does this touch the codebase? (Fill in as you plan the work.)
 
-| Layer | File(s) | Change needed |
-|---|---|---|
-| Backend route | `backend/src/routes/` | |
-| Backend controller | `backend/src/controllers/` | |
-| Backend service | `backend/src/services/` | |
-| DB schema | `backend/prisma/schema.prisma` | |
-| Frontend page/component | `src/renderer/src/` | |
-| Store | `src/renderer/src/store/` | |
-| API client | `src/renderer/src/lib/api.ts` | |
-| IPC (if needed) | `src/preload/index.ts` | |
+| Layer                   | File(s)                        | Change needed |
+| ----------------------- | ------------------------------ | ------------- |
+| Backend route           | `backend/src/routes/`          |               |
+| Backend controller      | `backend/src/controllers/`     |               |
+| Backend service         | `backend/src/services/`        |               |
+| DB schema               | `backend/prisma/schema.prisma` |               |
+| Frontend page/component | `src/renderer/src/`            |               |
+| Store                   | `src/renderer/src/store/`      |               |
+| API client              | `src/renderer/src/lib/api.ts`  |               |
+| IPC (if needed)         | `src/preload/index.ts`         |               |
 
 ---
 

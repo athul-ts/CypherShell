@@ -23,7 +23,9 @@ function getStream(client: SftpClient): SFTPWrapper {
 
 export class SftpService {
   static transferEvents = new EventEmitter()
-  static { SftpService.transferEvents.setMaxListeners(100) } // CODE-07
+  static {
+    SftpService.transferEvents.setMaxListeners(100)
+  } // CODE-07
   // Maps transferId → the raw ssh2 SFTPWrapper so cancelTransfer() can destroy it
   static activeTransfers = new Map<string, SFTPWrapper>()
   // Transfers explicitly cancelled — guards against emitting 'error' after cancel
@@ -38,7 +40,9 @@ export class SftpService {
     if (client) {
       try {
         await client.end()
-      } catch { /* ignore close errors */ }
+      } catch {
+        /* ignore close errors */
+      }
       this.sftpClients.delete(sessionId)
     }
   }
@@ -147,7 +151,9 @@ export class SftpService {
         },
         (err?: Error | null) => {
           this.activeTransfers.delete(transferId)
-          const cleanup = (): void => { stream.unlink(tempPath, () => {}) }
+          const cleanup = (): void => {
+            stream.unlink(tempPath, () => {})
+          }
           if (this.cancelledTransfers.has(transferId)) {
             this.cancelledTransfers.delete(transferId)
             cleanup()

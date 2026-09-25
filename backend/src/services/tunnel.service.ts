@@ -60,7 +60,10 @@ export class TunnelService {
 
   // CODE-05: Per-session map of remotePort → forward target, used by a
   // single shared tcp connection dispatcher instead of a hardcoded 1-to-1.
-  private static remoteForwards = new Map<string, Map<number, { localHost: string; localPort: number }>>()
+  private static remoteForwards = new Map<
+    string,
+    Map<number, { localHost: string; localPort: number }>
+  >()
 
   static async startRemoteForward(
     sessionId: string,
@@ -91,7 +94,10 @@ export class TunnelService {
         if (!session.hasTcpListener) {
           session.client.on('tcp connection', (details, acceptConnection, rejectConnection) => {
             const fwd = sessionForwards?.get(details.destPort)
-            if (!fwd) { rejectConnection(); return }
+            if (!fwd) {
+              rejectConnection()
+              return
+            }
             const socket = net.connect(fwd.localPort, fwd.localHost, () => {
               const stream = acceptConnection()
               socket.pipe(stream)
@@ -134,7 +140,10 @@ export class TunnelService {
       function tryParse(): void {
         if (state === 'GREETING') {
           if (buf.length < 3) return
-          if (buf[0] !== 0x05) { socket.end(); return }
+          if (buf[0] !== 0x05) {
+            socket.end()
+            return
+          }
           const nmethods = buf[1]
           const total = 2 + nmethods
           if (buf.length < total) return
@@ -144,7 +153,10 @@ export class TunnelService {
           tryParse() // data may already contain the request
         } else if (state === 'REQUEST') {
           if (buf.length < 5) return
-          if (buf[0] !== 0x05 || buf[1] !== 0x01) { socket.end(); return }
+          if (buf[0] !== 0x05 || buf[1] !== 0x01) {
+            socket.end()
+            return
+          }
           const atyp = buf[3]
           let headerLen: number
           if (atyp === 0x01) {
@@ -152,7 +164,8 @@ export class TunnelService {
           } else if (atyp === 0x03) {
             headerLen = 5 + buf[4] + 2 // ver+cmd+rsv+atyp + nameLen + name + port
           } else {
-            socket.end(); return
+            socket.end()
+            return
           }
           if (buf.length < headerLen) return
 
@@ -211,7 +224,11 @@ export class TunnelService {
   static cleanupSession(sessionId: string): void {
     for (const [id, server] of this.localServers) {
       if (id.includes(`-${sessionId}-`)) {
-        try { server.close() } catch { /* ignore */ }
+        try {
+          server.close()
+        } catch {
+          /* ignore */
+        }
         this.localServers.delete(id)
       }
     }

@@ -28,6 +28,7 @@ CRA is deprecated and has no active maintenance path.
 Plain Vite would require manual configuration for the main process, preload scripts, and IPC bridge — electron-vite handles all three in a single unified `electron.vite.config.ts`.
 
 electron-vite is the community-standard build toolchain for Electron + Vite + React. It provides:
+
 - Unified config for main process, preload, and renderer
 - HMR (Hot Module Replacement) in dev mode for all three layers
 - Correct external/bundle handling for Node built-ins and Electron APIs

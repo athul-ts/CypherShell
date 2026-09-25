@@ -19,7 +19,7 @@ export let prisma: PrismaClient
 function resolveMigrationsDir(): string | null {
   const candidates = [
     path.join(__dirname, '../../prisma/migrations'), // dev
-    path.join(__dirname, '../prisma/migrations')     // production
+    path.join(__dirname, '../prisma/migrations') // production
   ]
   return candidates.find((p) => fs.existsSync(p)) ?? null
 }
@@ -125,7 +125,9 @@ export async function initDatabase(): Promise<void> {
       logger.error('Failed to run log cleanup: ' + (e instanceof Error ? e.message : String(e)))
     }
   } catch (error) {
-    logger.error('Database initialization failed: ' + (error instanceof Error ? error.message : String(error)))
+    logger.error(
+      'Database initialization failed: ' + (error instanceof Error ? error.message : String(error))
+    )
     process.exit(1)
   }
 }

@@ -16,9 +16,7 @@ const MAIN_JS = path.resolve('out/main/index.js')
 
 test.beforeAll(() => {
   if (!fs.existsSync(MAIN_JS)) {
-    throw new Error(
-      `Built app not found at ${MAIN_JS}. Run \`npm run build:e2e\` first.`
-    )
+    throw new Error(`Built app not found at ${MAIN_JS}. Run \`npm run build:e2e\` first.`)
   }
 })
 
@@ -29,10 +27,7 @@ function makeTestDb(): string {
 test('app launches and shows the initial UI', async () => {
   const dbPath = makeTestDb()
   const app = await electron.launch({
-    args: [
-      MAIN_JS,
-      ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])
-    ],
+    args: [MAIN_JS, ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])],
     env: {
       ...process.env,
       DATABASE_URL: `file:${dbPath}`,
@@ -65,10 +60,7 @@ test('app launches and shows the initial UI', async () => {
 test('setup wizard — skip lock renders dashboard', async () => {
   const dbPath = makeTestDb()
   const app = await electron.launch({
-    args: [
-      MAIN_JS,
-      ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])
-    ],
+    args: [MAIN_JS, ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])],
     env: {
       ...process.env,
       DATABASE_URL: `file:${dbPath}`,

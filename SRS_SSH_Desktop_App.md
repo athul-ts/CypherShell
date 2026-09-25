@@ -1,15 +1,19 @@
 # Software Requirements Specification (SRS)
+
 ## CypherShell — Secure SSH Desktop Client
+
 **Version:** 3.2
 **Author:** Athul T S
 **Date:** 2026-06-13
 **Status:** Living Document — v1.0 Feature Complete, v1.1 Backlog Active
 
 > **Changelog from v3.1:**
+>
 > - Added FR-09: Profile Export/Import (data portability — no key material in profile export)
 > - Added FR-10: SSH Key Export/Import (encrypted .cskb bundle with user-supplied passphrase)
 
 > **Changelog from v3.0:**
+>
 > - Updated §8.0: migration strategy now uses `better-sqlite3` directly at runtime (no Prisma CLI)
 > - Updated §8.1: `binaryTargets = ["native"]` (was multi-platform list)
 > - Updated §15 risk table: resolved "bundle > 200 MB" (101 MB installer) and "Prisma engine binary" risks
@@ -18,6 +22,7 @@
 > - Synced ADR-003 with new migration strategy and `after-pack.cjs` rebuild approach
 
 > **Changelog from v2.0:**
+>
 > - Corrected all tech stack versions to match actual implementation
 > - Updated folder structure to match current codebase
 > - Updated API design with all actual routes (config, audit, tunnel)
@@ -59,6 +64,7 @@ This document defines the complete software requirements for **CypherShell** —
 ### 1.2 Project Goal
 
 Build a cross-platform desktop SSH client that allows users to:
+
 - Connect to remote servers via SSH
 - Manage files via SFTP
 - Forward ports (local, remote, dynamic SOCKS5)
@@ -75,25 +81,26 @@ Next.js was considered and rejected. All of its primary value — SSR, Server Co
 
 ### 1.4 Definitions & Acronyms
 
-| Term | Meaning |
-|------|---------|
-| SSH | Secure Shell Protocol |
-| SFTP | SSH File Transfer Protocol |
-| SRS | Software Requirements Specification |
-| IPC | Inter-Process Communication (Electron main ↔ renderer) |
-| PTY | Pseudo-terminal — required for interactive SSH shell |
-| xterm.js | In-browser terminal emulator library (used by VS Code) |
-| ssh2 | Node.js SSH client library |
-| AES-256-GCM | Advanced Encryption Standard, 256-bit Galois/Counter Mode |
-| JWT | JSON Web Token |
-| electron-vite | Build tool for Electron apps using Vite as the bundler |
-| Prisma | Type-safe ORM with auto-generated TypeScript client |
-| shadcn/ui | Copy-owned Radix UI primitives styled with Tailwind CSS |
-| SSE | Server-Sent Events — one-way HTTP streaming from server to browser |
+| Term          | Meaning                                                            |
+| ------------- | ------------------------------------------------------------------ |
+| SSH           | Secure Shell Protocol                                              |
+| SFTP          | SSH File Transfer Protocol                                         |
+| SRS           | Software Requirements Specification                                |
+| IPC           | Inter-Process Communication (Electron main ↔ renderer)             |
+| PTY           | Pseudo-terminal — required for interactive SSH shell               |
+| xterm.js      | In-browser terminal emulator library (used by VS Code)             |
+| ssh2          | Node.js SSH client library                                         |
+| AES-256-GCM   | Advanced Encryption Standard, 256-bit Galois/Counter Mode          |
+| JWT           | JSON Web Token                                                     |
+| electron-vite | Build tool for Electron apps using Vite as the bundler             |
+| Prisma        | Type-safe ORM with auto-generated TypeScript client                |
+| shadcn/ui     | Copy-owned Radix UI primitives styled with Tailwind CSS            |
+| SSE           | Server-Sent Events — one-way HTTP streaming from server to browser |
 
 ### 1.5 Scope
 
 v1. Desktop-only Electron app:
+
 - React (Vite) renderer for all UI
 - Local Express.js backend spawned by Electron main for SSH/SFTP/DB
 - SQLite as the embedded database (zero user installation required)
@@ -124,16 +131,16 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 
 ### 2.3 Operating Environment
 
-| Item | Detail |
-|------|--------|
-| OS | Windows 10+, macOS 12+, Ubuntu 20.04+ |
-| Architecture | x64, ARM64 (Apple Silicon) |
-| Runtime | Node.js 20+ bundled inside Electron — user installs nothing |
-| Electron | v39 |
-| Minimum RAM | 512MB |
-| Disk space | ~200MB installed |
-| Network | Active connection to target SSH servers |
-| Local DB | SQLite — single `.db` file in OS user data directory, auto-created |
+| Item         | Detail                                                             |
+| ------------ | ------------------------------------------------------------------ |
+| OS           | Windows 10+, macOS 12+, Ubuntu 20.04+                              |
+| Architecture | x64, ARM64 (Apple Silicon)                                         |
+| Runtime      | Node.js 20+ bundled inside Electron — user installs nothing        |
+| Electron     | v39                                                                |
+| Minimum RAM  | 512MB                                                              |
+| Disk space   | ~200MB installed                                                   |
+| Network      | Active connection to target SSH servers                            |
+| Local DB     | SQLite — single `.db` file in OS user data directory, auto-created |
 
 ### 2.4 Assumptions
 
@@ -149,46 +156,46 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 
 ### 3.1 Final Stack (Actual Versions as Shipped)
 
-| Layer | Technology | Version | Why |
-|-------|-----------|---------|-----|
-| Desktop Shell | Electron | 39 | Full OS access — native FS, SSH key storage, system tray, native dialogs |
-| Build Toolchain | electron-vite | 5.0 | Purpose-built for Electron + React. Unified config for main, preload, renderer. HMR in dev |
-| Frontend | React + TypeScript | 19 / 5.9 | Component model, hooks, full type safety |
-| Styling | Tailwind CSS | v3.4 | Utility-first, no runtime overhead |
-| UI Components | shadcn/ui | Latest | Accessible Radix primitives styled with Tailwind. Copy-owned — no version lock |
-| Client Routing | React Router | v7 | SPA routing — HashRouter for Electron file:// compat |
-| Terminal | xterm.js | 6.0 | Industry-standard in-browser terminal emulator (same as VS Code) |
-| State Management | Zustand | 5 | Minimal boilerplate, no Provider nesting |
-| Data Fetching | TanStack Query | v5 | Async state, caching, retry, loading/error handling |
-| HTTP Client | Axios | 1.16 | JWT interceptor, base URL from preload port |
-| Backend | Express.js + TypeScript | 4 | Simple, fast, full Node.js runtime for native modules |
-| SSH | ssh2 | Latest | Most popular Node.js SSH library, actively maintained |
-| SFTP | ssh2-sftp-client | Latest | Wraps ssh2 for clean SFTP operations |
-| WebSocket | ws | Latest | Lightweight WebSocket server for SSH terminal I/O streaming |
-| Database | SQLite + Prisma | Latest | Zero install, single file DB, full auto-generated TS types |
-| SQLite Adapter | better-sqlite3 | Latest | Native WAL-mode SQLite bindings |
-| Password Hashing | bcrypt | Latest | Master password hashing (cost factor 12) |
-| Auth Tokens | jsonwebtoken | Latest | Short-lived JWT between renderer and local Express |
-| Encryption | Node.js `crypto` (built-in) | — | AES-256-GCM for all secrets at rest |
-| Key Derivation | PBKDF2 via `crypto` (built-in) | — | Derives AES key from master password at unlock |
-| Validation | zod | Latest | Runtime schema validation on all API inputs |
-| Key Generation | node-forge | Latest | RSA/ED25519 keypair generation |
-| PPK Conversion | sshpk | Latest | PuTTY PPK → OpenSSH conversion |
-| Port Discovery | portfinder | Latest | Auto-selects a free localhost port for Express on startup |
-| Icons | lucide-react | 1.16 | Consistent icon set |
-| Drag & Drop | @hello-pangea/dnd | Latest | Tab drag-to-reorder (maintained react-beautiful-dnd fork) |
-| File Upload UI | react-dropzone | Latest | Drag-and-drop SFTP upload |
+| Layer            | Technology                     | Version  | Why                                                                                        |
+| ---------------- | ------------------------------ | -------- | ------------------------------------------------------------------------------------------ |
+| Desktop Shell    | Electron                       | 39       | Full OS access — native FS, SSH key storage, system tray, native dialogs                   |
+| Build Toolchain  | electron-vite                  | 5.0      | Purpose-built for Electron + React. Unified config for main, preload, renderer. HMR in dev |
+| Frontend         | React + TypeScript             | 19 / 5.9 | Component model, hooks, full type safety                                                   |
+| Styling          | Tailwind CSS                   | v3.4     | Utility-first, no runtime overhead                                                         |
+| UI Components    | shadcn/ui                      | Latest   | Accessible Radix primitives styled with Tailwind. Copy-owned — no version lock             |
+| Client Routing   | React Router                   | v7       | SPA routing — HashRouter for Electron file:// compat                                       |
+| Terminal         | xterm.js                       | 6.0      | Industry-standard in-browser terminal emulator (same as VS Code)                           |
+| State Management | Zustand                        | 5        | Minimal boilerplate, no Provider nesting                                                   |
+| Data Fetching    | TanStack Query                 | v5       | Async state, caching, retry, loading/error handling                                        |
+| HTTP Client      | Axios                          | 1.16     | JWT interceptor, base URL from preload port                                                |
+| Backend          | Express.js + TypeScript        | 4        | Simple, fast, full Node.js runtime for native modules                                      |
+| SSH              | ssh2                           | Latest   | Most popular Node.js SSH library, actively maintained                                      |
+| SFTP             | ssh2-sftp-client               | Latest   | Wraps ssh2 for clean SFTP operations                                                       |
+| WebSocket        | ws                             | Latest   | Lightweight WebSocket server for SSH terminal I/O streaming                                |
+| Database         | SQLite + Prisma                | Latest   | Zero install, single file DB, full auto-generated TS types                                 |
+| SQLite Adapter   | better-sqlite3                 | Latest   | Native WAL-mode SQLite bindings                                                            |
+| Password Hashing | bcrypt                         | Latest   | Master password hashing (cost factor 12)                                                   |
+| Auth Tokens      | jsonwebtoken                   | Latest   | Short-lived JWT between renderer and local Express                                         |
+| Encryption       | Node.js `crypto` (built-in)    | —        | AES-256-GCM for all secrets at rest                                                        |
+| Key Derivation   | PBKDF2 via `crypto` (built-in) | —        | Derives AES key from master password at unlock                                             |
+| Validation       | zod                            | Latest   | Runtime schema validation on all API inputs                                                |
+| Key Generation   | node-forge                     | Latest   | RSA/ED25519 keypair generation                                                             |
+| PPK Conversion   | sshpk                          | Latest   | PuTTY PPK → OpenSSH conversion                                                             |
+| Port Discovery   | portfinder                     | Latest   | Auto-selects a free localhost port for Express on startup                                  |
+| Icons            | lucide-react                   | 1.16     | Consistent icon set                                                                        |
+| Drag & Drop      | @hello-pangea/dnd              | Latest   | Tab drag-to-reorder (maintained react-beautiful-dnd fork)                                  |
+| File Upload UI   | react-dropzone                 | Latest   | Drag-and-drop SFTP upload                                                                  |
 
 ### 3.2 electron-vite vs Alternatives
 
-| Concern | electron-vite | CRA / plain Webpack |
-|---------|--------------|---------------------|
-| Dev server startup | ~300ms | 5–15s |
-| Hot Module Replacement | Native, instant | Slow or broken |
-| Main + preload + renderer | Unified one config | Multiple separate configs |
-| TypeScript | First-class | Requires setup |
-| Output for Electron | Optimized (ESM) | Larger bundles |
-| Community | Growing standard for Electron+React | Legacy |
+| Concern                   | electron-vite                       | CRA / plain Webpack       |
+| ------------------------- | ----------------------------------- | ------------------------- |
+| Dev server startup        | ~300ms                              | 5–15s                     |
+| Hot Module Replacement    | Native, instant                     | Slow or broken            |
+| Main + preload + renderer | Unified one config                  | Multiple separate configs |
+| TypeScript                | First-class                         | Requires setup            |
+| Output for Electron       | Optimized (ESM)                     | Larger bundles            |
+| Community                 | Growing standard for Electron+React | Legacy                    |
 
 ### 3.3 Full Architecture Diagram
 
@@ -272,18 +279,18 @@ Runs in an isolated context with Node.js access. Exposes a safe `window.api` sur
 
 ```typescript
 interface ElectronAPI {
-  backendPort:         number;
-  openFileDialog:      () => Promise<string[]>;
-  openDirectoryDialog: () => Promise<string>;
-  saveFileDialog:      (defaultName: string) => Promise<string | null>;
-  appVersion:          string;
-  openTerminalWindow:  (sessionId: string, token: string) => void;
-  openSftpWindow:      (sessionId: string, token: string) => void;
-  readDir:             (dirPath: string) => Promise<DirEntry[]>;
-  executeOp:           (op: FsOp) => Promise<void>;
-  onUpdateAvailable:   (cb: () => void) => void;
-  onUpdateDownloaded:  (cb: () => void) => void;
-  installUpdate:       () => void;
+  backendPort: number
+  openFileDialog: () => Promise<string[]>
+  openDirectoryDialog: () => Promise<string>
+  saveFileDialog: (defaultName: string) => Promise<string | null>
+  appVersion: string
+  openTerminalWindow: (sessionId: string, token: string) => void
+  openSftpWindow: (sessionId: string, token: string) => void
+  readDir: (dirPath: string) => Promise<DirEntry[]>
+  executeOp: (op: FsOp) => Promise<void>
+  onUpdateAvailable: (cb: () => void) => void
+  onUpdateDownloaded: (cb: () => void) => void
+  installUpdate: () => void
 }
 ```
 
@@ -504,14 +511,14 @@ CypherShell/
 
 #### Implementation Notes
 
-| Layer | File(s) | Change needed |
-|---|---|---|
-| Frontend form | `src/renderer/src/components/profiles/ProfileForm.tsx` | Pass `profile` prop for edit mode; wire `PUT /api/profiles/:id` mutation alongside existing create path |
+| Layer              | File(s)                                                      | Change needed                                                                                                |
+| ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Frontend form      | `src/renderer/src/components/profiles/ProfileForm.tsx`       | Pass `profile` prop for edit mode; wire `PUT /api/profiles/:id` mutation alongside existing create path      |
 | Profile Detail tab | `src/renderer/src/components/profiles/ProfileDetailPane.tsx` | Add "Edit Profile" button (pencil icon); manage `editOpen` state; render `<ProfileForm profile={profile} …>` |
-| Home page card | `src/renderer/src/pages/Home.tsx` | Add "Edit" item to profile card dropdown/context menu; pass selected profile to `ProfileForm` |
-| API client | `src/renderer/src/lib/api.ts` | Add `updateProfile(id, data)` helper (wraps `api.put`) if one does not already exist |
-| Backend route | `backend/src/routes/profiles.routes.ts` | `PUT /api/profiles/:id` already exists — no change required |
-| Backend controller | `backend/src/controllers/profiles.controller.ts` | Verify partial-update (PATCH-style) is handled correctly; encrypted fields must re-encrypt on change |
+| Home page card     | `src/renderer/src/pages/Home.tsx`                            | Add "Edit" item to profile card dropdown/context menu; pass selected profile to `ProfileForm`                |
+| API client         | `src/renderer/src/lib/api.ts`                                | Add `updateProfile(id, data)` helper (wraps `api.put`) if one does not already exist                         |
+| Backend route      | `backend/src/routes/profiles.routes.ts`                      | `PUT /api/profiles/:id` already exists — no change required                                                  |
+| Backend controller | `backend/src/controllers/profiles.controller.ts`             | Verify partial-update (PATCH-style) is handled correctly; encrypted fields must re-encrypt on change         |
 
 #### Out of Scope
 
@@ -659,15 +666,15 @@ Export and import connection profiles as JSON files for backup, sharing, and mig
 
 **Implementation Notes:**
 
-| Layer | File(s) | Change needed |
-|---|---|---|
-| Backend route | `backend/src/routes/profiles.routes.ts` | `GET /api/profiles/export`, `POST /api/profiles/import` |
-| Backend controller | `backend/src/controllers/profiles.controller.ts` | `exportProfiles`, `importProfiles` handlers |
-| Backend service | `backend/src/services/profiles.service.ts` | `buildExportPayload`, `applyImport` — strip sensitive fields on export |
-| IPC | `src/preload/index.ts` + `src/preload/index.d.ts` | Expose `showSaveDialog` and `showOpenDialog` for `.json` files |
-| Frontend component | `src/renderer/src/pages/HomePage.tsx` or new `ProfilesToolbar` | Export All / Import buttons |
-| Frontend component | `src/renderer/src/components/ImportConflictDialog.tsx` | New — Skip / Rename / Overwrite per-profile UI |
-| API client | `src/renderer/src/lib/api.ts` | `exportProfiles(ids?)`, `importProfiles(data)` |
+| Layer              | File(s)                                                        | Change needed                                                          |
+| ------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Backend route      | `backend/src/routes/profiles.routes.ts`                        | `GET /api/profiles/export`, `POST /api/profiles/import`                |
+| Backend controller | `backend/src/controllers/profiles.controller.ts`               | `exportProfiles`, `importProfiles` handlers                            |
+| Backend service    | `backend/src/services/profiles.service.ts`                     | `buildExportPayload`, `applyImport` — strip sensitive fields on export |
+| IPC                | `src/preload/index.ts` + `src/preload/index.d.ts`              | Expose `showSaveDialog` and `showOpenDialog` for `.json` files         |
+| Frontend component | `src/renderer/src/pages/HomePage.tsx` or new `ProfilesToolbar` | Export All / Import buttons                                            |
+| Frontend component | `src/renderer/src/components/ImportConflictDialog.tsx`         | New — Skip / Rename / Overwrite per-profile UI                         |
+| API client         | `src/renderer/src/lib/api.ts`                                  | `exportProfiles(ids?)`, `importProfiles(data)`                         |
 
 **Out of Scope:**
 
@@ -703,16 +710,16 @@ Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup a
 
 **Implementation Notes:**
 
-| Layer | File(s) | Change needed |
-|---|---|---|
-| Backend route | `backend/src/routes/keys.routes.ts` | `GET /api/keys/:id/export`, `POST /api/keys/import` |
-| Backend controller | `backend/src/controllers/keys.controller.ts` | `exportKey`, `importKey` handlers |
-| Backend service | `backend/src/services/keys.service.ts` | `buildKeyBundle` (re-encrypt with passphrase), `applyKeyImport` (unwrap + re-encrypt with master key) |
-| Crypto service | `backend/src/services/crypto.service.ts` | Add `derivePassphraseKey(passphrase, salt)` and `encryptWithPassphrase` / `decryptWithPassphrase` helpers |
-| IPC | `src/preload/index.ts` + `src/preload/index.d.ts` | Expose `showSaveDialog` and `showOpenDialog` for `.cskb` files (reuse if already added for FR-09) |
-| Frontend component | `src/renderer/src/components/ExportKeyDialog.tsx` | New — passphrase + confirm input before export |
-| Frontend component | `src/renderer/src/components/ImportKeyDialog.tsx` | New — file picker + passphrase input for import |
-| API client | `src/renderer/src/lib/api.ts` | `exportKey(id, passphrase)`, `importKey(bundle, passphrase)` |
+| Layer              | File(s)                                           | Change needed                                                                                             |
+| ------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Backend route      | `backend/src/routes/keys.routes.ts`               | `GET /api/keys/:id/export`, `POST /api/keys/import`                                                       |
+| Backend controller | `backend/src/controllers/keys.controller.ts`      | `exportKey`, `importKey` handlers                                                                         |
+| Backend service    | `backend/src/services/keys.service.ts`            | `buildKeyBundle` (re-encrypt with passphrase), `applyKeyImport` (unwrap + re-encrypt with master key)     |
+| Crypto service     | `backend/src/services/crypto.service.ts`          | Add `derivePassphraseKey(passphrase, salt)` and `encryptWithPassphrase` / `decryptWithPassphrase` helpers |
+| IPC                | `src/preload/index.ts` + `src/preload/index.d.ts` | Expose `showSaveDialog` and `showOpenDialog` for `.cskb` files (reuse if already added for FR-09)         |
+| Frontend component | `src/renderer/src/components/ExportKeyDialog.tsx` | New — passphrase + confirm input before export                                                            |
+| Frontend component | `src/renderer/src/components/ImportKeyDialog.tsx` | New — file picker + passphrase input for import                                                           |
+| API client         | `src/renderer/src/lib/api.ts`                     | `exportKey(id, passphrase)`, `importKey(bundle, passphrase)`                                              |
 
 **Out of Scope:**
 
@@ -726,15 +733,15 @@ Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup a
 
 ### NFR-01: Performance
 
-| Metric | Target |
-|--------|--------|
-| App cold start (Electron window open) | < 4 seconds |
-| Vite renderer ready after window opens | < 1 second |
-| SSH terminal input-to-display latency | < 50ms |
-| Profile list load (100 profiles) | < 200ms |
-| SFTP directory listing (1000 files) | < 2 seconds |
-| Maximum concurrent SSH sessions | 20 without memory issues |
-| SQLite query time (all typical queries) | < 50ms |
+| Metric                                  | Target                   |
+| --------------------------------------- | ------------------------ |
+| App cold start (Electron window open)   | < 4 seconds              |
+| Vite renderer ready after window opens  | < 1 second               |
+| SSH terminal input-to-display latency   | < 50ms                   |
+| Profile list load (100 profiles)        | < 200ms                  |
+| SFTP directory listing (1000 files)     | < 2 seconds              |
+| Maximum concurrent SSH sessions         | 20 without memory issues |
+| SQLite query time (all typical queries) | < 50ms                   |
 
 ### NFR-02: Security
 
@@ -782,13 +789,13 @@ Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup a
 
 ### 8.0 SQLite Setup
 
-| Item | Detail |
-|------|--------|
-| DB file | `app.getPath('userData')/sshclient.db` |
-| Set by | Electron main — `process.env.DATABASE_URL = file:{path}` |
-| Journal mode | WAL (enabled on init via `PRAGMA journal_mode=WAL`) |
-| Migrations | Applied on every startup via `better-sqlite3` directly (no Prisma CLI) — uses a `_prisma_migrations` table compatible with Prisma tooling |
-| Backup | User copies the `.db` file — it is self-contained |
+| Item         | Detail                                                                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| DB file      | `app.getPath('userData')/sshclient.db`                                                                                                    |
+| Set by       | Electron main — `process.env.DATABASE_URL = file:{path}`                                                                                  |
+| Journal mode | WAL (enabled on init via `PRAGMA journal_mode=WAL`)                                                                                       |
+| Migrations   | Applied on every startup via `better-sqlite3` directly (no Prisma CLI) — uses a `_prisma_migrations` table compatible with Prisma tooling |
+| Backup       | User copies the `.db` file — it is self-contained                                                                                         |
 
 ### 8.1 Prisma Schema
 
@@ -891,15 +898,15 @@ model AppConfig {
 ### 9.1 Base URL Construction (in renderer)
 
 ```typescript
-const BASE_URL = `http://127.0.0.1:${window.api.backendPort}/api`;
+const BASE_URL = `http://127.0.0.1:${window.api.backendPort}/api`
 
-export const api = axios.create({ baseURL: BASE_URL });
+export const api = axios.create({ baseURL: BASE_URL })
 
 api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('jwt');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+  const token = sessionStorage.getItem('jwt')
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
 ```
 
 ### 9.2 Auth API
@@ -1022,12 +1029,12 @@ PUT    /api/config    → Update app config
 
 ### 10.1 Encryption At Rest
 
-| Data | Column | Method |
-|------|--------|--------|
-| SSH passwords | `Profile.encryptedPassword` | AES-256-GCM |
-| SSH private keys | `SSHKey.encryptedPrivateKey` | AES-256-GCM |
-| Master password | `AppConfig.masterPasswordHash` | bcrypt cost 12 |
-| Public keys | `SSHKey.publicKey` | Plaintext (not secret) |
+| Data             | Column                         | Method                 |
+| ---------------- | ------------------------------ | ---------------------- |
+| SSH passwords    | `Profile.encryptedPassword`    | AES-256-GCM            |
+| SSH private keys | `SSHKey.encryptedPrivateKey`   | AES-256-GCM            |
+| Master password  | `AppConfig.masterPasswordHash` | bcrypt cost 12         |
+| Public keys      | `SSHKey.publicKey`             | Plaintext (not secret) |
 
 ### 10.2 Key Derivation
 
@@ -1051,10 +1058,10 @@ Express bound to `127.0.0.1:{port}` — not `0.0.0.0`. The port is not externall
 
 ### 10.5 Rate Limiting
 
-| Endpoint | Limit |
-|----------|-------|
+| Endpoint                | Limit             |
+| ----------------------- | ----------------- |
 | `POST /api/auth/unlock` | 5 attempts/minute |
-| All other API endpoints | 300 req/minute |
+| All other API endpoints | 300 req/minute    |
 
 ### 10.6 Input Validation
 
@@ -1110,12 +1117,12 @@ Standalone windows (terminal / SFTP) open independently, sized to fill screen.
 
 ### 11.4 Required UI States
 
-| State | Treatment |
-|-------|-----------|
+| State   | Treatment                                      |
+| ------- | ---------------------------------------------- |
 | Loading | Skeleton screen or spinner — never blank white |
-| Empty | Empty state with clear call-to-action |
-| Error | Red toast + inline message + retry button |
-| Success | Green toast, auto-dismiss after 3 seconds |
+| Empty   | Empty state with clear call-to-action          |
+| Error   | Red toast + inline message + retry button      |
+| Success | Green toast, auto-dismiss after 3 seconds      |
 
 ### 11.5 shadcn/ui Components Used
 
@@ -1253,35 +1260,35 @@ electron-updater          v6.8
 
 ## 14. Out of Scope (v1)
 
-| Feature | Reason | Target |
-|---------|--------|--------|
-| Cloud profile sync | Needs backend infrastructure | v2 |
-| Team / shared vaults | Requires multi-user auth model | v2 |
-| SSH agent forwarding | Complex OS keychain integration | v2 |
-| Mosh protocol | Completely different protocol | Out of scope |
-| Serial / Telnet | Out of product vision | Out of scope |
-| Built-in remote file editor | Download → edit → upload covers it | v2 |
-| In-app `ssh-copy-id` | Nice to have | v2 |
-| Macro / script recording | Feature expansion | v2 |
-| Terminal session replay | Feature expansion | v2 |
-| Snap / Flatpak packaging | AppImage covers Linux for v1 | v2 |
-| Jump host / ProxyJump | Multi-hop SSH | v2 |
+| Feature                     | Reason                             | Target       |
+| --------------------------- | ---------------------------------- | ------------ |
+| Cloud profile sync          | Needs backend infrastructure       | v2           |
+| Team / shared vaults        | Requires multi-user auth model     | v2           |
+| SSH agent forwarding        | Complex OS keychain integration    | v2           |
+| Mosh protocol               | Completely different protocol      | Out of scope |
+| Serial / Telnet             | Out of product vision              | Out of scope |
+| Built-in remote file editor | Download → edit → upload covers it | v2           |
+| In-app `ssh-copy-id`        | Nice to have                       | v2           |
+| Macro / script recording    | Feature expansion                  | v2           |
+| Terminal session replay     | Feature expansion                  | v2           |
+| Snap / Flatpak packaging    | AppImage covers Linux for v1       | v2           |
+| Jump host / ProxyJump       | Multi-hop SSH                      | v2           |
 
 ---
 
 ## 15. Known Risks
 
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| `ssh2` failures on unusual SSH server configs | Medium | Wrap all connections in try/catch; expose raw error in UI |
-| xterm.js perf with very high output (log tail) | Medium | Enable WebGL renderer addon; implement output throttling |
-| PPK import accuracy across PPK format versions | Low–Medium | Test with real PuTTY PPK v2/v3 files; sshpk handles both |
-| `better-sqlite3` native binary bundling in Electron | Medium | `after-pack.cjs` rebuilds the `.node` binary against Electron's ABI in the staging area; `bindings` + `file-uri-to-path` ship as `extraResources` |
-| SQLite corruption on OS force-kill | Low | WAL mode enabled on DB init |
-| Prisma engine binary missing in packaged app | Medium | Resolved — `binaryTargets = ["native"]` only; Prisma CLI not shipped; migrations applied via `better-sqlite3` at startup |
-| Electron bundle > 200MB | Resolved | esbuild bundles backend pure-JS deps inline; installer is ~101 MB |
-| Windows SFTP path separator issues | Medium | Always use `path.posix` for remote paths |
-| Port collision on backend auto-assign | Low | `portfinder` scans from 4000 upward |
+| Risk                                                | Impact     | Mitigation                                                                                                                                        |
+| --------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssh2` failures on unusual SSH server configs       | Medium     | Wrap all connections in try/catch; expose raw error in UI                                                                                         |
+| xterm.js perf with very high output (log tail)      | Medium     | Enable WebGL renderer addon; implement output throttling                                                                                          |
+| PPK import accuracy across PPK format versions      | Low–Medium | Test with real PuTTY PPK v2/v3 files; sshpk handles both                                                                                          |
+| `better-sqlite3` native binary bundling in Electron | Medium     | `after-pack.cjs` rebuilds the `.node` binary against Electron's ABI in the staging area; `bindings` + `file-uri-to-path` ship as `extraResources` |
+| SQLite corruption on OS force-kill                  | Low        | WAL mode enabled on DB init                                                                                                                       |
+| Prisma engine binary missing in packaged app        | Medium     | Resolved — `binaryTargets = ["native"]` only; Prisma CLI not shipped; migrations applied via `better-sqlite3` at startup                          |
+| Electron bundle > 200MB                             | Resolved   | esbuild bundles backend pure-JS deps inline; installer is ~101 MB                                                                                 |
+| Windows SFTP path separator issues                  | Medium     | Always use `path.posix` for remote paths                                                                                                          |
+| Port collision on backend auto-assign               | Low        | `portfinder` scans from 4000 upward                                                                                                               |
 
 ---
 
@@ -1289,37 +1296,37 @@ electron-updater          v6.8
 
 Current build state as of v3.0 of this document.
 
-| Module | Status | Notes |
-|--------|--------|-------|
-| Electron main process | ✅ Complete | portfinder, backend spawn, IPC, auto-updater, app.log |
-| Preload / contextBridge | ✅ Complete | Full typed window.api surface |
-| App auth state machine | ✅ Complete | loading → setup/locked/unlocked flow |
-| SetupWizard page | ✅ Complete | First-run master password setup |
-| LockScreen page | ✅ Complete | Unlock with bcrypt verify + JWT |
-| Home page / Profile grid | ✅ Complete | Search, filter, CRUD, duplicate, export/import |
-| ProfileDetailPane | ✅ Complete | Connect/disconnect, tunnel panel, window spawning |
-| ProfileForm | ✅ Complete | Create/edit with key selector |
-| TerminalPane (xterm.js) | ✅ Complete | WebSocket I/O, resize, themes, search |
-| TabBar | ✅ Complete | DnD reorder, close, Home anchor tab |
-| SftpPane (dual-pane) | ✅ Complete | All file ops, progress, transfer queue |
-| LocalFilePane | ✅ Complete | Local FS browsing via Electron IPC |
-| Keys page | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle |
-| Logs page | ✅ Complete | Filter, search, date range, CSV export |
-| Settings page | ✅ Complete | Theme, font, lock, retention |
-| UpdateBanner | ✅ Complete | Auto-update notification + install |
-| SSH service | ✅ Complete | Session pool, password + key auth |
-| SFTP service | ✅ Complete | All file ops + SSE progress emitter |
-| Crypto service | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based) |
-| Key service | ✅ Complete | RSA/ED25519 gen, import, fingerprint, .cskb export/import |
-| Tunnel service | ✅ Complete | Local, remote, dynamic SOCKS5 |
-| Audit service | ✅ Complete | Event logging + CSV generation |
-| Config service | ✅ Complete | AppConfig singleton CRUD |
-| Profile service | ✅ Complete | Export payload builder, conflict check, import with resolution |
-| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O |
-| Auth middleware | ✅ Complete | JWT + query-param fallback for SSE |
-| Rate limiting | ✅ Complete | 5/min auth, 300/min API |
-| Database schema | ✅ Complete | 5 models, Prisma migrations, WAL mode |
-| Build pipeline | ✅ Complete | Win/Mac/Linux installers; Windows installer ~101 MB (esbuild + migration-via-better-sqlite3) |
+| Module                     | Status      | Notes                                                                                        |
+| -------------------------- | ----------- | -------------------------------------------------------------------------------------------- |
+| Electron main process      | ✅ Complete | portfinder, backend spawn, IPC, auto-updater, app.log                                        |
+| Preload / contextBridge    | ✅ Complete | Full typed window.api surface                                                                |
+| App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow                                                         |
+| SetupWizard page           | ✅ Complete | First-run master password setup                                                              |
+| LockScreen page            | ✅ Complete | Unlock with bcrypt verify + JWT                                                              |
+| Home page / Profile grid   | ✅ Complete | Search, filter, CRUD, duplicate, export/import                                               |
+| ProfileDetailPane          | ✅ Complete | Connect/disconnect, tunnel panel, window spawning                                            |
+| ProfileForm                | ✅ Complete | Create/edit with key selector                                                                |
+| TerminalPane (xterm.js)    | ✅ Complete | WebSocket I/O, resize, themes, search                                                        |
+| TabBar                     | ✅ Complete | DnD reorder, close, Home anchor tab                                                          |
+| SftpPane (dual-pane)       | ✅ Complete | All file ops, progress, transfer queue                                                       |
+| LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC                                                           |
+| Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                           |
+| Logs page                  | ✅ Complete | Filter, search, date range, CSV export                                                       |
+| Settings page              | ✅ Complete | Theme, font, lock, retention                                                                 |
+| UpdateBanner               | ✅ Complete | Auto-update notification + install                                                           |
+| SSH service                | ✅ Complete | Session pool, password + key auth                                                            |
+| SFTP service               | ✅ Complete | All file ops + SSE progress emitter                                                          |
+| Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                         |
+| Key service                | ✅ Complete | RSA/ED25519 gen, import, fingerprint, .cskb export/import                                    |
+| Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5                                                                |
+| Audit service              | ✅ Complete | Event logging + CSV generation                                                               |
+| Config service             | ✅ Complete | AppConfig singleton CRUD                                                                     |
+| Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                               |
+| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O                                                                 |
+| Auth middleware            | ✅ Complete | JWT + query-param fallback for SSE                                                           |
+| Rate limiting              | ✅ Complete | 5/min auth, 300/min API                                                                      |
+| Database schema            | ✅ Complete | 5 models, Prisma migrations, WAL mode                                                        |
+| Build pipeline             | ✅ Complete | Win/Mac/Linux installers; Windows installer ~101 MB (esbuild + migration-via-better-sqlite3) |
 
 ---
 
@@ -1330,6 +1337,7 @@ These items are specified in this SRS but have not yet been implemented. They ar
 ---
 
 ### ~~BL-01 — Cancel In-Progress SFTP Transfer~~ ✅ Implemented
+
 **Requirement:** FR-04.16
 **Priority:** High — **Done in v1.1**
 
@@ -1338,6 +1346,7 @@ Implemented: `DELETE /api/sftp/:sessionId/transfer/:transferId` → `SftpService
 ---
 
 ### BL-02 — Port Conflict Detection
+
 **Requirement:** FR-06.6
 **Priority:** Medium
 
@@ -1349,6 +1358,7 @@ Before binding a local port for a tunnel, check if the port is already in use. I
 ---
 
 ### BL-03 — In-Use Key Delete Warning
+
 **Requirement:** FR-05.11
 **Priority:** Medium
 
@@ -1360,6 +1370,7 @@ When a user attempts to delete an SSH key, check if any profiles reference that 
 ---
 
 ### BL-04 — Audit Log Auto-Purge
+
 **Requirement:** FR-08.7
 **Priority:** Medium
 
@@ -1370,6 +1381,7 @@ The `AppConfig.logRetentionDays` field exists, but no scheduled task runs to pur
 ---
 
 ### BL-05 — SSH Disconnect Reason Logging
+
 **Requirement:** FR-08.2
 **Priority:** Low
 
@@ -1380,6 +1392,7 @@ Currently, SSH disconnect events may not distinguish between user-initiated disc
 ---
 
 ### BL-06 — Clear All Logs Endpoint
+
 **Requirement:** §9.9 (API design)
 **Priority:** Low
 
@@ -1391,10 +1404,12 @@ Currently, SSH disconnect events may not distinguish between user-initiated disc
 ---
 
 ### BL-07 — SFTP Keyboard Shortcuts
+
 **Requirements:** FR-04.6 (F2 rename), FR-04.8 (Ctrl+Shift+N new folder)
 **Priority:** Low
 
 The file operations exist via right-click and buttons, but the following keyboard shortcuts are missing from `SftpPane.tsx`:
+
 - **F2** — trigger rename on the currently selected file
 - **Ctrl+Shift+N** — open the new folder dialog
 
@@ -1403,6 +1418,7 @@ The file operations exist via right-click and buttons, but the following keyboar
 ---
 
 ### BL-08 — Terminal Right-Click Paste
+
 **Requirement:** FR-02.4
 **Priority:** Low
 
@@ -1413,17 +1429,20 @@ The file operations exist via right-click and buttons, but the following keyboar
 ---
 
 ### BL-09 — Terminal Auto-Copy on Selection ✅
+
 **Requirement:** FR-02.11
 **Priority:** Medium
 
 Selecting text in the terminal does not automatically copy to the system clipboard. Users must manually press `Ctrl+Shift+C` after selecting, which differs from the standard Unix/Linux terminal behaviour where selection = copy.
 
 **Requirements:**
+
 - FR-02.11.1 — Click-and-drag (mouse) selection in the terminal automatically copies the selected text to the system clipboard on mouse release ❌
 - FR-02.11.2 — Double-click (word) and triple-click (line) selection also trigger auto-copy ❌
 - FR-02.11.3 — An empty or cleared selection does not overwrite the clipboard with an empty string ❌
 
 **Acceptance Criteria:**
+
 - [ ] Dragging to select text copies to OS clipboard immediately — verified by pasting outside the app
 - [ ] Double-clicking a word and triple-clicking a line each copy to clipboard
 - [ ] Clearing a selection (clicking blank area) does not wipe the clipboard
@@ -1434,4 +1453,4 @@ Selecting text in the terminal does not automatically copy to the system clipboa
 
 ---
 
-*End of SRS Document — v3.0*
+_End of SRS Document — v3.0_

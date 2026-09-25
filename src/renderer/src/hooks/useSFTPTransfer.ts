@@ -1,8 +1,8 @@
-import { useTransferStore, TransferEvent, Transfer } from '../store/transferStore'
+import { useTransferStore, TransferEvent, NewTransfer } from '../store/transferStore'
 
 interface UseSFTPTransfer {
   listenToTransfer: (transferId: string) => Promise<void>
-  addTransfer: (t: Transfer) => void
+  addTransfer: (t: NewTransfer) => void
 }
 
 export function useSFTPTransfer(sessionId: string): UseSFTPTransfer {

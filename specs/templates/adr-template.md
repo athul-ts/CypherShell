@@ -32,10 +32,10 @@
 > What becomes easier or harder after this decision?
 > List both positive and negative consequences.
 
-- **Positive:** 
-- **Positive:** 
-- **Negative:** 
-- **Negative:** 
+- **Positive:**
+- **Positive:**
+- **Negative:**
+- **Negative:**
 
 ---
 

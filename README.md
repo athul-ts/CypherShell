@@ -43,18 +43,18 @@
 
 Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), require cloud accounts (Termius), or are expensive (SecureCRT). CypherShell aims to be the **open-source, privacy-first, fully offline** alternative that doesn't compromise on features or polish.
 
-| Feature | CypherShell | PuTTY | MobaXterm | Termius |
-|---|:---:|:---:|:---:|:---:|
-| Cross-platform (Win/Mac/Linux) | ✅ | ⚠️ Win only | ⚠️ Win only | ✅ |
-| Built-in SFTP file manager | ✅ | ❌ | ✅ | ✅ |
-| SSH key generation & management | ✅ | ⚠️ PuTTYgen | ✅ | ✅ |
-| Port forwarding UI | ✅ | ⚠️ Manual | ✅ | ✅ |
-| Encrypted credential storage | ✅ AES-256 | ❌ | ❌ | ✅ Cloud |
-| Fully offline / no cloud account | ✅ | ✅ | ✅ | ❌ |
-| Audit / activity logs | ✅ | ❌ | ❌ | ❌ |
-| Real-time transfer progress | ✅ SSE | ❌ | ✅ | ✅ |
-| Open source | ✅ MIT | ✅ MIT | ❌ | ❌ |
-| Modern UI | ✅ | ❌ | ⚠️ | ✅ |
+| Feature                          | CypherShell |    PuTTY    |  MobaXterm  | Termius  |
+| -------------------------------- | :---------: | :---------: | :---------: | :------: |
+| Cross-platform (Win/Mac/Linux)   |     ✅      | ⚠️ Win only | ⚠️ Win only |    ✅    |
+| Built-in SFTP file manager       |     ✅      |     ❌      |     ✅      |    ✅    |
+| SSH key generation & management  |     ✅      | ⚠️ PuTTYgen |     ✅      |    ✅    |
+| Port forwarding UI               |     ✅      |  ⚠️ Manual  |     ✅      |    ✅    |
+| Encrypted credential storage     | ✅ AES-256  |     ❌      |     ❌      | ✅ Cloud |
+| Fully offline / no cloud account |     ✅      |     ✅      |     ✅      |    ❌    |
+| Audit / activity logs            |     ✅      |     ❌      |     ❌      |    ❌    |
+| Real-time transfer progress      |   ✅ SSE    |     ❌      |     ✅      |    ✅    |
+| Open source                      |   ✅ MIT    |   ✅ MIT    |     ❌      |    ❌    |
+| Modern UI                        |     ✅      |     ❌      |     ⚠️      |    ✅    |
 
 ---
 
@@ -62,7 +62,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 
 > Screenshots will be added as the project reaches its first public release. Place them in `docs/screenshots/` and update the paths below.
 
-<!-- 
+<!--
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Home Dashboard" width="800" />
   <br/><em>Home Dashboard — manage profiles, keys, and logs in one place</em>
@@ -89,6 +89,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 ## ✨ Features
 
 ### 🖥️ Terminal Sessions
+
 - Full-featured SSH terminal powered by **xterm.js** with complete ANSI/color support
 - Spawn **independent windows** per session — work across multiple monitors
 - Keyboard support: `Ctrl+C`, `Ctrl+Z`, `Tab`, arrow keys, function keys, `Ctrl+F` search
@@ -97,6 +98,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 - Connection status indicator (connected / reconnecting / disconnected)
 
 ### 📁 SFTP File Manager
+
 - Dual-pane interface (local ↔ remote) in a standalone window
 - Browse, upload, download, rename, delete, and `chmod` remote files
 - **Real-time transfer progress** streamed via Server-Sent Events (SSE) — zero polling
@@ -106,6 +108,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 - Breadcrumb path navigation
 
 ### 🔑 SSH Key Manager
+
 - Generate **RSA** (2048 / 4096-bit) and **ED25519** keypairs in-app
 - Import keys in **PEM**, **OpenSSH**, and **PuTTY PPK** formats
 - All private keys stored as **AES-256-GCM** encrypted blobs — never in plaintext
@@ -114,6 +117,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 - Copy public key to clipboard or export to file
 
 ### 🚇 Port Forwarding
+
 - **Local forwarding:** `localhost:localPort → remoteHost:remotePort`
 - **Remote forwarding:** `remoteHost:remotePort → localhost:localPort`
 - **Dynamic SOCKS5 proxy** support
@@ -121,6 +125,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 - Port conflict detection before binding
 
 ### 🗂️ Connection Profiles
+
 - Save SSH settings: host, port, username, auth method (password / key / key+passphrase)
 - Group profiles with custom tags (e.g., "Production", "Staging", "Dev")
 - One-click profile duplication
@@ -128,6 +133,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 - Last-connected timestamp displayed per profile
 
 ### 🔒 App Lock & Master Password
+
 - Optional master password protects all stored credentials
 - First-run setup wizard for configuring lock settings
 - Encryption keys derived via **PBKDF2-SHA512** (200,000 iterations) — key held in memory only, never written to disk
@@ -135,17 +141,20 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 - Configurable auto-lock after inactivity (default: 15 minutes)
 
 ### 📋 Audit Logs
+
 - Every connection, upload, and download logged with timestamp, duration, and status
 - Search by keyword and filter by date range
 - Export logs as **CSV** for compliance or review
 - Configurable retention period (default: 90 days), with automatic purge
 
 ### 🎨 Themes & Customization
+
 - Light, Dark, and System theme modes
 - 6 curated terminal color themes: **Default Dark**, **Dracula**, **Nord**, **Solarized Dark**, **Monokai**, **One Dark**
 - Customizable terminal font (default: JetBrains Mono) and font size
 
 ### 🔄 Auto-Updater
+
 - Checks for new releases silently in the background
 - Notifies you when an update is ready; installs on next launch
 
@@ -153,26 +162,26 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|---|---|
-| **Shell / Packaging** | Electron 39, electron-builder 26 |
-| **Frontend Framework** | React 19, React Router 7 |
-| **Language** | TypeScript 5.9 (all layers) |
-| **Build Tool** | electron-vite 5 (Vite 6 under the hood) |
-| **Styling** | Tailwind CSS 3.4 + shadcn/ui (Radix primitives) |
-| **Terminal Emulator** | xterm.js 6 (+ fit, search, web-links addons) |
-| **State Management** | Zustand 5 |
-| **Data Fetching / Caching** | TanStack Query v5 |
-| **HTTP Client** | Axios 1.16 |
-| **Icons** | Lucide React |
-| **Backend Framework** | Express 4 |
-| **Database** | SQLite via Prisma ORM + better-sqlite3 |
-| **SSH Protocol** | ssh2 (sessions), ssh2-sftp-client (file transfer) |
-| **Real-time I/O** | WebSocket (terminal), Server-Sent Events (SFTP progress) |
-| **Cryptography** | Node.js `crypto` (AES-256-GCM, PBKDF2), bcrypt |
-| **Key Generation** | node-forge (RSA/ED25519), sshpk (PPK conversion) |
-| **Authentication** | JSON Web Tokens (jsonwebtoken) |
-| **Validation** | Zod |
+| Layer                       | Technology                                               |
+| --------------------------- | -------------------------------------------------------- |
+| **Shell / Packaging**       | Electron 39, electron-builder 26                         |
+| **Frontend Framework**      | React 19, React Router 7                                 |
+| **Language**                | TypeScript 5.9 (all layers)                              |
+| **Build Tool**              | electron-vite 5 (Vite 6 under the hood)                  |
+| **Styling**                 | Tailwind CSS 3.4 + shadcn/ui (Radix primitives)          |
+| **Terminal Emulator**       | xterm.js 6 (+ fit, search, web-links addons)             |
+| **State Management**        | Zustand 5                                                |
+| **Data Fetching / Caching** | TanStack Query v5                                        |
+| **HTTP Client**             | Axios 1.16                                               |
+| **Icons**                   | Lucide React                                             |
+| **Backend Framework**       | Express 4                                                |
+| **Database**                | SQLite via Prisma ORM + better-sqlite3                   |
+| **SSH Protocol**            | ssh2 (sessions), ssh2-sftp-client (file transfer)        |
+| **Real-time I/O**           | WebSocket (terminal), Server-Sent Events (SFTP progress) |
+| **Cryptography**            | Node.js `crypto` (AES-256-GCM, PBKDF2), bcrypt           |
+| **Key Generation**          | node-forge (RSA/ED25519), sshpk (PPK conversion)         |
+| **Authentication**          | JSON Web Tokens (jsonwebtoken)                           |
+| **Validation**              | Zod                                                      |
 
 ---
 
@@ -233,6 +242,7 @@ CypherShell uses a **three-process Electron architecture** where the backend is 
 - **Git**
 
 On Linux you may also need build tools for native modules:
+
 ```bash
 sudo apt-get install build-essential python3
 ```
@@ -267,28 +277,28 @@ The Electron app launches with **hot-reload** for the renderer. The Express back
 
 ### Available Scripts
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start Electron with hot-reload (HMR) |
-| `npm run build` | Compile TypeScript + Vite bundles |
-| `npm run typecheck` | Full TypeScript check across all targets |
-| `npm run lint` | Run ESLint |
-| `npm run format` | Auto-format with Prettier |
-| `npm run build:backend` | Compile backend TypeScript only |
+| Command                  | Description                                 |
+| ------------------------ | ------------------------------------------- |
+| `npm run dev`            | Start Electron with hot-reload (HMR)        |
+| `npm run build`          | Compile TypeScript + Vite bundles           |
+| `npm run typecheck`      | Full TypeScript check across all targets    |
+| `npm run lint`           | Run ESLint                                  |
+| `npm run format`         | Auto-format with Prettier                   |
+| `npm run build:backend`  | Compile backend TypeScript only             |
 | `npm run rebuild:native` | Rebuild native modules against Electron ABI |
-| `npm run build:win` | Package Windows installer |
-| `npm run build:mac` | Package macOS DMG |
-| `npm run build:linux` | Package Linux AppImage + deb |
+| `npm run build:win`      | Package Windows installer                   |
+| `npm run build:mac`      | Package macOS DMG                           |
+| `npm run build:linux`    | Package Linux AppImage + deb                |
 
 ---
 
 ## 📦 Building for Production
 
-| Platform | Command | Output |
-|---|---|---|
-| **Windows** | `npm run build:win` | `dist/*.exe` (NSIS installer) |
-| **macOS** | `npm run build:mac` | `dist/*.dmg` |
-| **Linux** | `npm run build:linux` | `dist/*.AppImage` + `dist/*.deb` |
+| Platform    | Command               | Output                           |
+| ----------- | --------------------- | -------------------------------- |
+| **Windows** | `npm run build:win`   | `dist/*.exe` (NSIS installer)    |
+| **macOS**   | `npm run build:mac`   | `dist/*.dmg`                     |
+| **Linux**   | `npm run build:linux` | `dist/*.AppImage` + `dist/*.deb` |
 
 All artifacts are written to the `dist/` directory.
 
@@ -350,18 +360,18 @@ CypherShell/
 
 CypherShell is designed with **defense-in-depth** — sensitive material is protected at every layer.
 
-| What | How |
-|---|---|
-| SSH passwords & private keys | **AES-256-GCM** encrypted before storage in SQLite |
-| Master password | **bcrypt** (cost factor 12) — never stored in plaintext |
-| Encryption key derivation | **PBKDF2-SHA512**, 200,000 iterations; derived key held in-memory only |
-| Key material in renderer | Private keys are **never** sent to the renderer process |
-| Backend network binding | Express binds to **`127.0.0.1`** only — not reachable externally |
-| API authentication | **JWT** tokens, 8-hour expiration, required on every endpoint |
-| Rate limiting | 5 auth attempts / min · 300 API requests / min |
-| Auto-lock | Configurable inactivity timeout clears the in-memory AES key |
-| SFTP path traversal | Backend validates all remote paths before operating |
-| Context isolation | Electron `contextIsolation: true`; renderer has no direct Node.js access |
+| What                         | How                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| SSH passwords & private keys | **AES-256-GCM** encrypted before storage in SQLite                       |
+| Master password              | **bcrypt** (cost factor 12) — never stored in plaintext                  |
+| Encryption key derivation    | **PBKDF2-SHA512**, 200,000 iterations; derived key held in-memory only   |
+| Key material in renderer     | Private keys are **never** sent to the renderer process                  |
+| Backend network binding      | Express binds to **`127.0.0.1`** only — not reachable externally         |
+| API authentication           | **JWT** tokens, 8-hour expiration, required on every endpoint            |
+| Rate limiting                | 5 auth attempts / min · 300 API requests / min                           |
+| Auto-lock                    | Configurable inactivity timeout clears the in-memory AES key             |
+| SFTP path traversal          | Backend validates all remote paths before operating                      |
+| Context isolation            | Electron `contextIsolation: true`; renderer has no direct Node.js access |
 
 **Reporting a vulnerability:** Please open a [GitHub Security Advisory](https://github.com/athul-ts/CypherShell/security/advisories/new) rather than a public issue. We aim to respond within 72 hours.
 
@@ -407,6 +417,7 @@ refactor: extract crypto helpers into service
 ### 5. Open a Pull Request
 
 Push to your fork and open a PR against the `main` branch. Please include:
+
 - **What** the change does and **why**
 - Steps to test it manually
 - Screenshots for UI changes
@@ -415,10 +426,10 @@ Push to your fork and open a PR against the `main` branch. Please include:
 
 ### Code Style
 
-| Tool | Command |
-|---|---|
-| Lint | `npm run lint` |
-| Format | `npm run format` |
+| Tool       | Command             |
+| ---------- | ------------------- |
+| Lint       | `npm run lint`      |
+| Format     | `npm run format`    |
 | Type-check | `npm run typecheck` |
 
 ---
@@ -467,6 +478,7 @@ Delete the SQLite database file and re-run migrations:
 ```
 
 Then run:
+
 ```bash
 cd backend
 npx prisma migrate dev --name init
@@ -476,11 +488,11 @@ npx prisma migrate dev --name init
 
 Diagnostic logs are written to:
 
-| OS | Path |
-|---|---|
-| Windows | `%APPDATA%\CypherShell\app.log` |
-| macOS | `~/Library/Application Support/CypherShell/app.log` |
-| Linux | `~/.config/CypherShell/app.log` |
+| OS      | Path                                                |
+| ------- | --------------------------------------------------- |
+| Windows | `%APPDATA%\CypherShell\app.log`                     |
+| macOS   | `~/Library/Application Support/CypherShell/app.log` |
+| Linux   | `~/.config/CypherShell/app.log`                     |
 
 ### White screen on launch (macOS)
 

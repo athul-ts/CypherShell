@@ -31,7 +31,16 @@ describe('SftpPane', () => {
   it('fetches the remote file listing via the API', async () => {
     mockApi.get.mockResolvedValue({
       data: {
-        files: [{ name: 'readme.txt', type: '-', size: 1024, modifyTime: 0, accessTime: 0, permissions: 0 }]
+        files: [
+          {
+            name: 'readme.txt',
+            type: '-',
+            size: 1024,
+            modifyTime: 0,
+            accessTime: 0,
+            permissions: 0
+          }
+        ]
       }
     })
     renderWithQuery(<SftpPane sessionId="sess-3" />)

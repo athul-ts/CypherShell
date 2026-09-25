@@ -60,7 +60,8 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     // Right-click pastes clipboard content into the terminal
     const contextmenuHandler = (e: MouseEvent): void => {
       e.preventDefault()
-      navigator.clipboard.readText()
+      navigator.clipboard
+        .readText()
         .then((text) => {
           if (text && ws.current?.readyState === WebSocket.OPEN) {
             const bytes = new TextEncoder().encode(text)
@@ -68,7 +69,9 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
             ws.current!.send(JSON.stringify({ type: 'input', data: btoa(binary) }))
           }
         })
-        .catch(() => { /* Clipboard access denied — ignore silently */ })
+        .catch(() => {
+          /* Clipboard access denied — ignore silently */
+        })
     }
     terminalRef.current.addEventListener('contextmenu', contextmenuHandler)
 
@@ -120,11 +123,15 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
         const { attempt } = reconnectRef.current
         if (attempt < 3) {
           const delay = Math.pow(2, attempt) * 1000 // 1s, 2s, 4s
-          term.current?.write(`\r\n\x1b[33mConnection lost. Reconnecting in ${delay / 1000}s... (attempt ${attempt + 1}/3)\x1b[0m\r\n`)
+          term.current?.write(
+            `\r\n\x1b[33mConnection lost. Reconnecting in ${delay / 1000}s... (attempt ${attempt + 1}/3)\x1b[0m\r\n`
+          )
           reconnectRef.current.attempt = attempt + 1
           reconnectRef.current.timer = setTimeout(connectWs, delay)
         } else {
-          term.current?.write('\r\n\x1b[31mConnection lost. Max reconnect attempts reached.\x1b[0m\r\n')
+          term.current?.write(
+            '\r\n\x1b[31mConnection lost. Max reconnect attempts reached.\x1b[0m\r\n'
+          )
         }
       }
 

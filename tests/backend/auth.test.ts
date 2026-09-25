@@ -70,9 +70,7 @@ describe('POST /api/auth/unlock', () => {
   })
 
   it('unlocks with correct password and returns JWT', async () => {
-    const res = await request(app)
-      .post('/api/auth/unlock')
-      .send({ password: 'test-password-123' })
+    const res = await request(app).post('/api/auth/unlock').send({ password: 'test-password-123' })
     expect(res.status).toBe(200)
     expect(typeof res.body.token).toBe('string')
   })
@@ -88,9 +86,7 @@ describe('JWT authentication', () => {
     const { body } = await request(app)
       .post('/api/auth/unlock')
       .send({ password: 'test-password-123' })
-    const res = await request(app)
-      .get('/api/profiles')
-      .set('Authorization', `Bearer ${body.token}`)
+    const res = await request(app).get('/api/profiles').set('Authorization', `Bearer ${body.token}`)
     expect(res.status).toBe(200)
   })
 })

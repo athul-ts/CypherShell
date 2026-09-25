@@ -3,6 +3,7 @@ Perform a security review of a specific file or feature area in CypherShell.
 The user will specify what to review: **$ARGUMENTS** (e.g. "SFTP file operations" or "auth.controller.ts")
 
 Check for all of the following:
+
 1. **Path traversal** — any `fs` call using a user-supplied path must be validated against an allowed base directory
 2. **JWT bypass** — every route except `POST /api/auth/unlock` and `POST /api/auth/setup` must have `authMiddleware`
 3. **Input validation** — all request bodies must be validated with Zod before use

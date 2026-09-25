@@ -27,7 +27,10 @@ export default defineConfig(
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules,
       // TypeScript provides prop validation; the JS-era prop-types rule is redundant.
-      'react/prop-types': 'off'
+      'react/prop-types': 'off',
+      // Express identifies error middleware by arity, so an unused 4th `next`
+      // parameter (and other intentionally-unused params) must be allowed.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }]
     }
   },
   {

@@ -5,10 +5,12 @@
 CypherShell follows strict spec-driven development. **The spec always comes before the code.**
 
 ### The Rule
+
 Every code change must trace to a requirement in `SRS_SSH_Desktop_App.md`.
 Every commit message must include the spec ID (e.g. `feat(sftp): cancel transfer [BL-01]`).
 
 ### Workflow for implementing a feature
+
 1. **Read the spec first** — find the requirement ID in `specs/index.md`, then read its full section in `SRS_SSH_Desktop_App.md`
 2. **Check status** — if it is ✅ already, do not re-implement; if ⚠️, read what partial work exists first
 3. **Implement** — follow the coding conventions below
@@ -16,6 +18,7 @@ Every commit message must include the spec ID (e.g. `feat(sftp): cancel transfer
 5. **Commit** — include the spec ID in the commit message
 
 ### Workflow for adding a new requirement
+
 1. **Spec first, code never** — do not write a single line of implementation code before the spec exists
 2. Copy `specs/templates/fr-template.md` and fill it in completely
 3. Add the new FR to `SRS_SSH_Desktop_App.md` in the right section
@@ -23,12 +26,14 @@ Every commit message must include the spec ID (e.g. `feat(sftp): cancel transfer
 5. Only then implement
 
 ### Quick spec reference
+
 - **Master index:** `specs/index.md` — all FR/NFR/BL IDs, statuses, and SRS section links
 - **Full spec:** `SRS_SSH_Desktop_App.md` — complete requirement text with implementation notes
 - **Architecture decisions:** `specs/decisions/` — ADR-001, ADR-002, ADR-003
 - **Templates:** `specs/templates/` — use these when adding new requirements or decisions
 
 ### Slash commands for SDD workflow
+
 - `/spec-implement <ID>` — implement a spec item end-to-end and update its status
 - `/spec-new` — formally add a new requirement before coding it
 - `/spec-check` — audit the codebase against the spec and report drift
@@ -36,37 +41,42 @@ Every commit message must include the spec ID (e.g. `feat(sftp): cancel transfer
 ---
 
 ## Project Overview
+
 CypherShell is a cross-platform SSH desktop client built with Electron 39, React 19, TypeScript, and an Express 4 backend. It supports SSH terminal sessions, SFTP file management, SSH key management, port forwarding, and a master-password-based app lock.
 
 ## Architecture — Three Processes
+
 ```
 Electron Main (src/main/index.ts)
   └── spawns → Express Backend (backend/src/index.ts)  [child_process, port auto-selected by portfinder]
   └── loads  → Renderer (src/renderer/src/)             [React 19 SPA via electron-vite]
 ```
+
 - The renderer communicates with the backend via **Axios** over `http://127.0.0.1:<port>` and **WebSocket** for terminal I/O.
 - The main process and renderer communicate via **contextBridge** IPC (see `src/preload/index.ts`).
 - The backend binds to `127.0.0.1` only — never `0.0.0.0`.
 
 ## Key File Locations
-| Layer | Path |
-|---|---|
-| Electron main | `src/main/index.ts` |
+
+| Layer                | Path                                             |
+| -------------------- | ------------------------------------------------ |
+| Electron main        | `src/main/index.ts`                              |
 | Preload / IPC bridge | `src/preload/index.ts`, `src/preload/index.d.ts` |
-| React SPA root | `src/renderer/src/App.tsx` |
-| Pages | `src/renderer/src/pages/` |
-| Components | `src/renderer/src/components/` |
-| Zustand stores | `src/renderer/src/store/` |
-| React hooks | `src/renderer/src/hooks/` |
-| API client (Axios) | `src/renderer/src/lib/api.ts` |
-| Backend entry | `backend/src/index.ts` |
-| Backend routes | `backend/src/routes/` |
-| Backend controllers | `backend/src/controllers/` |
-| Backend services | `backend/src/services/` |
-| Prisma schema | `backend/prisma/schema.prisma` |
-| WebSocket handler | `backend/src/websocket/terminal.ws.ts` |
+| React SPA root       | `src/renderer/src/App.tsx`                       |
+| Pages                | `src/renderer/src/pages/`                        |
+| Components           | `src/renderer/src/components/`                   |
+| Zustand stores       | `src/renderer/src/store/`                        |
+| React hooks          | `src/renderer/src/hooks/`                        |
+| API client (Axios)   | `src/renderer/src/lib/api.ts`                    |
+| Backend entry        | `backend/src/index.ts`                           |
+| Backend routes       | `backend/src/routes/`                            |
+| Backend controllers  | `backend/src/controllers/`                       |
+| Backend services     | `backend/src/services/`                          |
+| Prisma schema        | `backend/prisma/schema.prisma`                   |
+| WebSocket handler    | `backend/src/websocket/terminal.ws.ts`           |
 
 ## Tech Stack (exact versions)
+
 - Electron 39, electron-vite 5, electron-builder 26, electron-updater 6.8
 - React 19, React Router v7 (HashRouter — required for `file://`)
 - Tailwind CSS 3.4, shadcn/ui (Radix primitives, copy-owned in `components/ui/`)
@@ -76,6 +86,7 @@ Electron Main (src/main/index.ts)
 - AES-256-GCM encryption at rest, PBKDF2-SHA512 (200k iterations), bcrypt cost 12, JWT 8h
 
 ## Development Commands
+
 ```bash
 # Full dev mode (rebuilds native modules first)
 npm run dev
@@ -97,6 +108,7 @@ npm run build:win    # or build:mac / build:linux
 ```
 
 ## Backend-Specific Commands (run inside `backend/`)
+
 ```bash
 cd backend
 npx prisma migrate dev --name <migration-name>   # create + apply migration
@@ -106,6 +118,7 @@ npm run build                                     # compile backend TS → dist/
 ```
 
 ## Coding Conventions
+
 - **TypeScript strict mode** everywhere — no `any` without a comment explaining why.
 - **No barrel `index.ts` re-exports** in components — import directly from the file.
 - **React components**: functional only, no class components.
@@ -119,6 +132,7 @@ npm run build                                     # compile backend TS → dist/
 - **shadcn/ui**: components live in `src/renderer/src/components/ui/` — do not import from `@shadcn` directly.
 
 ## Security Rules (never violate)
+
 - Never bind the Express server to `0.0.0.0`.
 - Never expose the raw master password or derived key beyond the auth unlock flow in `backend/src/controllers/auth.controller.ts`.
 - Never store decrypted private keys anywhere — decrypt in memory on use only.
@@ -127,6 +141,7 @@ npm run build                                     # compile backend TS → dist/
 - Context isolation is ON — never set `contextIsolation: false` or `nodeIntegration: true` in webPreferences.
 
 ## v1.1 Backlog (features not yet implemented)
+
 See `SRS_SSH_Desktop_App.md §17` for full details with implementation notes.
 | ID | Feature | Priority |
 |---|---|---|
@@ -140,6 +155,7 @@ See `SRS_SSH_Desktop_App.md §17` for full details with implementation notes.
 | BL-08 | Terminal right-click paste | Low |
 
 ## Common Pitfalls
+
 - **Native module rebuild**: If you get `NODE_MODULE_VERSION` errors, run `npm run rebuild:native` from the project root.
 - **Prisma client out of sync**: Run `npx prisma generate` inside `backend/` after any schema change.
 - **Port already in use**: The backend port is auto-selected by `portfinder` starting at 3000 — kill any stale process if needed.

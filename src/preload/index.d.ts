@@ -14,7 +14,12 @@ declare global {
       installUpdate: () => Promise<void>
       onUpdateAvailable: (cb: () => void) => () => void
       onUpdateDownloaded: (cb: () => void) => () => void
-      openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) => void
+      openTerminalWindow: (
+        sessionId: string,
+        profileId: string,
+        title: string,
+        token: string
+      ) => void
       openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) => void
       readLocalDir: (dirPath?: string) => Promise<{ path: string; files: unknown[] }>
       executeLocalFileOp: (op: string, args: Record<string, unknown>) => Promise<unknown>

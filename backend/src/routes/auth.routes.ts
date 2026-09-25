@@ -1,5 +1,12 @@
 import { Router } from 'express'
-import { getStatus, setup, setupSkip, unlock, lock, setupMasterPassword } from '../controllers/auth.controller'
+import {
+  getStatus,
+  setup,
+  setupSkip,
+  unlock,
+  lock,
+  setupMasterPassword
+} from '../controllers/auth.controller'
 import { requireAuth } from '../middleware/auth.middleware'
 
 const router = Router()

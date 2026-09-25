@@ -28,6 +28,7 @@ This is a desktop app. There is no deployment server. The database must be zero-
 SQLite is the right answer for any application that needs relational storage and runs on the user's machine. It is literally designed for this use case.
 
 **Why Prisma over raw SQL:**
+
 - **Type safety:** Prisma generates a full TypeScript client from `schema.prisma`. All queries are type-checked at compile time — no string-typed SQL and no runtime schema drift.
 - **Migrations:** `prisma migrate dev` tracks schema changes as versioned SQL files during development. In the packaged app, migrations are applied at startup directly via `better-sqlite3` (see "Migration strategy" below) — no Prisma CLI required at runtime.
 - **Schema as source of truth:** `schema.prisma` is the single place that defines the data model. All types in controllers and services are derived from it — there is no duplication between SQL DDL and TypeScript interfaces.
@@ -35,9 +36,9 @@ SQLite is the right answer for any application that needs relational storage and
 
 **Migration strategy (dev vs. packaged):**
 
-| Environment | How migrations run |
-|---|---|
-| Development | `npx prisma migrate dev` (normal Prisma CLI workflow) |
+| Environment               | How migrations run                                                                                                                                                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Development               | `npx prisma migrate dev` (normal Prisma CLI workflow)                                                                                                                                                                                                                |
 | Packaged app (production) | `initDatabase()` reads the SQL files from `prisma/migrations/` and applies any unapplied migrations via `better-sqlite3`, writing bookkeeping rows to `_prisma_migrations` in the same format Prisma uses — so the schema stays compatible with the Prisma toolchain |
 
 This approach eliminates the need to ship the Prisma CLI (`prisma` package), `@prisma/engines` (schema-engine binary), `@prisma/fetch-engine`, `@prisma/config`, and their transitive dependencies (including the `effect` library at 31 MB) — reducing the Windows installer by an additional ~40 MB.

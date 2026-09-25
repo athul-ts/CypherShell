@@ -33,9 +33,8 @@ describe('ImportKeyBundleDialog', () => {
  */
 describe('ImportKeyBundleDialog — unescaped-entity regression', () => {
   it('uses &quot; entities for the conflict name display (not raw double-quotes)', async () => {
-    const src = await import(
-      '../../../../src/renderer/src/components/keys/ImportKeyBundleDialog.tsx?raw'
-    )
+    const src =
+      await import('../../../../src/renderer/src/components/keys/ImportKeyBundleDialog.tsx?raw')
     const text: string = (src as { default: string }).default
     // The fixed version uses &quot;{conflict}&quot;
     expect(text).toContain('&quot;{conflict}&quot;')

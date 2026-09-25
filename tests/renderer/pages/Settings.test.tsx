@@ -38,9 +38,7 @@ describe('Settings page', () => {
     // Wait for the form to be populated from the API response
     await waitFor(() => {
       const inputs = document.querySelectorAll('input[type="number"]')
-      const fontSizeInput = Array.from(inputs).find(
-        (el) => (el as HTMLInputElement).value === '14'
-      )
+      const fontSizeInput = Array.from(inputs).find((el) => (el as HTMLInputElement).value === '14')
       expect(fontSizeInput).toBeTruthy()
     })
   })
@@ -51,9 +49,9 @@ describe('Settings page', () => {
     renderWithQuery(<Settings />)
 
     await waitFor(() => screen.getAllByRole('button').length > 0)
-    const saveBtn = screen.getAllByRole('button').find(
-      (b) => b.textContent?.toLowerCase().includes('save')
-    )
+    const saveBtn = screen
+      .getAllByRole('button')
+      .find((b) => b.textContent?.toLowerCase().includes('save'))
     if (saveBtn) {
       fireEvent.click(saveBtn)
       await waitFor(() => expect(mockApi.put).toHaveBeenCalled())

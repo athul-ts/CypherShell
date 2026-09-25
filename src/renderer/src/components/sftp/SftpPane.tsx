@@ -111,8 +111,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   const executeUpload = async (localPath: string): Promise<void> => {
     const filename = localPath.split('\\').pop() || localPath.split('/').pop() || 'unknown'
-    const remotePath =
-      normalizeSftpPath(currentPath, filename)
+    const remotePath = normalizeSftpPath(currentPath, filename)
     const transferId = makeTransferId('up')
 
     addTransfer({
@@ -122,8 +121,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       status: 'progress',
       bytesTransferred: 0,
       totalBytes: 0,
-      percent: 0,
-      startedAt: Date.now()
+      percent: 0
     })
 
     try {
@@ -151,13 +149,15 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   const handleDownload = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
     e.stopPropagation()
-    if (file.type === 'd') { toast.error('Directory download not supported yet'); return }
+    if (file.type === 'd') {
+      toast.error('Directory download not supported yet')
+      return
+    }
 
     const localPath = await window.api.saveFileDialog(file.name)
     if (!localPath) return
 
-    const remotePath =
-      normalizeSftpPath(currentPath, file.name)
+    const remotePath = normalizeSftpPath(currentPath, file.name)
     await executeDownload(remotePath, localPath, file.name, file.size)
   }
 
@@ -175,8 +175,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       status: 'progress',
       bytesTransferred: 0,
       totalBytes: size,
-      percent: 0,
-      startedAt: Date.now()
+      percent: 0
     })
     try {
       // Open SSE listener FIRST so we don't miss events from fast transfers
@@ -192,8 +191,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const handleDelete = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
     e.stopPropagation()
     if (!confirm(`Are you sure you want to delete ${file.name}?`)) return
-    const remotePath =
-      normalizeSftpPath(currentPath, file.name)
+    const remotePath = normalizeSftpPath(currentPath, file.name)
 
     try {
       await api.post(`/sftp/${sessionId}/delete`, { remotePath })
@@ -233,8 +231,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
         e.preventDefault()
         const newName = prompt('Rename to:', selectedFile.name)
         if (!newName || newName === selectedFile.name) return
-        const oldPath =
-          normalizeSftpPath(currentPath, selectedFile.name)
+        const oldPath = normalizeSftpPath(currentPath, selectedFile.name)
         const newPath = normalizeSftpPath(currentPath, newName)
         try {
           await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
@@ -256,8 +253,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     e.stopPropagation()
     const newName = prompt('Rename to:', file.name)
     if (!newName || newName === file.name) return
-    const oldPath =
-      normalizeSftpPath(currentPath, file.name)
+    const oldPath = normalizeSftpPath(currentPath, file.name)
     const newPath = normalizeSftpPath(currentPath, newName)
     try {
       await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
@@ -272,8 +268,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     const currentMode = file.permissions.toString(8).slice(-3)
     const newMode = prompt('New permissions (octal, e.g. 755):', currentMode)
     if (!newMode || newMode === currentMode || !/^[0-7]{3,4}$/.test(newMode)) return
-    const remotePath =
-      normalizeSftpPath(currentPath, file.name)
+    const remotePath = normalizeSftpPath(currentPath, file.name)
     try {
       await api.post(`/sftp/${sessionId}/chmod`, { remotePath, mode: newMode })
       refetch()
@@ -284,8 +279,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   const handleRemoteDragStart = (e: React.DragEvent, file: RemoteFileEntry): void => {
     if (file.type === 'd') return
-    const remotePath =
-      normalizeSftpPath(currentPath, file.name)
+    const remotePath = normalizeSftpPath(currentPath, file.name)
     e.dataTransfer.setData(
       'application/x-remote-file',
       JSON.stringify({
@@ -314,12 +308,22 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
         <div
           ref={remoteRef}
           className={`w-1/2 flex flex-col min-w-[300px] border-l border-slate-800 transition-colors ${dragOver ? 'bg-emerald-500/5 border-emerald-500/40' : ''}`}
-          onDrop={(e) => { setDragOver(false); handleDropToRemote(e) }}
-          onDragOver={(e) => { setDragOver(true); e.preventDefault() }}
+          onDrop={(e) => {
+            setDragOver(false)
+            handleDropToRemote(e)
+          }}
+          onDragOver={(e) => {
+            setDragOver(true)
+            e.preventDefault()
+          }}
           onDragLeave={() => setDragOver(false)}
         >
           <div className="flex items-center gap-4 px-4 py-3 border-b border-slate-800 bg-[#151821]">
-            <button onClick={handleUp} title="Parent directory" className="text-slate-400 hover:text-slate-200">
+            <button
+              onClick={handleUp}
+              title="Parent directory"
+              className="text-slate-400 hover:text-slate-200"
+            >
               <Folder className="w-5 h-5" />
               <span className="sr-only">Up</span>
             </button>
@@ -495,11 +499,14 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
                     {t.status === 'progress' && (
                       <div className="mt-1 flex gap-3 text-[10px] text-slate-600">
                         {t.speed !== undefined && (
-                          <span>{t.speed >= 1_048_576
-                            ? `${(t.speed / 1_048_576).toFixed(1)} MB/s`
-                            : `${(t.speed / 1024).toFixed(0)} KB/s`}</span>
+                          <span>
+                            {t.speed >= 1_048_576
+                              ? `${(t.speed / 1_048_576).toFixed(1)} MB/s`
+                              : `${(t.speed / 1024).toFixed(0)} KB/s`}
+                          </span>
                         )}
-                        <span>{Math.floor((Date.now() - t.startedAt) / 1000)}s elapsed</span>
+                        {/* elapsedMs is stamped by the store so this render stays pure */}
+                        <span>{Math.floor((t.elapsedMs ?? 0) / 1000)}s elapsed</span>
                       </div>
                     )}
                   </div>

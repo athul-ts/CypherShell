@@ -26,11 +26,7 @@ export function createApp(): Express {
   app.use('/api/auth', authRoutes)
   app.use('/api/profiles', requireAuth, profileRoutes)
   app.use('/api/sessions', requireAuth, sessionRoutes)
-  app.get(
-    '/api/sftp/:sessionId/progress/:transferId',
-    requireAuthFlexible,
-    progressStream
-  )
+  app.get('/api/sftp/:sessionId/progress/:transferId', requireAuthFlexible, progressStream)
   app.use('/api/sftp', requireAuth, sftpRoutes)
   app.use('/api/keys', requireAuth, keyRoutes)
   app.use('/api/tunnels', requireAuth, tunnelRoutes)

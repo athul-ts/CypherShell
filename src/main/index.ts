@@ -7,7 +7,14 @@ import portfinder from 'portfinder'
 import iconPng from '../../resources/icon.png?asset'
 import iconIco from '../../build/icon.ico?asset'
 const icon = process.platform === 'win32' ? iconIco : iconPng
-import { writeFileSync, appendFileSync, readFileSync, realpathSync, existsSync, mkdirSync } from 'fs'
+import {
+  writeFileSync,
+  appendFileSync,
+  readFileSync,
+  realpathSync,
+  existsSync,
+  mkdirSync
+} from 'fs'
 import { stat, readdir, mkdir, rename, rm } from 'fs/promises'
 import * as crypto from 'crypto'
 import * as os from 'os'
@@ -361,9 +368,7 @@ app.whenReady().then(async () => {
   // ─── Path validation for local filesystem operations ────────────────
   // Resolves user-supplied paths against allowed base directories to
   // prevent path-traversal / arbitrary filesystem access (SEC-04).
-  const ALLOWED_BASE_DIRS: ReadonlySet<string> = new Set([
-    realpathSync(os.homedir())
-  ])
+  const ALLOWED_BASE_DIRS: ReadonlySet<string> = new Set([realpathSync(os.homedir())])
 
   function validateFilePath(userPath: string): string {
     if (!userPath || typeof userPath !== 'string') {
