@@ -264,6 +264,7 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 - IPC handlers exposed:
   - `ping` — health check
   - `get-backend-port` — returns the backend port
+  - `get-app-version` — returns `app.getVersion()`, the app version from the packaged `package.json`
   - `dialog:openFile` — native OS file picker
   - `dialog:openDirectory` — native OS directory picker
   - `dialog:saveFile` — native OS save dialog
@@ -799,6 +800,7 @@ Installers are produced for all three target platforms:
 - Pull requests targeting `main` build the same three platforms as downloadable workflow artifacts, so packaging regressions are caught before merge. PR builds never publish a Release.
 - Native modules (`better-sqlite3`) are rebuilt for the **target architecture and Electron ABI** during packaging, and the resulting binary is verified to match the target architecture before the installer is created.
 - Auto-update metadata (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`) and blockmaps are published alongside the installers, so the in-app `electron-updater` feed resolves.
+- Installer filenames identify their platform and architecture (`CypherShell-<version>-<platform>-<arch>[-setup].<ext>`, platform ∈ `windows` | `macos` | `linux`), so a Release's flat asset list is unambiguous. The `latest*.yml` and `.blockmap` filenames are exempt — `electron-updater` resolves those by exact name, so they must not be renamed.
 - The macOS `.zip` target is required — `electron-updater` cannot install from a `.dmg`.
 - A Release tag is derived from `version` in the root `package.json`; re-running the pipeline without a version bump must warn rather than silently overwrite an existing Release.
 - **v1 ships macOS builds unsigned and not notarized.** Users must right-click the `.app` and choose **Open** on first launch (see §15 Known Risks). Signing and notarization are a later, secrets-only change.

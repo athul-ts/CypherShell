@@ -314,6 +314,12 @@ app.whenReady().then(async () => {
   ipcMain.on('get-backend-port', (event) => {
     event.returnValue = backendPort
   })
+  // app.getVersion() reads `version` from the packaged app's package.json, so the
+  // renderer reports the released version instead of a hardcoded literal that
+  // silently goes stale on every bump.
+  ipcMain.on('get-app-version', (event) => {
+    event.returnValue = app.getVersion()
+  })
 
   ipcMain.handle('dialog:openFile', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openFile'] })
