@@ -11,19 +11,41 @@ import { z } from 'zod'
 type ProfileWithRelations = Profile & { tunnels?: Tunnel[] }
 type SanitizedProfile = Omit<ProfileWithRelations, 'encryptedPassword'> & { hasPassword: boolean }
 
-const ProfileSchema = z.object({
+/**
+ * Field rules with no defaults attached. Create and update both derive from
+ * this so the two payloads can never drift apart.
+ */
+const ProfileFieldsSchema = z.object({
   name: z.string().min(1),
   host: z.string().min(1),
-  port: z.number().int().min(1).max(65535).default(22),
+  port: z.number().int().min(1).max(65535),
   username: z.string().min(1),
   authMethod: z.enum(['password', 'key', 'key+passphrase']),
   password: z.string().optional(),
   sshKeyId: z.string().optional(),
   group: z.string().nullable().optional(),
-  terminalTheme: z.string().default('dark'),
-  fontSize: z.number().int().default(14),
-  autoReconnect: z.boolean().default(true)
+  terminalTheme: z.string(),
+  fontSize: z.number().int(),
+  autoReconnect: z.boolean()
 })
+
+/** Create: POST /api/profiles — full payload, sensible defaults. */
+const ProfileSchema = ProfileFieldsSchema.extend({
+  port: ProfileFieldsSchema.shape.port.default(22),
+  terminalTheme: ProfileFieldsSchema.shape.terminalTheme.default('dark'),
+  fontSize: ProfileFieldsSchema.shape.fontSize.default(14),
+  autoReconnect: ProfileFieldsSchema.shape.autoReconnect.default(true)
+})
+
+/**
+ * Update: PUT /api/profiles/:id takes a partial payload — FR-01.8.4 has the
+ * form send only the changed fields.
+ *
+ * Derived from the default-free base on purpose: `.partial()` over a
+ * `.default()` field still injects that default when the key is absent, so a
+ * name-only save would silently reset port/theme/fontSize/autoReconnect.
+ */
+const ProfileUpdateSchema = ProfileFieldsSchema.partial()
 
 function sanitizeProfile(profile: ProfileWithRelations): SanitizedProfile {
   const { encryptedPassword, ...rest } = profile
@@ -67,17 +89,28 @@ export async function createProfile(req: Request, res: Response): Promise<void |
 
 export async function updateProfile(req: Request, res: Response): Promise<void | Response> {
   const id = req.params.id as string
-  const result = ProfileSchema.safeParse(req.body)
+  const result = ProfileUpdateSchema.safeParse(req.body)
   if (!result.success) return res.status(400).json({ error: result.error.issues })
 
-  const { password, ...data } = result.data
+  const { password, sshKeyId, ...data } = result.data
+
+  // Fields the caller omitted stay `undefined`, which Prisma reads as
+  // "leave this column alone" — that is what makes a partial save partial.
+  // Unchecked (not the `UpdateInput` union): we write the `sshKeyId` scalar
+  // directly and never the `sshKey` relation form.
+  const updateData: Prisma.ProfileUncheckedUpdateInput = { ...data }
+
+  // FR-01.8.6: switching to password auth drops any linked key, and an
+  // explicitly supplied key id replaces the stored one. Omitting both leaves
+  // the existing link untouched.
+  if (data.authMethod === 'password') {
+    updateData.sshKeyId = null
+  } else if (sshKeyId !== undefined) {
+    updateData.sshKeyId = sshKeyId || null
+  }
 
   // Only update encryptedPassword if a new one is provided.
   // Otherwise, leave the existing one.
-  const updateData: Prisma.ProfileUpdateInput | Prisma.ProfileUncheckedUpdateInput = {
-    ...data,
-    sshKeyId: data.authMethod === 'password' || !data.sshKeyId ? null : data.sshKeyId
-  }
   if (password !== undefined) {
     if (password === '') {
       updateData.encryptedPassword = null

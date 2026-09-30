@@ -5,10 +5,18 @@ import { createRequire } from 'module'
 // Require context rooted at backend/ so bare imports (express, @prisma/client, …)
 // resolve from backend/node_modules instead of the root node_modules.
 const backendRequire = createRequire(path.resolve('backend/package.json'))
+const backendModulesDir = path.join(path.resolve('backend/node_modules'), path.sep)
 
 /**
  * Vite plugin: resolve bare-specifier imports that live only in
  * backend/node_modules (express, cors, bcryptjs, ssh2, etc.)
+ *
+ * A specifier is only claimed when it actually resolves *inside*
+ * backend/node_modules. `createRequire` also walks up to the root
+ * node_modules, and `require.resolve` then picks a package's `require`
+ * condition — so an unguarded `backendRequire.resolve('vitest')` would return
+ * root `vitest/index.cjs`, whose only job is to throw and tell you to use
+ * ESM. Those specifiers must fall through to Vite's own resolver instead.
  */
 const resolveBackendDeps = {
   name: 'resolve-backend-deps',
@@ -16,7 +24,8 @@ const resolveBackendDeps = {
   resolveId(id: string): string | null {
     if (id.startsWith('.') || id.startsWith('/') || id.startsWith('\0')) return null
     try {
-      return backendRequire.resolve(id)
+      const resolved = backendRequire.resolve(id)
+      return resolved.startsWith(backendModulesDir) ? resolved : null
     } catch {
       return null // not in backend/node_modules — let Vite's default resolution try root
     }

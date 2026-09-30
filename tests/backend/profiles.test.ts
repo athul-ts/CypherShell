@@ -48,7 +48,7 @@ describe('POST /api/profiles', () => {
       .post('/api/profiles')
       .set('Authorization', `Bearer ${token}`)
       .send(baseProfile)
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(201)
     expect(res.body).toHaveProperty('id')
     expect(res.body.name).toBe('Test Server')
     expect(res.body.host).toBe('192.168.1.1')
@@ -104,6 +104,37 @@ describe('PUT /api/profiles/:id', () => {
     expect(res.status).toBe(200)
     expect(res.body.name).toBe('Updated Server')
   })
+
+  // FR-01.8.4 — the form sends only the changed fields, so a partial payload
+  // must not disturb the columns it leaves out.
+  it('leaves omitted fields untouched instead of resetting them to defaults', async () => {
+    const seeded = await request(app)
+      .put(`/api/profiles/${profileId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ port: 2222, terminalTheme: 'light', fontSize: 18, autoReconnect: false })
+    expect(seeded.status).toBe(200)
+
+    const res = await request(app)
+      .put(`/api/profiles/${profileId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Renamed Again' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.name).toBe('Renamed Again')
+    expect(res.body.port).toBe(2222)
+    expect(res.body.terminalTheme).toBe('light')
+    expect(res.body.fontSize).toBe(18)
+    expect(res.body.autoReconnect).toBe(false)
+    expect(res.body.host).toBe('192.168.1.1')
+  })
+
+  it('still rejects a payload with an invalid field', async () => {
+    const res = await request(app)
+      .put(`/api/profiles/${profileId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ port: 70000 })
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('DELETE /api/profiles/:id', () => {
@@ -126,5 +157,54 @@ describe('DELETE /api/profiles/:id', () => {
     const res = await request(app).get('/api/profiles').set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(200)
     expect(res.body.length).toBe(0)
+  })
+})
+
+// Pins the credential half of the partial-update contract: omitting `password`
+// leaves the stored secret alone, while an explicit empty string clears it.
+// A client that always sends every field therefore cannot wipe a saved
+// password by accident — but one that always sends `password: ''` still can.
+describe('PUT /api/profiles/:id (password handling)', () => {
+  let id: string
+
+  beforeAll(async () => {
+    const res = await request(app)
+      .post('/api/profiles')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...baseProfile, name: 'Password Server', authMethod: 'password', password: 'sekret' })
+    expect(res.status).toBe(201)
+    id = res.body.id
+  })
+
+  afterAll(async () => {
+    await prisma.profile.deleteMany({ where: { id } })
+  })
+
+  it('stores the password encrypted, never in the clear', async () => {
+    const res = await request(app)
+      .get(`/api/profiles/${id}`)
+      .set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
+    expect(res.body.hasPassword).toBe(true)
+    expect(JSON.stringify(res.body)).not.toContain('sekret')
+  })
+
+  it('preserves the stored password when the payload omits it', async () => {
+    const res = await request(app)
+      .put(`/api/profiles/${id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Password Server Renamed' })
+    expect(res.status).toBe(200)
+    expect(res.body.name).toBe('Password Server Renamed')
+    expect(res.body.hasPassword).toBe(true)
+  })
+
+  it('clears the stored password when an explicit empty string is sent', async () => {
+    const res = await request(app)
+      .put(`/api/profiles/${id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: '' })
+    expect(res.status).toBe(200)
+    expect(res.body.hasPassword).toBe(false)
   })
 })
