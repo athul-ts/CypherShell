@@ -1,0 +1,102 @@
+name: Build Installers
+
+# Reusable workflow (NFR-07). Called by release.yml (on merge to main) and
+# package.yml (on PRs targeting main), so both paths build the identical
+# matrix. Deliberately has no triggers of its own — a reusable workflow
+# cannot be started directly; use package.yml's manual dispatch instead.
+on:
+  workflow_call:
+    inputs:
+      retention-days:
+        description: How long to keep the uploaded installer artifacts
+        type: number
+        default: 7
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing must not cancel the others — a Windows-only
+      # failure should still leave the Linux and macOS artifacts available
+      # for inspection.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            platform: win
+            artifacts: |
+              dist/*.exe
+              dist/*.exe.blockmap
+              dist/latest.yml
+          - name: Linux
+            os: ubuntu-latest
+            platform: linux
+            artifacts: |
+              dist/*.AppImage
+              dist/*.deb
+              dist/*.blockmap
+              dist/latest-linux.yml
+          - name: macOS
+            os: macos-latest
+            platform: mac
+            artifacts: |
+              dist/*.dmg
+              dist/*.zip
+              dist/*.blockmap
+              dist/latest-mac.yml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # better-sqlite3 and cpu-features compile from source when no prebuilt
+      # binary matches (Linux in particular).
+      - name: Install native build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3 make g++
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Build backend
+        run: npm run build:backend
+
+      - name: Build renderer + main
+        run: npm run build
+
+      # --publish never: release.yml creates the GitHub Release itself, so
+      # electron-builder must not try to. CSC_IDENTITY_AUTO_DISCOVERY=false
+      # stops the unsigned macOS build from probing for a signing identity,
+      # keeping the output deterministic.
+      #
+      # after-pack.cjs rebuilds better-sqlite3 for the target arch + Electron
+      # ABI and asserts the result, so a mismatch fails the build here rather
+      # than crashing the installed app.
+      - name: Package ${{ matrix.name }}
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # if-no-files-found: error is deliberate. A platform that silently
+      # produces nothing is exactly the failure that lost the macOS build
+      # from the original pipeline; it must fail loudly here instead of
+      # yielding an incomplete Release.
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
