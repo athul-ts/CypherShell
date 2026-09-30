@@ -1,0 +1,19 @@
+name: Package
+
+# Verifies packaging on the same matrix the Release uses (NFR-07), so a
+# platform-specific break is caught on the PR rather than after the tag
+# exists. Publishes nothing — artifacts only. Windows/Linux/macOS packaging
+# cannot be reproduced on a Windows dev machine, so this is the only place
+# the macOS and Linux paths get exercised before merge.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build installers
+    uses: ./.github/workflows/build.yml

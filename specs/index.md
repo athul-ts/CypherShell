@@ -208,6 +208,7 @@
 | NFR-04 | Usability — destructive confirms, loading states, plain-language errors                      | ✅     |
 | NFR-05 | Cross-platform — Windows, macOS, Linux                                                       | ✅     |
 | NFR-06 | Maintainability — 100% TypeScript, ESLint, thin controllers, Prisma schema = source of truth | ✅     |
+| NFR-07 | Release & distribution — Win/Linux/macOS installers, CI matrix, auto-update metadata         | ✅     |
 
 ---
 
@@ -231,11 +232,12 @@
 
 ## Architecture Decisions
 
-| ID      | Decision                                                | Record                                                                             |
-| ------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| ADR-001 | Use electron-vite over Next.js/CRA                      | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)     |
-| ADR-002 | Spawn Express as child process over direct Electron IPC | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md) |
-| ADR-003 | SQLite + Prisma over cloud/external database            | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)     |
+| ID      | Decision                                                | Record                                                                               |
+| ------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| ADR-001 | Use electron-vite over Next.js/CRA                      | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)       |
+| ADR-002 | Spawn Express as child process over direct Electron IPC | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)   |
+| ADR-003 | SQLite + Prisma over cloud/external database            | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)       |
+| ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1  | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md) |
 
 ---
 

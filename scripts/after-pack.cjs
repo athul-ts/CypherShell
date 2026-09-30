@@ -16,17 +16,64 @@
 const { rebuild } = require('@electron/rebuild')
 const path = require('path')
 const fs = require('fs')
+const { execFileSync } = require('child_process')
+
+// electron-builder reports the target architecture as its numeric Arch enum
+// (see builder-util's Arch).
+const ARCH_NAMES = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal' }
+
+/**
+ * Assert that a compiled .node binary contains the architecture we asked for.
+ * lipo lists every slice in a Mach-O file, so a universal binary reports
+ * several. macOS only — lipo ships with the Xcode command line tools.
+ *
+ * A wrong-arch binary builds cleanly and only fails at runtime, on the user's
+ * machine, so this is the only chance to catch it.
+ */
+function assertBinaryArch(binaryPath, targetArch) {
+  let arches
+  try {
+    arches = execFileSync('lipo', ['-archs', binaryPath], { encoding: 'utf8' }).trim()
+  } catch (err) {
+    throw new Error(`[after-pack] Could not inspect ${binaryPath} with lipo: ${err.message}`)
+  }
+  if (!arches.split(/\s+/).includes(targetArch)) {
+    throw new Error(
+      `[after-pack] better_sqlite3.node is built for "${arches}" but the target is ` +
+        `"${targetArch}" — it would crash on launch for the packaged platform.`
+    )
+  }
+  console.log(`[after-pack] ✓ Verified better_sqlite3.node architecture: ${arches}`)
+}
 
 exports.default = async function afterPack(context) {
-  const { appOutDir } = context
+  const { appOutDir, arch } = context
   const resourcesPath = path.join(appOutDir, 'resources')
   const backendPath = path.join(resourcesPath, 'backend')
+
+  // Rebuild for the architecture being packaged, not the one this machine
+  // happens to be. On an Apple Silicon runner the x64 bundle must still get an
+  // x86_64 binary, or it crashes on launch on Intel Macs.
+  const targetArch = ARCH_NAMES[arch]
+  if (!targetArch) {
+    throw new Error(
+      `[after-pack] Unrecognised target arch "${arch}" — expected one of ` +
+        `${Object.values(ARCH_NAMES).join(', ')}`
+    )
+  }
+  if (targetArch === 'universal') {
+    throw new Error(
+      '[after-pack] Universal macOS builds are not supported: better-sqlite3 is a native ' +
+        'module that must be rebuilt per architecture, and @electron/rebuild cannot emit a ' +
+        'universal binary. Package separate x64 and arm64 targets instead.'
+    )
+  }
 
   // Read the exact Electron version installed in this project
   const electronVersion = require('../node_modules/electron/package.json').version
 
   console.log(
-    `\n[after-pack] Rebuilding better-sqlite3 for Electron ${electronVersion} in staging…`
+    `\n[after-pack] Rebuilding better-sqlite3 for Electron ${electronVersion} (${targetArch}) in staging…`
   )
 
   try {
@@ -36,16 +83,23 @@ exports.default = async function afterPack(context) {
     await rebuild({
       buildPath: backendPath,
       electronVersion,
+      arch: targetArch,
       onlyModules: ['better-sqlite3'],
       force: true,
       useCache: false
     })
     console.log('[after-pack] ✓ better-sqlite3 rebuilt successfully for Electron ABI.')
 
+    const bs3Path = path.join(backendPath, 'node_modules', 'better-sqlite3')
+
+    // A clean rebuild is not proof the binary matches the target arch.
+    if (process.platform === 'darwin') {
+      assertBinaryArch(path.join(bs3Path, 'build', 'Release', 'better_sqlite3.node'), targetArch)
+    }
+
     // The rebuild leaves behind build artifacts (obj files, pdb, lib, sqlite3.c, etc.)
     // that are not needed at runtime. Only the .node binary is required.
     // Clean them up to avoid shipping ~68 MB of unnecessary build output.
-    const bs3Path = path.join(backendPath, 'node_modules', 'better-sqlite3')
     const toRemove = [
       path.join(bs3Path, 'build', 'Release', 'obj'),
       path.join(bs3Path, 'build', 'deps'),

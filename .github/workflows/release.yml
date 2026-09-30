@@ -1,5 +1,7 @@
 name: Release
 
+# Merging a PR into main produces a push to main, so this is the release
+# trigger. The tag comes from `version` in the root package.json.
 on:
   push:
     branches: [main]
@@ -14,102 +16,51 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.ver.outputs.tag }}
+      exists: ${{ steps.check.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
+
       - id: ver
-        run: echo "tag=v$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+        run: echo "tag=v$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
 
-  # ── Windows ────────────────────────────────────────────────────────────────
-  build-win:
-    name: Build Windows
-    runs-on: windows-latest
+      # Merging to main without bumping package.json would rebuild every
+      # platform and then silently overwrite the existing Release's assets.
+      # Warn and skip instead, so a no-op merge costs nothing.
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.ver.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Release ${{ steps.ver.outputs.tag }} already exists. Bump \`version\` in package.json to publish a new release — skipping the build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Build all platforms (Windows, Linux, macOS) ────────────────────────────
+  build:
+    name: Build installers
     needs: version
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Install backend dependencies
-        run: npm ci --prefix backend
-
-      - name: Build backend
-        run: npm run build:backend
-
-      - name: Build renderer + main
-        run: npm run build
-
-      - name: Package Windows installer
-        run: npx electron-builder --win --publish never
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: win-installer
-          path: dist/*.exe
-
-  # ── Linux ──────────────────────────────────────────────────────────────────
-  build-linux:
-    name: Build Linux
-    runs-on: ubuntu-latest
-    needs: version
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install native build tools
-        run: sudo apt-get update && sudo apt-get install -y python3 make g++
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Install backend dependencies
-        run: npm ci --prefix backend
-
-      - name: Build backend
-        run: npm run build:backend
-
-      - name: Build renderer + main
-        run: npm run build
-
-      - name: Package Linux bundles
-        run: npx electron-builder --linux --publish never
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-packages
-          path: |
-            dist/*.AppImage
-            dist/*.deb
+    if: needs.version.outputs.exists == 'false'
+    uses: ./.github/workflows/build.yml
 
   # ── Publish GitHub Release ─────────────────────────────────────────────────
   release:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [version, build-win, build-linux]
+    needs: [version, build]
+    if: needs.version.outputs.exists == 'false'
 
     steps:
+      # merge-multiple flattens every installers-* artifact into dist/, so the
+      # latest*.yml and *.blockmap files land here too. Without them the
+      # in-app electron-updater has no feed to read and every update check
+      # fails silently.
       - uses: actions/download-artifact@v4
         with:
-          name: win-installer
-          path: dist/
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux-packages
-          path: dist/
+          pattern: installers-*
+          merge-multiple: true
+          path: dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
