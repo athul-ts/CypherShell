@@ -121,7 +121,10 @@ win:
       arch:
         - x64
 nsis:
-  artifactName: ${productName}-${version}-setup.${ext}
+  # Platform + arch belong in every artifact name: the GitHub Release lists all
+  # three platforms' files in one flat list, and an extension alone (.zip, .yml)
+  # does not tell a user which download is theirs.
+  artifactName: ${productName}-${version}-windows-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -137,7 +140,7 @@ mac:
   notarize: false
   # ${arch} is required: x64 and arm64 are both built, and without it the two
   # would write the same filename and silently overwrite each other.
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${productName}-${version}-macos-${arch}.${ext}
   target:
     # zip is required for auto-update — electron-updater can only install a
     # macOS update from a zip, and derives latest-mac.yml from it. A dmg-only
@@ -158,9 +161,9 @@ linux:
   maintainer: CypherShell
   category: Network
 appImage:
-  artifactName: ${productName}-${version}.${ext}
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
 deb:
-  artifactName: ${productName}-${version}.${ext}
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
 npmRebuild: false
 publish:
   provider: github
