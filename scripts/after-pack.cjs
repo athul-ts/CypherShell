@@ -3,9 +3,11 @@
  *
  * Runs AFTER electron-builder stages all files (including extraResources)
  * but BEFORE the installer is created. At this point, the staged copy of
- * backend/node_modules is in dist/win-unpacked/resources/backend/ and is NOT
- * locked by any running process — so we can safely rebuild better-sqlite3
- * against Electron's ABI without touching the source node_modules at all.
+ * backend/node_modules is in the staged resources dir — dist/win-unpacked/
+ * resources/backend/ on Windows and Linux, or CypherShell.app/Contents/
+ * Resources/backend/ on macOS — and is NOT locked by any running process, so
+ * we can safely rebuild better-sqlite3 against Electron's ABI without
+ * touching the source node_modules at all.
  *
  * This means:
  *  - dev mode: source backend/node_modules uses system Node.js ABI  → works
@@ -22,6 +24,11 @@ const { execFileSync } = require('child_process')
 // (see builder-util's Arch).
 const ARCH_NAMES = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal' }
 
+// The names above are Node's; lipo speaks Mach-O. They disagree on the 64-bit
+// Intel name — electron-builder says "x64", Mach-O says "x86_64" — so compare
+// in lipo's vocabulary or a correctly built x64 binary fails the check below.
+const MACHO_ARCH_NAMES = { ia32: 'i386', x64: 'x86_64', armv7l: 'arm', arm64: 'arm64' }
+
 /**
  * Assert that a compiled .node binary contains the architecture we asked for.
  * lipo lists every slice in a Mach-O file, so a universal binary reports
@@ -31,24 +38,35 @@ const ARCH_NAMES = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal
  * machine, so this is the only chance to catch it.
  */
 function assertBinaryArch(binaryPath, targetArch) {
+  const expected = MACHO_ARCH_NAMES[targetArch]
+  if (!expected) {
+    throw new Error(`[after-pack] No Mach-O architecture name known for "${targetArch}".`)
+  }
+
   let arches
   try {
     arches = execFileSync('lipo', ['-archs', binaryPath], { encoding: 'utf8' }).trim()
   } catch (err) {
     throw new Error(`[after-pack] Could not inspect ${binaryPath} with lipo: ${err.message}`)
   }
-  if (!arches.split(/\s+/).includes(targetArch)) {
+  if (!arches.split(/\s+/).includes(expected)) {
     throw new Error(
       `[after-pack] better_sqlite3.node is built for "${arches}" but the target is ` +
-        `"${targetArch}" — it would crash on launch for the packaged platform.`
+        `"${expected}" (${targetArch}) — it would crash on launch for the packaged platform.`
     )
   }
   console.log(`[after-pack] ✓ Verified better_sqlite3.node architecture: ${arches}`)
 }
 
 exports.default = async function afterPack(context) {
-  const { appOutDir, arch } = context
-  const resourcesPath = path.join(appOutDir, 'resources')
+  const { appOutDir, arch, packager } = context
+
+  // Ask electron-builder where resources landed rather than assuming
+  // <appOutDir>/resources. That layout only holds on Windows and Linux; on
+  // macOS extraResources go inside the bundle at
+  // <appOutDir>/<productName>.app/Contents/Resources. Hardcoding it made every
+  // macOS package fail here with ENOENT on backend/package.json.
+  const resourcesPath = packager.getResourcesDir(appOutDir)
   const backendPath = path.join(resourcesPath, 'backend')
 
   // Rebuild for the architecture being packaged, not the one this machine
