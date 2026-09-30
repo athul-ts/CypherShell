@@ -68,6 +68,32 @@ jobs:
           tag_name: ${{ needs.version.outputs.tag }}
           name: CypherShell ${{ needs.version.outputs.tag }}
           generate_release_notes: true
+          # Prepended to the generated notes. Every platform's assets land in one
+          # flat list, and the updater metadata (*.yml, *.blockmap) cannot be
+          # renamed to disambiguate them — electron-updater fetches those exact
+          # filenames. So the mapping is spelled out here instead.
+          body: |
+            ## Downloads
+
+            Pick the file for your platform. The `-x64` / `-arm64` suffix is the CPU
+            architecture — Apple Silicon Macs are `arm64`, Intel Macs are `x64`.
+
+            | Platform | File |
+            | --- | --- |
+            | Windows | `CypherShell-*-windows-x64-setup.exe` |
+            | macOS (Apple Silicon) | `CypherShell-*-macos-arm64.dmg` |
+            | macOS (Intel) | `CypherShell-*-macos-x64.dmg` |
+            | Linux | `CypherShell-*-linux-x64.AppImage` (portable) or `...-linux-x64.deb` (Debian/Ubuntu) |
+
+            The `.zip` files are the **auto-update** payloads, not manual downloads —
+            `electron-updater` needs them to install a macOS update, since it cannot
+            install from a `.dmg`. Likewise `latest.yml`, `latest-linux.yml`,
+            `latest-mac.yml` and the `.blockmap` files are read by the in-app updater;
+            you never download them by hand.
+
+            **macOS:** builds are unsigned, so Gatekeeper blocks the first launch.
+            Right-click the app and choose **Open**, or run
+            `xattr -dr com.apple.quarantine /Applications/CypherShell.app`.
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
