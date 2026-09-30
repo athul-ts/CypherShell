@@ -24,6 +24,11 @@ const { execFileSync } = require('child_process')
 // (see builder-util's Arch).
 const ARCH_NAMES = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal' }
 
+// The names above are Node's; lipo speaks Mach-O. They disagree on the 64-bit
+// Intel name — electron-builder says "x64", Mach-O says "x86_64" — so compare
+// in lipo's vocabulary or a correctly built x64 binary fails the check below.
+const MACHO_ARCH_NAMES = { ia32: 'i386', x64: 'x86_64', armv7l: 'arm', arm64: 'arm64' }
+
 /**
  * Assert that a compiled .node binary contains the architecture we asked for.
  * lipo lists every slice in a Mach-O file, so a universal binary reports
@@ -33,16 +38,21 @@ const ARCH_NAMES = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal
  * machine, so this is the only chance to catch it.
  */
 function assertBinaryArch(binaryPath, targetArch) {
+  const expected = MACHO_ARCH_NAMES[targetArch]
+  if (!expected) {
+    throw new Error(`[after-pack] No Mach-O architecture name known for "${targetArch}".`)
+  }
+
   let arches
   try {
     arches = execFileSync('lipo', ['-archs', binaryPath], { encoding: 'utf8' }).trim()
   } catch (err) {
     throw new Error(`[after-pack] Could not inspect ${binaryPath} with lipo: ${err.message}`)
   }
-  if (!arches.split(/\s+/).includes(targetArch)) {
+  if (!arches.split(/\s+/).includes(expected)) {
     throw new Error(
       `[after-pack] better_sqlite3.node is built for "${arches}" but the target is ` +
-        `"${targetArch}" — it would crash on launch for the packaged platform.`
+        `"${expected}" (${targetArch}) — it would crash on launch for the packaged platform.`
     )
   }
   console.log(`[after-pack] ✓ Verified better_sqlite3.node architecture: ${arches}`)
