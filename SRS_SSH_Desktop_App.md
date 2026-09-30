@@ -264,6 +264,7 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 - IPC handlers exposed:
   - `ping` — health check
   - `get-backend-port` — returns the backend port
+  - `get-app-version` — returns `app.getVersion()`, the app version from the packaged `package.json`
   - `dialog:openFile` — native OS file picker
   - `dialog:openDirectory` — native OS directory picker
   - `dialog:saveFile` — native OS save dialog
