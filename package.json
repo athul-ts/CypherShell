@@ -92,5 +92,11 @@
     "vitest": "^4.1.9",
     "zod": "^4.4.3",
     "zustand": "^5.0.13"
+  },
+  "allowScripts": {
+    "electron@39.8.10": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.27.7": true,
+    "electron-winstaller@5.4.0": true
   }
 }
