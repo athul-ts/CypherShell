@@ -3,9 +3,11 @@
  *
  * Runs AFTER electron-builder stages all files (including extraResources)
  * but BEFORE the installer is created. At this point, the staged copy of
- * backend/node_modules is in dist/win-unpacked/resources/backend/ and is NOT
- * locked by any running process — so we can safely rebuild better-sqlite3
- * against Electron's ABI without touching the source node_modules at all.
+ * backend/node_modules is in the staged resources dir — dist/win-unpacked/
+ * resources/backend/ on Windows and Linux, or CypherShell.app/Contents/
+ * Resources/backend/ on macOS — and is NOT locked by any running process, so
+ * we can safely rebuild better-sqlite3 against Electron's ABI without
+ * touching the source node_modules at all.
  *
  * This means:
  *  - dev mode: source backend/node_modules uses system Node.js ABI  → works
@@ -47,8 +49,14 @@ function assertBinaryArch(binaryPath, targetArch) {
 }
 
 exports.default = async function afterPack(context) {
-  const { appOutDir, arch } = context
-  const resourcesPath = path.join(appOutDir, 'resources')
+  const { appOutDir, arch, packager } = context
+
+  // Ask electron-builder where resources landed rather than assuming
+  // <appOutDir>/resources. That layout only holds on Windows and Linux; on
+  // macOS extraResources go inside the bundle at
+  // <appOutDir>/<productName>.app/Contents/Resources. Hardcoding it made every
+  // macOS package fail here with ENOENT on backend/package.json.
+  const resourcesPath = packager.getResourcesDir(appOutDir)
   const backendPath = path.join(resourcesPath, 'backend')
 
   // Rebuild for the architecture being packaged, not the one this machine
