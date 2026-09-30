@@ -287,24 +287,37 @@ The Electron app launches with **hot-reload** for the renderer. The Express back
 | `npm run build:backend`  | Compile backend TypeScript only             |
 | `npm run rebuild:native` | Rebuild native modules against Electron ABI |
 | `npm run build:win`      | Package Windows installer                   |
-| `npm run build:mac`      | Package macOS DMG                           |
+| `npm run build:mac`      | Package macOS DMG + zip                     |
 | `npm run build:linux`    | Package Linux AppImage + deb                |
 
 ---
 
 ## 📦 Building for Production
 
-| Platform    | Command               | Output                           |
-| ----------- | --------------------- | -------------------------------- |
-| **Windows** | `npm run build:win`   | `dist/*.exe` (NSIS installer)    |
-| **macOS**   | `npm run build:mac`   | `dist/*.dmg`                     |
-| **Linux**   | `npm run build:linux` | `dist/*.AppImage` + `dist/*.deb` |
+| Platform    | Command               | Output                                             |
+| ----------- | --------------------- | -------------------------------------------------- |
+| **Windows** | `npm run build:win`   | `dist/*.exe` (NSIS installer)                      |
+| **macOS**   | `npm run build:mac`   | `dist/*-x64.dmg`, `dist/*-arm64.dmg`, `dist/*.zip` |
+| **Linux**   | `npm run build:linux` | `dist/*.AppImage` + `dist/*.deb`                   |
 
-All artifacts are written to the `dist/` directory.
+All artifacts are written to the `dist/` directory. Each platform also emits its
+auto-update metadata (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`) and
+blockmaps, which `electron-updater` needs in order to resolve updates.
 
-> **Note:** Native modules (`better-sqlite3`, `ssh2`) are automatically rebuilt against the target Electron ABI by the `after-pack` hook and are excluded from the asar archive for correct loading at runtime.
+> **Note:** Native modules (`better-sqlite3`, `ssh2`) are automatically rebuilt against the target Electron ABI **and target architecture** by the `after-pack` hook and are excluded from the asar archive for correct loading at runtime. On macOS the built binary is verified with `lipo -archs`, so an architecture mismatch fails the build instead of crashing on launch.
 
-> **macOS code signing:** Set the `CSC_LINK` and `CSC_KEY_PASSWORD` environment variables before building if you want a signed `.dmg`. Unsigned builds will trigger Gatekeeper warnings on first launch.
+> **macOS code signing:** CI builds are currently **unsigned and not notarized**. Gatekeeper will block the first launch — right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/CypherShell.app`. To produce a signed build instead, set `CSC_LINK` and `CSC_KEY_PASSWORD` (plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for notarization) and set `notarize: true` in `electron-builder.yml`.
+
+### Releasing
+
+Releases are fully automated by GitHub Actions — there is no manual packaging step.
+
+1. Bump `version` in the root `package.json`. This drives both the Git tag (`v<version>`) and the installer filenames.
+2. Merge to `main`.
+
+The [release workflow](.github/workflows/release.yml) then builds Windows, Linux and macOS on native runners and publishes a GitHub Release with every installer and its update metadata. Merging without bumping the version warns and skips the build rather than overwriting the existing Release.
+
+Open a PR against `main` to build the same three platforms as downloadable workflow artifacts **without** publishing a Release — useful for testing a packaging change before it ships. The [package workflow](.github/workflows/package.yml) can also be run manually from the Actions tab.
 
 ---
 

@@ -135,13 +135,21 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  # ${arch} is required: x64 and arm64 are both built, and without it the two
+  # would write the same filename and silently overwrite each other.
+  artifactName: ${productName}-${version}-${arch}.${ext}
   target:
+    # zip is required for auto-update — electron-updater can only install a
+    # macOS update from a zip, and derives latest-mac.yml from it. A dmg-only
+    # build leaves the updater with no usable feed.
     - target: dmg
       arch:
         - x64
         - arm64
-dmg:
-  artifactName: ${productName}-${version}.${ext}
+    - target: zip
+      arch:
+        - x64
+        - arm64
 linux:
   icon: build/icon.png
   target:
