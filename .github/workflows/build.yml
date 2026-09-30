@@ -26,8 +26,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # windows-2022, not windows-latest: the latest image now ships Visual
+          # Studio 2026 (v18), which the node-gyp used here cannot identify — it
+          # reads the version as "undefined", overflows the child-process buffer
+          # probing it, and aborts. better-sqlite3 has no prebuilt win32 binary
+          # for this Node version, so it falls back to a source build and needs a
+          # compiler node-gyp can actually find. windows-2022 still has VS 2022.
+          # Revisit once node-gyp 11+ is in play across electron-builder/@electron.
           - name: Windows
-            os: windows-latest
+            os: windows-2022
             platform: win
             artifacts: |
               dist/*.exe
@@ -69,6 +76,15 @@ jobs:
 
       - name: Install backend dependencies
         run: npm ci --prefix backend
+
+      # backend/build.cjs leaves @prisma/client external, so the packaged app
+      # loads it from node_modules at runtime and the generated client in
+      # backend/node_modules/.prisma must exist before extraResources copies it.
+      # Without this, electron-builder only warns that the source is missing and
+      # ships an installer that fails on first database access.
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
 
       - name: Build backend
         run: npm run build:backend
