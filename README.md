@@ -294,15 +294,20 @@ The Electron app launches with **hot-reload** for the renderer. The Express back
 
 ## 📦 Building for Production
 
-| Platform    | Command               | Output                                             |
-| ----------- | --------------------- | -------------------------------------------------- |
-| **Windows** | `npm run build:win`   | `dist/*.exe` (NSIS installer)                      |
-| **macOS**   | `npm run build:mac`   | `dist/*-x64.dmg`, `dist/*-arm64.dmg`, `dist/*.zip` |
-| **Linux**   | `npm run build:linux` | `dist/*.AppImage` + `dist/*.deb`                   |
+| Platform    | Command               | Output                                                              |
+| ----------- | --------------------- | ------------------------------------------------------------------- |
+| **Windows** | `npm run build:win`   | `dist/CypherShell-<version>-windows-x64-setup.exe` (NSIS installer) |
+| **macOS**   | `npm run build:mac`   | `dist/CypherShell-<version>-macos-{x64,arm64}.{dmg,zip}`            |
+| **Linux**   | `npm run build:linux` | `dist/CypherShell-<version>-linux-x64.{AppImage,deb}`               |
+
+Every installer filename carries its platform and architecture, so the flat asset
+list on a GitHub Release is unambiguous.
 
 All artifacts are written to the `dist/` directory. Each platform also emits its
 auto-update metadata (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`) and
-blockmaps, which `electron-updater` needs in order to resolve updates.
+blockmaps, which `electron-updater` needs in order to resolve updates. Those
+metadata filenames are fixed — the updater fetches them by exact name — so they
+are the one thing that cannot be given a platform suffix.
 
 > **Note:** Native modules (`better-sqlite3`, `ssh2`) are automatically rebuilt against the target Electron ABI **and target architecture** by the `after-pack` hook and are excluded from the asar archive for correct loading at runtime. On macOS the built binary is verified with `lipo -archs`, so an architecture mismatch fails the build instead of crashing on launch.
 
