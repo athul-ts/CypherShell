@@ -1,0 +1,98 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── Profile ──────────────────────────────────────────────────────────────
+
+model Profile {
+  id                String    @id @default(cuid())
+  name              String
+  host              String
+  port              Int       @default(22)
+  username          String
+  authMethod        String                   // "password" | "key" | "key+passphrase"
+  encryptedPassword String?                  // AES-256-GCM encrypted — null if key auth
+  sshKeyId          String?
+  group             String?
+  terminalTheme     String    @default("dark")
+  fontSize          Int       @default(14)
+  autoReconnect     Boolean   @default(true)
+  lastConnectedAt   DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  sshKey    SSHKey?   @relation(fields: [sshKeyId], references: [id], onDelete: SetNull)
+  tunnels   Tunnel[]
+  auditLogs AuditLog[]
+}
+
+// ─── Tunnel ───────────────────────────────────────────────────────────────
+
+model Tunnel {
+  id         String  @id @default(cuid())
+  profileId  String
+  type       String                          // "local" | "remote" | "dynamic"
+  localPort  Int
+  remoteHost String?                         // null for dynamic SOCKS5
+  remotePort Int?                            // null for dynamic SOCKS5
+  autoStart  Boolean @default(false)
+  label      String?
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// ─── SSHKey ───────────────────────────────────────────────────────────────
+
+model SSHKey {
+  id                  String   @id @default(cuid())
+  name                String
+  description         String?
+  keyType             String                  // "rsa" | "ed25519"
+  encryptedPrivateKey String                  // AES-256-GCM encrypted blob
+  publicKey           String                  // Stored plaintext — public key is not secret
+  fingerprint         String                  // SHA-256 fingerprint display string
+  hasPassphrase       Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  profiles Profile[]
+}
+
+// ─── AuditLog ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  type          String                        // "connection" | "sftp_upload" | "sftp_download" | "key_used"
+  profileId     String?
+  profileName   String?
+  host          String?
+  detail        String
+  success       Boolean
+  errorMessage  String?
+  durationMs    Int?
+  fileSizeBytes Int?
+  timestamp     DateTime @default(now())
+
+  profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+}
+
+// ─── AppConfig (single row, id always "singleton") ────────────────────────
+
+model AppConfig {
+  id                  String   @id @default("singleton")
+  lockEnabled         Boolean  @default(false)
+  masterPasswordHash  String?                  // bcrypt hash — null if lock disabled
+  encryptionKeySalt   String                   // PBKDF2 salt (hex) — generated on first run
+  autoLockMinutes     Int      @default(15)
+  logRetentionDays    Int      @default(90)
+  theme               String   @default("dark") // "dark" | "light" | "system"
+  defaultFont         String   @default("JetBrains Mono")
+  defaultFontSize     Int      @default(14)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
