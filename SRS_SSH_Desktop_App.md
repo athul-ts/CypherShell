@@ -783,6 +783,26 @@ Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup a
 - Business logic only in services — controllers are thin
 - Prisma schema is the single source of truth for data shapes
 
+### NFR-07: Release & Distribution
+
+Installers are produced for all three target platforms:
+
+| Platform | Targets          | Architectures              |
+| -------- | ---------------- | -------------------------- |
+| Windows  | NSIS `.exe`      | x64                        |
+| Linux    | AppImage, `.deb` | x64                        |
+| macOS    | `.dmg`, `.zip`   | x64, arm64 (Apple Silicon) |
+
+- Every platform is built in CI on its **native runner** — Windows on `windows-latest`, Linux on `ubuntu-latest`, macOS on `macos-latest`. No cross-compilation of the Electron shell.
+- A single reusable matrix workflow builds all three platforms, so adding or changing a platform is a one-line matrix edit rather than a new hand-written job.
+- Merging to `main` publishes a GitHub Release carrying every platform's installers.
+- Pull requests targeting `main` build the same three platforms as downloadable workflow artifacts, so packaging regressions are caught before merge. PR builds never publish a Release.
+- Native modules (`better-sqlite3`) are rebuilt for the **target architecture and Electron ABI** during packaging, and the resulting binary is verified to match the target architecture before the installer is created.
+- Auto-update metadata (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`) and blockmaps are published alongside the installers, so the in-app `electron-updater` feed resolves.
+- The macOS `.zip` target is required — `electron-updater` cannot install from a `.dmg`.
+- A Release tag is derived from `version` in the root `package.json`; re-running the pipeline without a version bump must warn rather than silently overwrite an existing Release.
+- **v1 ships macOS builds unsigned and not notarized.** Users must right-click the `.app` and choose **Open** on first launch (see §15 Known Risks). Signing and notarization are a later, secrets-only change.
+
 ---
 
 ## 8. Database Schema (SQLite + Prisma)
@@ -1296,37 +1316,37 @@ electron-updater          v6.8
 
 Current build state as of v3.0 of this document.
 
-| Module                     | Status      | Notes                                                                                        |
-| -------------------------- | ----------- | -------------------------------------------------------------------------------------------- |
-| Electron main process      | ✅ Complete | portfinder, backend spawn, IPC, auto-updater, app.log                                        |
-| Preload / contextBridge    | ✅ Complete | Full typed window.api surface                                                                |
-| App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow                                                         |
-| SetupWizard page           | ✅ Complete | First-run master password setup                                                              |
-| LockScreen page            | ✅ Complete | Unlock with bcrypt verify + JWT                                                              |
-| Home page / Profile grid   | ✅ Complete | Search, filter, CRUD, duplicate, export/import                                               |
-| ProfileDetailPane          | ✅ Complete | Connect/disconnect, tunnel panel, window spawning                                            |
-| ProfileForm                | ✅ Complete | Create/edit with key selector                                                                |
-| TerminalPane (xterm.js)    | ✅ Complete | WebSocket I/O, resize, themes, search                                                        |
-| TabBar                     | ✅ Complete | DnD reorder, close, Home anchor tab                                                          |
-| SftpPane (dual-pane)       | ✅ Complete | All file ops, progress, transfer queue                                                       |
-| LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC                                                           |
-| Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                           |
-| Logs page                  | ✅ Complete | Filter, search, date range, CSV export                                                       |
-| Settings page              | ✅ Complete | Theme, font, lock, retention                                                                 |
-| UpdateBanner               | ✅ Complete | Auto-update notification + install                                                           |
-| SSH service                | ✅ Complete | Session pool, password + key auth                                                            |
-| SFTP service               | ✅ Complete | All file ops + SSE progress emitter                                                          |
-| Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                         |
-| Key service                | ✅ Complete | RSA/ED25519 gen, import, fingerprint, .cskb export/import                                    |
-| Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5                                                                |
-| Audit service              | ✅ Complete | Event logging + CSV generation                                                               |
-| Config service             | ✅ Complete | AppConfig singleton CRUD                                                                     |
-| Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                               |
-| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O                                                                 |
-| Auth middleware            | ✅ Complete | JWT + query-param fallback for SSE                                                           |
-| Rate limiting              | ✅ Complete | 5/min auth, 300/min API                                                                      |
-| Database schema            | ✅ Complete | 5 models, Prisma migrations, WAL mode                                                        |
-| Build pipeline             | ✅ Complete | Win/Mac/Linux installers; Windows installer ~101 MB (esbuild + migration-via-better-sqlite3) |
+| Module                     | Status      | Notes                                                                                     |
+| -------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
+| Electron main process      | ✅ Complete | portfinder, backend spawn, IPC, auto-updater, app.log                                     |
+| Preload / contextBridge    | ✅ Complete | Full typed window.api surface                                                             |
+| App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow                                                      |
+| SetupWizard page           | ✅ Complete | First-run master password setup                                                           |
+| LockScreen page            | ✅ Complete | Unlock with bcrypt verify + JWT                                                           |
+| Home page / Profile grid   | ✅ Complete | Search, filter, CRUD, duplicate, export/import                                            |
+| ProfileDetailPane          | ✅ Complete | Connect/disconnect, tunnel panel, window spawning                                         |
+| ProfileForm                | ✅ Complete | Create/edit with key selector                                                             |
+| TerminalPane (xterm.js)    | ✅ Complete | WebSocket I/O, resize, themes, search                                                     |
+| TabBar                     | ✅ Complete | DnD reorder, close, Home anchor tab                                                       |
+| SftpPane (dual-pane)       | ✅ Complete | All file ops, progress, transfer queue                                                    |
+| LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC                                                        |
+| Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                        |
+| Logs page                  | ✅ Complete | Filter, search, date range, CSV export                                                    |
+| Settings page              | ✅ Complete | Theme, font, lock, retention                                                              |
+| UpdateBanner               | ✅ Complete | Auto-update notification + install                                                        |
+| SSH service                | ✅ Complete | Session pool, password + key auth                                                         |
+| SFTP service               | ✅ Complete | All file ops + SSE progress emitter                                                       |
+| Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                      |
+| Key service                | ✅ Complete | RSA/ED25519 gen, import, fingerprint, .cskb export/import                                 |
+| Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5                                                             |
+| Audit service              | ✅ Complete | Event logging + CSV generation                                                            |
+| Config service             | ✅ Complete | AppConfig singleton CRUD                                                                  |
+| Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                            |
+| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O                                                              |
+| Auth middleware            | ✅ Complete | JWT + query-param fallback for SSE                                                        |
+| Rate limiting              | ✅ Complete | 5/min auth, 300/min API                                                                   |
+| Database schema            | ✅ Complete | 5 models, Prisma migrations, WAL mode                                                     |
+| Build pipeline             | ✅ Complete | Win/Linux/macOS installers via CI matrix (NFR-07); ~101 MB (esbuild + runtime migrations) |
 
 ---
 
