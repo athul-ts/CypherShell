@@ -1,0 +1,47 @@
+# ========================
+# Dependencies
+# ========================
+node_modules/
+
+# ========================
+# Environment Variables
+# ========================
+.env
+.env.*
+!.env.example
+
+# ========================
+# Build Output (tsc -> ./dist)
+# ========================
+dist/
+
+# ========================
+# Prisma Generated Client
+# ========================
+generated/prisma/
+
+# ========================
+# SQLite Database Files
+# ========================
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+
+# ========================
+# Logs
+# ========================
+*.log
+*.log.*
+npm-debug.log*
+
+# ========================
+# TypeScript Cache
+# ========================
+*.tsbuildinfo
+
+# ========================
+# OS Generated Files
+# ========================
+.DS_Store
+Thumbs.db
