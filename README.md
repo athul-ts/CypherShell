@@ -311,7 +311,17 @@ are the one thing that cannot be given a platform suffix.
 
 > **Note:** Native modules (`better-sqlite3`, `ssh2`) are automatically rebuilt against the target Electron ABI **and target architecture** by the `after-pack` hook and are excluded from the asar archive for correct loading at runtime. On macOS the built binary is verified with `lipo -archs`, so an architecture mismatch fails the build instead of crashing on launch.
 
-> **macOS code signing:** CI builds are currently **unsigned and not notarized**. Gatekeeper will block the first launch — right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/CypherShell.app`. To produce a signed build instead, set `CSC_LINK` and `CSC_KEY_PASSWORD` (plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for notarization) and set `notarize: true` in `electron-builder.yml`.
+> **macOS code signing:** CI builds are **unsigned and not notarized**, so Gatekeeper blocks the first launch. This is deliberate, not an oversight — see [ADR-004](specs/decisions/ADR-004-release-pipeline.md).
+>
+> The old Control-click → **Open** override **no longer works** — Apple removed it in macOS 15 Sequoia. To open the app:
+>
+> 1. Launch it once, then dismiss the warning dialog.
+> 2. Open **System Settings → Privacy & Security** and scroll down to the **Security** section.
+> 3. Click **Open Anyway** for CypherShell and authenticate. macOS remembers the choice.
+>
+> The Terminal equivalent, for anyone who would rather not click through System Settings: `xattr -dr com.apple.quarantine /Applications/CypherShell.app`
+>
+> To produce a signed build instead, set `CSC_LINK` and `CSC_KEY_PASSWORD` (plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for notarization) and set `notarize: true` in `electron-builder.yml`.
 
 ### Releasing
 
@@ -512,9 +522,13 @@ Diagnostic logs are written to:
 | macOS   | `~/Library/Application Support/CypherShell/app.log` |
 | Linux   | `~/.config/CypherShell/app.log`                     |
 
+### Gatekeeper blocks the app on first launch (macOS)
+
+Expected on a fresh install — releases are unsigned, so macOS blocks the first launch. The Control-click → **Open** override was removed in macOS 15 Sequoia and no longer works; use the steps in the [macOS code signing](#-building-for-production) note above. Alternatively, build from source to avoid it entirely.
+
 ### White screen on launch (macOS)
 
-This is usually a Gatekeeper issue with an unsigned build. Right-click the `.app` bundle and choose **Open**, then confirm. Alternatively, build from source to avoid this.
+This is a **different** problem from the Gatekeeper dialog above, and not a signing issue. A white screen almost always means the Express backend failed to start, leaving the renderer with no API to talk to. Check the log at `~/Library/Application Support/CypherShell/app.log`.
 
 ---
 

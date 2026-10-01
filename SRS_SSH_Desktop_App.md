@@ -803,7 +803,7 @@ Installers are produced for all three target platforms:
 - Installer filenames identify their platform and architecture (`CypherShell-<version>-<platform>-<arch>[-setup].<ext>`, platform ∈ `windows` | `macos` | `linux`), so a Release's flat asset list is unambiguous. The `latest*.yml` and `.blockmap` filenames are exempt — `electron-updater` resolves those by exact name, so they must not be renamed.
 - The macOS `.zip` target is required — `electron-updater` cannot install from a `.dmg`.
 - A Release tag is derived from `version` in the root `package.json`; re-running the pipeline without a version bump must warn rather than silently overwrite an existing Release.
-- **v1 ships macOS builds unsigned and not notarized.** Users must right-click the `.app` and choose **Open** on first launch (see §15 Known Risks). Signing and notarization are a later, secrets-only change.
+- **v1 ships macOS builds unsigned and not notarized.** Gatekeeper blocks the first launch; users clear it via **System Settings → Privacy & Security → Security → Open Anyway**, or `xattr -dr com.apple.quarantine` (see §15 Known Risks). The Control-click → **Open** override was removed in macOS 15 Sequoia and must not be documented. Signing and notarization remain a later, secrets-only change.
 
 ---
 
@@ -1311,6 +1311,7 @@ electron-updater          v6.8
 | Electron bundle > 200MB                             | Resolved   | esbuild bundles backend pure-JS deps inline; installer is ~101 MB                                                                                 |
 | Windows SFTP path separator issues                  | Medium     | Always use `path.posix` for remote paths                                                                                                          |
 | Port collision on backend auto-assign               | Low        | `portfinder` scans from 4000 upward                                                                                                               |
+| macOS Gatekeeper blocks unsigned builds             | Medium     | Builds are unsigned by design (ADR-004). Users clear it via **System Settings → Privacy & Security → Security → Open Anyway**, or `xattr -dr com.apple.quarantine`. The Control-click → **Open** override was removed in macOS 15 Sequoia and must not be documented |
 
 ---
 

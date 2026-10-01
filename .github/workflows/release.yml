@@ -91,8 +91,10 @@ jobs:
             `latest-mac.yml` and the `.blockmap` files are read by the in-app updater;
             you never download them by hand.
 
-            **macOS:** builds are unsigned, so Gatekeeper blocks the first launch.
-            Right-click the app and choose **Open**, or run
+            **macOS:** builds are unsigned, so Gatekeeper blocks the first launch. The
+            Control-click → **Open** override was removed in macOS 15, so instead open
+            **System Settings → Privacy & Security**, scroll to the **Security** section,
+            and click **Open Anyway** for CypherShell. Or, in Terminal:
             `xattr -dr com.apple.quarantine /Applications/CypherShell.app`.
           files: dist/*
         env:
