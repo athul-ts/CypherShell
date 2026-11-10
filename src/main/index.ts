@@ -18,9 +18,11 @@ import {
 import { stat, readdir, mkdir, rename, rm } from 'fs/promises'
 import * as crypto from 'crypto'
 import * as os from 'os'
+import { BackendSupervisor } from './backendSupervisor'
 
 let backendPort = 4000
-let backendProcess: ChildProcess | null = null
+/** NFR-03 / BL-16: owns the backend child process and restarts it after a crash. */
+let backendSupervisor: BackendSupervisor | null = null
 /** CODE-15: Track app-lifetime intervals so they can be cleared on shutdown. */
 const appIntervals: ReturnType<typeof setInterval>[] = []
 
@@ -117,40 +119,59 @@ async function startBackend(): Promise<number> {
   logToFile(`backendScript: ${backendScript}`)
   logToFile(`backendCwd: ${backendCwd}`)
 
-  logToFile('Spawning backend child process...')
-  const child = spawn(nodeExecutable, [backendScript], {
-    cwd: backendCwd,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1', // Makes Electron binary behave as Node.js
-      PORT: String(backendPort),
-      DATABASE_URL: `file:${dbPath}`,
-      JWT_SECRET: jwtSecret,
-      STORAGE_KEY: storageKey,
-      NODE_ENV: 'production'
-    }
-  })
-  backendProcess = child
+  const spawnBackend = (): ChildProcess => {
+    logToFile('Spawning backend child process...')
+    const child = spawn(nodeExecutable, [backendScript], {
+      cwd: backendCwd,
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1', // Makes Electron binary behave as Node.js
+        PORT: String(backendPort),
+        DATABASE_URL: `file:${dbPath}`,
+        JWT_SECRET: jwtSecret,
+        STORAGE_KEY: storageKey,
+        NODE_ENV: 'production'
+      }
+    })
 
-  child.stdout.on('data', (data) => {
-    const message = data.toString().trim()
-    console.log(`Backend: ${message}`)
-    logToFile(`[Backend STDOUT] ${message}`)
-  })
+    child.stdout.on('data', (data) => {
+      const message = data.toString().trim()
+      console.log(`Backend: ${message}`)
+      logToFile(`[Backend STDOUT] ${message}`)
+    })
 
-  child.stderr.on('data', (data) => {
-    const message = data.toString().trim()
-    console.error(`Backend error: ${message}`)
-    logToFile(`[Backend STDERR] ${message}`)
-  })
+    child.stderr.on('data', (data) => {
+      const message = data.toString().trim()
+      console.error(`Backend error: ${message}`)
+      logToFile(`[Backend STDERR] ${message}`)
+    })
 
-  child.on('close', (code) => {
-    logToFile(`Backend child process exited with code ${code}`)
-  })
+    child.on('close', (code) => {
+      logToFile(`Backend child process exited with code ${code}`)
+    })
 
-  child.on('error', (err) => {
-    logToFile(`Backend child process error: ${err.message}`)
+    child.on('error', (err) => {
+      logToFile(`Backend child process error: ${err.message}`)
+    })
+
+    return child
+  }
+
+  // NFR-03 / BL-16: restart the backend if it crashes — on the same port, so
+  // every window's base URL stays valid — then tell the windows to
+  // re-authenticate, since the new process holds no tokens or keys.
+  backendSupervisor = new BackendSupervisor({
+    spawn: spawnBackend,
+    log: logToFile,
+    onRestart: (restart) => {
+      logToFile(`Backend restarted (restart #${restart})`)
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('backend:restarted')
+      }
+    },
+    onGiveUp: (failures) => logToFile(`Backend crashed ${failures} times; not restarting`)
   })
+  backendSupervisor.start()
 
   return backendPort
 }
@@ -505,6 +526,8 @@ ipcMain.handle('get-connection-token', (_event, sessionId: string) => {
 
 /** CODE-08: Kill the backend child process with SIGTERM + SIGKILL fallback. */
 function killBackendProcess(): void {
+  const backendProcess = backendSupervisor?.process
+  backendSupervisor?.stop() // quitting: the coming exit is expected, do not restart
   if (!backendProcess) return
   try {
     backendProcess.kill('SIGTERM')
@@ -538,6 +561,8 @@ app.on('will-quit', () => {
 })
 
 process.on('exit', () => {
+  const backendProcess = backendSupervisor?.process
+  backendSupervisor?.stop()
   if (backendProcess) {
     try {
       backendProcess.kill('SIGTERM')

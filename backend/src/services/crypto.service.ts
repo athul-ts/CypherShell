@@ -40,28 +40,47 @@ export class CryptoService {
     this.activeKey = null
   }
 
+  /** The key loaded at unlock, or `null` while the app is locked. */
+  static getActiveKey(): Buffer | null {
+    return this.activeKey
+  }
+
   static encrypt(text: string): string {
-    if (!this.activeKey) throw new Error('Encryption key not loaded. App is locked.')
+    return this.encryptWith(this.requireActiveKey(), text)
+  }
+
+  static decrypt(encryptedText: string): string {
+    return this.decryptWith(this.requireActiveKey(), encryptedText)
+  }
+
+  /** AES-256-GCM encrypt with an explicit key — used when re-keying secrets (FR-07.7). */
+  static encryptWith(key: Buffer, text: string): string {
     const iv = crypto.randomBytes(12)
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.activeKey, iv)
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
     let encrypted = cipher.update(text, 'utf8', 'base64')
     encrypted += cipher.final('base64')
     const authTag = cipher.getAuthTag().toString('base64')
     return `${iv.toString('base64')}:${encrypted}:${authTag}`
   }
 
-  static decrypt(encryptedText: string): string {
-    if (!this.activeKey) throw new Error('Encryption key not loaded. App is locked.')
+  /** AES-256-GCM decrypt with an explicit key; throws if the key does not match. */
+  static decryptWith(key: Buffer, encryptedText: string): string {
     const parts = encryptedText.split(':')
     if (parts.length !== 3) throw new Error('Invalid encrypted text format')
     const [ivStr, encrypted, authTagStr] = parts
     const iv = Buffer.from(ivStr, 'base64')
     const authTag = Buffer.from(authTagStr, 'base64')
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.activeKey, iv)
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
     decipher.setAuthTag(authTag)
     let decrypted = decipher.update(encrypted, 'base64', 'utf8')
     decrypted += decipher.final('utf8')
     return decrypted
+  }
+
+  private static requireActiveKey(): Buffer {
+    // The exact message is mapped to HTTP 401 by the global error handler.
+    if (!this.activeKey) throw new Error('Encryption key not loaded. App is locked.')
+    return this.activeKey
   }
 
   static async encryptWithPassphrase(

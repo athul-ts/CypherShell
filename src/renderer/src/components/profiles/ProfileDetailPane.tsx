@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { ProfileForm } from './ProfileForm'
+import { useSessionHeartbeat } from '../../hooks/useSessionHeartbeat'
 
 interface ProfileDetailPaneProps {
   profileId: string
@@ -56,7 +57,7 @@ interface TerminalWindowApi {
 }
 
 export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.JSX.Element {
-  const [status, setStatus] = useState<ConnectionStatus>('disconnected')
+  const [localStatus, setStatus] = useState<ConnectionStatus>('disconnected')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
 
@@ -77,7 +78,14 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
     }
   })
 
+  // BL-11: while connected, keep the session leased and notice when it ends
+  // (closed by the server, the network, or the backend's idle reaper).
+  const { ended: sessionEnded } = useSessionHeartbeat(sessionId, localStatus === 'connected')
+  const status: ConnectionStatus =
+    localStatus === 'connected' && sessionEnded ? 'disconnected' : localStatus
+
   const handleConnect = async (): Promise<void> => {
+    setActiveForwards([])
     setStatus('connecting')
     try {
       const res = await api.post(`/profiles/${profileId}/connect`)
@@ -252,6 +260,12 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
           )}
         </div>
       </div>
+
+      {localStatus === 'connected' && sessionEnded && (
+        <div className="mx-8 mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          The SSH session has ended. Connect again to continue.
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 p-8 grid md:grid-cols-2 gap-6 max-w-6xl w-full mx-auto">

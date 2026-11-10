@@ -24,6 +24,8 @@ import { useSFTPTransfer } from '../../hooks/useSFTPTransfer'
 import { useTransferStore } from '../../store/transferStore'
 import { LocalFilePane } from './LocalFilePane'
 import { PathBreadcrumb } from './PathBreadcrumb'
+import { InputDialog } from './InputDialog'
+import { useSessionHeartbeat } from '../../hooks/useSessionHeartbeat'
 
 interface SftpPaneProps {
   sessionId: string
@@ -60,6 +62,25 @@ function normalizeSftpPath(base: string, name: string): string {
   return result.join('/') || '.'
 }
 
+/** Octal permission bits as shown in the listing, e.g. "755". */
+function permissionString(file: RemoteFileEntry): string {
+  return file.permissions.toString(8).slice(-3)
+}
+
+/** Validates a single path component for rename / new folder. */
+function validateName(value: string): string | null {
+  if (value.includes('/')) return 'The name cannot contain "/".'
+  if (value === '.' || value === '..') return 'Choose a different name.'
+  return null
+}
+
+interface InputRequest {
+  /** Changes on every request so the dialog remounts with fresh state. */
+  id: number
+  kind: 'mkdir' | 'rename' | 'chmod'
+  file?: RemoteFileEntry
+}
+
 export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const [currentPath, setCurrentPath] = useState('.')
   const [selectedFile, setSelectedFile] = useState<RemoteFileEntry | null>(null)
@@ -82,6 +103,9 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       return res.data.files
     }
   })
+
+  // BL-11: an open SFTP window keeps its session leased, and shows when it ends.
+  const { ended: sessionEnded } = useSessionHeartbeat(sessionId)
 
   const { listenToTransfer, addTransfer } = useSFTPTransfer(sessionId)
   const transfers = useTransferStore((s) => s.transfers)
@@ -208,20 +232,54 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     setCurrentPath(parts.length ? parts.join('/') : '.')
   }
 
-  const handleMkdir = async (): Promise<void> => {
-    const name = prompt('New folder name:')
-    if (!name) return
-    const remotePath = normalizeSftpPath(currentPath, name)
+  // BL-14: rename, new folder and chmod collect their input through an in-app
+  // dialog — Electron does not implement window.prompt().
+  const [inputRequest, setInputRequest] = useState<InputRequest | null>(null)
+  const requestCounter = useRef(0)
+  const openInput = (request: Omit<InputRequest, 'id'>): void => {
+    requestCounter.current += 1
+    setInputRequest({ ...request, id: requestCounter.current })
+  }
+
+  const handleMkdir = (): void => openInput({ kind: 'mkdir' })
+
+  const startRename = (file: RemoteFileEntry): void => openInput({ kind: 'rename', file })
+
+  const handleInputSubmit = async (value: string): Promise<void> => {
+    if (!inputRequest) return
+    const { kind, file } = inputRequest
     try {
-      await api.post(`/sftp/${sessionId}/mkdir`, { remotePath })
+      if (kind === 'mkdir') {
+        await api.post(`/sftp/${sessionId}/mkdir`, {
+          remotePath: normalizeSftpPath(currentPath, value)
+        })
+      } else if (kind === 'rename' && file && value !== file.name) {
+        await api.post(`/sftp/${sessionId}/rename`, {
+          oldPath: normalizeSftpPath(currentPath, file.name),
+          newPath: normalizeSftpPath(currentPath, value)
+        })
+      } else if (kind === 'chmod' && file && value !== permissionString(file)) {
+        await api.post(`/sftp/${sessionId}/chmod`, {
+          remotePath: normalizeSftpPath(currentPath, file.name),
+          mode: value
+        })
+      }
+      setInputRequest(null)
       refetch()
     } catch {
-      toast.error('Failed to create folder')
+      toast.error(
+        kind === 'mkdir'
+          ? 'Failed to create folder'
+          : kind === 'rename'
+            ? 'Rename failed'
+            : 'Chmod failed'
+      )
     }
   }
 
   useEffect(() => {
-    const onKey = async (e: KeyboardEvent): Promise<void> => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (inputRequest) return // a dialog is already open
       if (
         !remoteRef.current?.contains(document.activeElement) &&
         document.activeElement !== document.body
@@ -229,52 +287,25 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
         return
       if (e.key === 'F2' && selectedFile) {
         e.preventDefault()
-        const newName = prompt('Rename to:', selectedFile.name)
-        if (!newName || newName === selectedFile.name) return
-        const oldPath = normalizeSftpPath(currentPath, selectedFile.name)
-        const newPath = normalizeSftpPath(currentPath, newName)
-        try {
-          await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
-          refetch()
-        } catch {
-          toast.error('Rename failed')
-        }
+        startRename(selectedFile)
       }
-      if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'N' || e.key === 'n')) {
         e.preventDefault()
         handleMkdir()
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [selectedFile, currentPath])
+  })
 
-  const handleRename = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
+  const handleRename = (file: RemoteFileEntry, e: React.MouseEvent): void => {
     e.stopPropagation()
-    const newName = prompt('Rename to:', file.name)
-    if (!newName || newName === file.name) return
-    const oldPath = normalizeSftpPath(currentPath, file.name)
-    const newPath = normalizeSftpPath(currentPath, newName)
-    try {
-      await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
-      refetch()
-    } catch {
-      toast.error('Rename failed')
-    }
+    startRename(file)
   }
 
-  const handleChmod = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
+  const handleChmod = (file: RemoteFileEntry, e: React.MouseEvent): void => {
     e.stopPropagation()
-    const currentMode = file.permissions.toString(8).slice(-3)
-    const newMode = prompt('New permissions (octal, e.g. 755):', currentMode)
-    if (!newMode || newMode === currentMode || !/^[0-7]{3,4}$/.test(newMode)) return
-    const remotePath = normalizeSftpPath(currentPath, file.name)
-    try {
-      await api.post(`/sftp/${sessionId}/chmod`, { remotePath, mode: newMode })
-      refetch()
-    } catch {
-      toast.error('Chmod failed')
-    }
+    openInput({ kind: 'chmod', file })
   }
 
   const handleRemoteDragStart = (e: React.DragEvent, file: RemoteFileEntry): void => {
@@ -293,6 +324,11 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   return (
     <div className="flex flex-col h-full bg-[#0f1117]">
+      {sessionEnded && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+          The SSH session has ended. Close this window and connect again from the profile tab.
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Pane: Local File System */}
         <div className="w-1/2 min-w-[300px]">
@@ -445,6 +481,54 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
           </div>
         </div>
       </div>
+
+      {inputRequest && (
+        <InputDialog
+          key={inputRequest.id}
+          open
+          title={
+            inputRequest.kind === 'mkdir'
+              ? 'New Folder'
+              : inputRequest.kind === 'rename'
+                ? 'Rename'
+                : 'Change Permissions'
+          }
+          description={
+            inputRequest.kind === 'chmod'
+              ? `Octal mode for ${inputRequest.file?.name}, e.g. 755 or 0644.`
+              : undefined
+          }
+          label={
+            inputRequest.kind === 'mkdir'
+              ? 'Folder name'
+              : inputRequest.kind === 'rename'
+                ? 'New name'
+                : 'Permissions'
+          }
+          initialValue={
+            inputRequest.kind === 'rename'
+              ? inputRequest.file?.name
+              : inputRequest.kind === 'chmod' && inputRequest.file
+                ? permissionString(inputRequest.file)
+                : ''
+          }
+          confirmLabel={
+            inputRequest.kind === 'mkdir'
+              ? 'Create'
+              : inputRequest.kind === 'rename'
+                ? 'Rename'
+                : 'Apply'
+          }
+          validate={
+            inputRequest.kind === 'chmod'
+              ? (value) =>
+                  /^[0-7]{3,4}$/.test(value) ? null : 'Use 3 or 4 octal digits, e.g. 755.'
+              : validateName
+          }
+          onSubmit={handleInputSubmit}
+          onCancel={() => setInputRequest(null)}
+        />
+      )}
 
       {/* Transfer Queue Panel */}
       {transfers.length > 0 && (

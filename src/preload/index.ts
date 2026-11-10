@@ -30,6 +30,11 @@ const api = {
     ipcRenderer.on('update:downloaded', cb)
     return () => ipcRenderer.removeListener('update:downloaded', cb)
   },
+  // BL-16: the main process restarted a crashed backend; tokens must be re-issued.
+  onBackendRestarted: (cb: () => void) => {
+    ipcRenderer.on('backend:restarted', cb)
+    return () => ipcRenderer.removeListener('backend:restarted', cb)
+  },
   readLocalDir: (dirPath?: string) => ipcRenderer.invoke('fs:readDir', dirPath),
   executeLocalFileOp: (op: string, args: LocalFileOpArgs) =>
     ipcRenderer.invoke('fs:executeOp', op, args),

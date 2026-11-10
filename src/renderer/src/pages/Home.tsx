@@ -10,9 +10,12 @@ import {
   Download,
   Upload,
   FileDown,
-  Pencil
+  Pencil,
+  ShieldAlert,
+  X
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ProfileForm } from '../components/profiles/ProfileForm'
 import { useTabStore } from '../store/tabStore'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -27,7 +30,7 @@ interface Profile {
   host: string
   port: number
   username: string
-  authMethod: 'password' | 'key'
+  authMethod: 'password' | 'key' | 'key+passphrase'
   sshKeyId?: string | null
   hasPassword?: boolean
 }
@@ -58,6 +61,16 @@ function getErrorMessage(err: unknown): string | undefined {
   return undefined
 }
 
+const LOCK_BANNER_DISMISSED_KEY = 'cyphershell.lockOffBannerDismissed'
+
+function readBannerDismissed(): boolean {
+  try {
+    return localStorage.getItem(LOCK_BANNER_DISMISSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 async function handleExportProfiles(ids?: string[]): Promise<void> {
   const params = ids && ids.length > 0 ? { ids: ids.join(',') } : {}
   const { data } = await api.get('/profiles/export', { params })
@@ -79,6 +92,27 @@ export default function Home(): React.JSX.Element {
       return res.data
     }
   })
+
+  // BL-10: installs that skipped (or never saw) the setup wizard run without a
+  // master password; point them at Settings until they dismiss the hint.
+  const { data: lockConfig } = useQuery<{ lockEnabled: boolean }>({
+    queryKey: ['config'],
+    queryFn: async () => {
+      const res = await api.get('/config')
+      return res.data
+    }
+  })
+  const [lockBannerDismissed, setLockBannerDismissed] = useState(readBannerDismissed)
+  const navigate = useNavigate()
+
+  const dismissLockBanner = (): void => {
+    setLockBannerDismissed(true)
+    try {
+      localStorage.setItem(LOCK_BANNER_DISMISSED_KEY, '1')
+    } catch {
+      // Storage unavailable — the banner simply returns next launch.
+    }
+  }
 
   const [formOpen, setFormOpen] = useState(false)
   const [editProfile, setEditProfile] = useState<Profile | null>(null)
@@ -217,6 +251,30 @@ export default function Home(): React.JSX.Element {
           </button>
         </div>
       </div>
+
+      {lockConfig && !lockConfig.lockEnabled && !lockBannerDismissed && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <ShieldAlert className="w-4 h-4 shrink-0" />
+          <span className="flex-1">
+            App lock is off. Your saved passwords and keys are protected only by your
+            operating-system account — set a master password to require it when the app opens.
+          </span>
+          <button
+            onClick={() => navigate('/settings')}
+            className="rounded-lg bg-amber-500/20 px-3 py-1.5 font-medium text-amber-200 hover:bg-amber-500/30 transition-colors"
+          >
+            Set master password
+          </button>
+          <button
+            onClick={dismissLockBanner}
+            title="Dismiss"
+            aria-label="Dismiss"
+            className="p-1 text-amber-300/70 hover:text-amber-200"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       <ProfileForm open={formOpen} onOpenChange={setFormOpen} />
       <ProfileForm

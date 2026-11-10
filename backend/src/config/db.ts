@@ -107,23 +107,7 @@ export async function initDatabase(): Promise<void> {
 
     await prisma.$connect()
     logger.info(`DB ready: ${dbUrl}`)
-
-    // Run background log cleanup
-    try {
-      const config = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
-      if (config && config.logRetentionDays > 0) {
-        const cutoffDate = new Date()
-        cutoffDate.setDate(cutoffDate.getDate() - config.logRetentionDays)
-        const deleted = await prisma.auditLog.deleteMany({
-          where: { timestamp: { lt: cutoffDate } }
-        })
-        if (deleted.count > 0) {
-          logger.info(`Cleaned up ${deleted.count} old audit logs.`)
-        }
-      }
-    } catch (e) {
-      logger.error('Failed to run log cleanup: ' + (e instanceof Error ? e.message : String(e)))
-    }
+    // The audit-log purge runs from startBackgroundJobs() in app.ts (FR-08.7).
   } catch (error) {
     logger.error(
       'Database initialization failed: ' + (error instanceof Error ? error.message : String(error))

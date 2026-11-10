@@ -47,22 +47,32 @@ export function setupTerminalWebSocket(server: Server): void {
       ws.ping()
     })
   }, 30_000)
+  pingInterval.unref()
 
   wss.on('close', () => clearInterval(pingInterval))
 
   wss.on('connection', (ws: WebSocket, request) => {
-    const sessionId = request.url?.split('/').pop()
+    const sessionId = request.url?.split('?')[0].split('/').pop()
     if (!sessionId) {
       ws.close(1008, 'Missing session ID')
       return
     }
 
     const session = SSHService.getSession(sessionId)
-    if (!session) {
+    if (!session || !SSHService.acquire(sessionId)) {
       ws.close(1008, 'Invalid session ID')
       return
     }
 
+    // BL-11: this terminal keeps the SSH session alive until its socket closes.
+    // Closing one terminal releases only its shell — never the whole session.
+    let released = false
+    const release = (): void => {
+      if (released) return
+      released = true
+      SSHService.release(sessionId)
+    }
+    ws.on('close', release)
     ;(ws as WebSocket & { isAlive?: boolean }).isAlive = true
     ws.on('pong', () => {
       ;(ws as WebSocket & { isAlive?: boolean }).isAlive = true
@@ -75,6 +85,11 @@ export function setupTerminalWebSocket(server: Server): void {
         return
       }
 
+      if (ws.readyState !== WebSocket.OPEN) {
+        stream.end() // the terminal window closed while the shell was starting
+        return
+      }
+
       ws.send(JSON.stringify({ type: 'status', state: 'connected' }))
 
       stream.on('data', (data: Buffer) => {
@@ -83,23 +98,13 @@ export function setupTerminalWebSocket(server: Server): void {
         }
       })
 
-      // FR-02.6: Defer session cleanup so the WS can reconnect within
-      // a grace period. The session will be cleaned up by the orphan
-      // reaper (FUN-10, 60s idle timeout) if no reconnect arrives.
-      const scheduleCleanup = (): void => {
-        setTimeout(() => {
-          SSHService.removeSession(sessionId)
-        }, 15_000).unref()
-      }
-
-      stream.on('error', (streamErr) => {
+      stream.on('error', (streamErr: Error) => {
         logger.error('Shell stream error: ' + streamErr.message)
         stream.end()
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
           ws.close(1011, 'Shell error')
         }
-        scheduleCleanup()
       })
 
       stream.on('close', () => {
@@ -107,7 +112,6 @@ export function setupTerminalWebSocket(server: Server): void {
           ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
           ws.close(1000, 'Shell closed')
         }
-        scheduleCleanup()
       })
 
       ws.on('message', (message) => {
@@ -128,12 +132,11 @@ export function setupTerminalWebSocket(server: Server): void {
       ws.on('close', () => {
         stream.end()
       })
+    })
 
-      ws.on('error', (wsErr) => {
-        logger.error('WebSocket error: ' + wsErr.message)
-        stream.end()
-        SSHService.removeSession(sessionId)
-      })
+    ws.on('error', (wsErr) => {
+      logger.error('WebSocket error: ' + wsErr.message)
+      release()
     })
   })
 }

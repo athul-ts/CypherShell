@@ -20,7 +20,22 @@ interface AppConfig {
   defaultFontSize: number
   logRetentionDays: number
   lockEnabled: boolean
+  hasMasterPassword: boolean
   autoLockMinutes: number
+}
+
+/** The settings saved through `PUT /config`. The lock mode is not one of them (FR-07.7). */
+type EditableSettings = Omit<AppConfig, 'lockEnabled' | 'hasMasterPassword'>
+
+type LockDialog = 'enable' | 'disable' | null
+
+interface LockChangeResponse {
+  token?: string
+  unreadableSecrets?: number
+}
+
+function apiErrorMessage(err: unknown): string | undefined {
+  return (err as { response?: { data?: { error?: string } } })?.response?.data?.error
 }
 
 export default function Settings(): React.JSX.Element {
@@ -34,12 +49,11 @@ export default function Settings(): React.JSX.Element {
     }
   })
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<EditableSettings>({
     theme: 'dark',
     defaultFont: 'JetBrains Mono',
     defaultFontSize: 14,
     logRetentionDays: 90,
-    lockEnabled: false,
     autoLockMinutes: 15
   })
 
@@ -54,14 +68,13 @@ export default function Settings(): React.JSX.Element {
         defaultFont: config.defaultFont,
         defaultFontSize: config.defaultFontSize,
         logRetentionDays: config.logRetentionDays,
-        lockEnabled: config.lockEnabled,
         autoLockMinutes: config.autoLockMinutes
       })
     }
   }, [config])
 
   const mutation = useMutation({
-    mutationFn: async (data: AppConfig) => {
+    mutationFn: async (data: EditableSettings) => {
       return api.put('/config', data)
     },
     onSuccess: () => {
@@ -73,44 +86,56 @@ export default function Settings(): React.JSX.Element {
     }
   })
 
-  // FUN-02: Password-set dialog for skip-lock → lock migration
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
-  const [newPassword, setNewPassword] = useState('')
-  const [passwordError, setPasswordError] = useState('')
-  const [settingPassword, setSettingPassword] = useState(false)
+  // FR-07.7: the lock mode changes only through the auth endpoints, which
+  // re-encrypt every stored secret under the new key.
+  const [lockDialog, setLockDialog] = useState<LockDialog>(null)
+  const [lockPassword, setLockPassword] = useState('')
+  const [lockError, setLockError] = useState('')
+  const [lockBusy, setLockBusy] = useState(false)
 
-  const handleLockToggle = (checked: boolean): void => {
-    if (checked && config && !config.lockEnabled && !('masterPasswordHash' in (config || {}))) {
-      // Skip-lock mode: show password-set dialog first (FUN-02)
-      setNewPassword('')
-      setPasswordError('')
-      setPasswordDialogOpen(true)
-    } else {
-      setFormData({ ...formData, lockEnabled: checked })
-    }
+  const lockEnabled = config?.lockEnabled ?? false
+  // Lock was switched off by the pre-BL-10 toggle while the master password was kept.
+  const restoringLock = !lockEnabled && !!config?.hasMasterPassword
+  const needsNewPassword = lockDialog === 'enable' && !restoringLock
+
+  const openLockDialog = (mode: Exclude<LockDialog, null>): void => {
+    setLockPassword('')
+    setLockError('')
+    setLockDialog(mode)
   }
 
-  const handleSetPassword = async (e: React.FormEvent): Promise<void> => {
+  const handleLockToggle = (checked: boolean): void => {
+    if (!config) return
+    if (checked && !config.lockEnabled) openLockDialog('enable')
+    else if (!checked && config.lockEnabled) openLockDialog('disable')
+  }
+
+  const handleLockSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    if (newPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters.')
+    if (needsNewPassword && lockPassword.length < 6) {
+      setLockError('Password must be at least 6 characters.')
       return
     }
-    setSettingPassword(true)
-    setPasswordError('')
+    setLockBusy(true)
+    setLockError('')
     try {
-      const { data } = await api.post('/auth/setup-password', { password: newPassword })
-      sessionStorage.setItem('jwt', data.token)
-      setPasswordDialogOpen(false)
-      setFormData((prev) => ({ ...prev, lockEnabled: true }))
+      const endpoint = lockDialog === 'enable' ? '/auth/setup-password' : '/auth/disable-lock'
+      const { data } = await api.post<LockChangeResponse>(endpoint, { password: lockPassword })
+      if (data.token) sessionStorage.setItem('jwt', data.token)
+      const turnedOn = lockDialog === 'enable'
+      setLockDialog(null)
       queryClient.invalidateQueries({ queryKey: ['config'] })
+      if (data.unreadableSecrets) {
+        toast.warning(
+          `${data.unreadableSecrets} saved secret(s) could not be recovered. Re-enter those passwords or keys.`
+        )
+      } else {
+        toast.success(turnedOn ? 'App lock turned on.' : 'App lock turned off.')
+      }
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Failed to set password.'
-      setPasswordError(msg)
+      setLockError(apiErrorMessage(err) || 'Could not change the app lock.')
     } finally {
-      setSettingPassword(false)
+      setLockBusy(false)
     }
   }
 
@@ -258,15 +283,16 @@ export default function Settings(): React.JSX.Element {
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
+                  aria-label="App lock"
                   className="sr-only peer"
-                  checked={formData.lockEnabled}
+                  checked={lockEnabled}
                   onChange={(e) => handleLockToggle(e.target.checked)}
                 />
                 <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
 
-            {formData.lockEnabled && (
+            {lockEnabled && (
               <div className="grid grid-cols-2 gap-6 pt-2">
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">
@@ -321,55 +347,6 @@ export default function Settings(): React.JSX.Element {
           </div>
         </div>
 
-        {/* FUN-02: Master Password Set Dialog */}
-        {passwordDialogOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="bg-[#1a1d27] border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
-              <h2 className="text-xl font-bold text-slate-200 mb-2">Set Master Password</h2>
-              <p className="text-sm text-slate-400 mb-6">
-                You chose &quot;Skip Lock&quot; during setup. Setting a master password will enable
-                app lock. Note: existing encrypted data (SSH passwords) will need to be re-entered.
-              </p>
-              <form onSubmit={handleSetPassword} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    New Master Password
-                  </label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimum 6 characters"
-                    autoFocus
-                    className="w-full bg-[#0f1117] border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors"
-                  />
-                </div>
-                {passwordError && (
-                  <div className="text-red-400 text-sm bg-red-950/30 border border-red-900/40 rounded-xl px-4 py-3">
-                    {passwordError}
-                  </div>
-                )}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setPasswordDialogOpen(false)}
-                    className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 font-medium hover:bg-slate-700 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={settingPassword || newPassword.length < 6}
-                    className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 disabled:opacity-50 transition-colors"
-                  >
-                    {settingPassword ? 'Setting…' : 'Set Password'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
         <div className="flex justify-end mt-8">
           <button
             type="submit"
@@ -381,6 +358,85 @@ export default function Settings(): React.JSX.Element {
           </button>
         </div>
       </form>
+
+      {/* FR-07.7: turn app lock on or off. Rendered outside the settings form so
+          submitting it never also submits the settings. */}
+      {lockDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lock-dialog-title"
+            className="bg-[#1a1d27] border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl"
+          >
+            <h2 id="lock-dialog-title" className="text-xl font-bold text-slate-200 mb-2">
+              {lockDialog === 'disable'
+                ? 'Turn Off App Lock'
+                : restoringLock
+                  ? 'Turn App Lock Back On'
+                  : 'Set Master Password'}
+            </h2>
+            <p className="text-sm text-slate-400 mb-6">
+              {lockDialog === 'disable'
+                ? 'Your saved passwords and keys will be re-encrypted with a key protected by your operating-system account instead of your master password. Enter your master password to continue.'
+                : restoringLock
+                  ? 'App lock was turned off while your master password was kept. Enter that master password to turn app lock back on.'
+                  : 'Setting a master password turns on app lock. Your saved passwords and keys are re-encrypted with it, so nothing has to be re-entered. If you forget it, that data cannot be recovered.'}
+            </p>
+            <form onSubmit={handleLockSubmit} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="lock-dialog-password"
+                  className="block text-sm font-medium text-slate-300 mb-1"
+                >
+                  {needsNewPassword
+                    ? 'New Master Password'
+                    : lockDialog === 'disable'
+                      ? 'Current Master Password'
+                      : 'Master Password'}
+                </label>
+                <input
+                  id="lock-dialog-password"
+                  type="password"
+                  value={lockPassword}
+                  onChange={(e) => setLockPassword(e.target.value)}
+                  placeholder={needsNewPassword ? 'Minimum 6 characters' : ''}
+                  autoFocus
+                  className="w-full bg-[#0f1117] border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                />
+              </div>
+              {lockError && (
+                <div className="text-red-400 text-sm bg-red-950/30 border border-red-900/40 rounded-xl px-4 py-3">
+                  {lockError}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setLockDialog(null)}
+                  className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 font-medium hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    lockBusy ||
+                    (needsNewPassword ? lockPassword.length < 6 : lockPassword.length === 0)
+                  }
+                  className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+                >
+                  {lockBusy
+                    ? 'Working…'
+                    : lockDialog === 'disable'
+                      ? 'Turn Off Lock'
+                      : 'Turn On Lock'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

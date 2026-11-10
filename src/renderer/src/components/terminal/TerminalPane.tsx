@@ -6,6 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { useTerminalThemeStore } from '../../store/terminalThemeStore'
 import { TERMINAL_THEMES } from '../../lib/terminalThemes'
+import { decodeOutput, encodeInput } from '../../lib/terminalCodec'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalPaneProps {
@@ -64,9 +65,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
         .readText()
         .then((text) => {
           if (text && ws.current?.readyState === WebSocket.OPEN) {
-            const bytes = new TextEncoder().encode(text)
-            const binary = Array.from(bytes, (b) => String.fromCodePoint(b)).join('')
-            ws.current!.send(JSON.stringify({ type: 'input', data: btoa(binary) }))
+            ws.current.send(JSON.stringify({ type: 'input', data: encodeInput(text) }))
           }
         })
         .catch(() => {
@@ -100,7 +99,8 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
       ws.current.onmessage = (event) => {
         const msg = JSON.parse(event.data)
         if (msg.type === 'output' && term.current) {
-          term.current.write(atob(msg.data))
+          // BL-15: write bytes, not a Latin-1 string, so UTF-8 renders correctly
+          term.current.write(decodeOutput(msg.data))
         } else if (msg.type === 'status') {
           setStatus(msg.state)
         } else if (msg.type === 'error') {
@@ -148,7 +148,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     // Handle user input
     term.current.onData((data) => {
       if (ws.current?.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: 'input', data: btoa(data) }))
+        ws.current.send(JSON.stringify({ type: 'input', data: encodeInput(data) }))
       }
     })
 

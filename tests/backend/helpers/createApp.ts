@@ -1,41 +1,12 @@
 /**
- * Builds the same Express app as backend/src/index.ts but WITHOUT calling
- * app.listen() or setting up the WebSocket server. Used by Supertest.
- *
- * Rate limits are disabled so tests aren't throttled by the 5-req/min auth
- * limiter.
+ * The real backend app (backend/src/app.ts) with rate limits disabled, so
+ * tests exercise production routing, CORS and the error handler without the
+ * 5-attempts-per-minute unlock limit throttling them. No listen(), no
+ * WebSocket server and no background jobs — tests start those explicitly.
  */
-import express, { type Express } from 'express'
-import cors from 'cors'
-import authRoutes from '../../../backend/src/routes/auth.routes'
-import profileRoutes from '../../../backend/src/routes/profile.routes'
-import keyRoutes from '../../../backend/src/routes/key.routes'
-import configRoutes from '../../../backend/src/routes/config.routes'
-import auditRoutes from '../../../backend/src/routes/audit.routes'
-import sftpRoutes from '../../../backend/src/routes/sftp.routes'
-import tunnelRoutes from '../../../backend/src/routes/tunnel.routes'
-import sessionRoutes from '../../../backend/src/routes/session.routes'
-import { requireAuth, requireAuthFlexible } from '../../../backend/src/middleware/auth.middleware'
-import { progressStream } from '../../../backend/src/controllers/sftp.controller'
+import type { Express } from 'express'
+import { createApp as createBackendApp } from '../../../backend/src/app'
 
 export function createApp(): Express {
-  const app = express()
-  app.use(cors({ origin: '*' }))
-  app.use(express.json())
-
-  app.use('/api/auth', authRoutes)
-  app.use('/api/profiles', requireAuth, profileRoutes)
-  app.use('/api/sessions', requireAuth, sessionRoutes)
-  app.get('/api/sftp/:sessionId/progress/:transferId', requireAuthFlexible, progressStream)
-  app.use('/api/sftp', requireAuth, sftpRoutes)
-  app.use('/api/keys', requireAuth, keyRoutes)
-  app.use('/api/tunnels', requireAuth, tunnelRoutes)
-  app.use('/api/audit', requireAuth, auditRoutes)
-  app.use('/api/config', requireAuth, configRoutes)
-
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok' })
-  })
-
-  return app
+  return createBackendApp({ rateLimit: false })
 }

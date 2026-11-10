@@ -14,6 +14,8 @@ declare global {
       installUpdate: () => Promise<void>
       onUpdateAvailable: (cb: () => void) => () => void
       onUpdateDownloaded: (cb: () => void) => () => void
+      /** BL-16: fires after the main process restarted a crashed backend. Returns an unsubscribe. */
+      onBackendRestarted: (cb: () => void) => () => void
       openTerminalWindow: (
         sessionId: string,
         profileId: string,

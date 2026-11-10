@@ -12,3 +12,22 @@ api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
+
+type UnauthorizedHandler = () => void
+let onUnauthorized: UnauthorizedHandler | null = null
+
+/**
+ * Registers what happens when the backend rejects the session token — it
+ * expired (1 h), was revoked by a lock, or the backend restarted (BL-16).
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  onUnauthorized = handler
+}
+
+api.interceptors.response.use(undefined, (error) => {
+  const status: number | undefined = error?.response?.status
+  const url: string = error?.config?.url ?? ''
+  // A 401 from an /auth endpoint is a wrong password, not an expired session.
+  if (status === 401 && !url.startsWith('/auth/')) onUnauthorized?.()
+  return Promise.reject(error)
+})

@@ -89,7 +89,7 @@ export function KeyImportModal({
 
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-1">
-              Private Key (PEM format)
+              Private Key (OpenSSH, PEM or PuTTY .ppk)
             </label>
             <div className="relative">
               <textarea
@@ -98,7 +98,7 @@ export function KeyImportModal({
                 value={formData.privateKey}
                 onChange={(e) => setFormData({ ...formData, privateKey: e.target.value })}
                 className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors font-mono text-xs"
-                placeholder="-----BEGIN PRIVATE KEY-----..."
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
               />
               <label className="absolute bottom-2 right-2 cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-1 px-2 rounded transition-colors flex items-center gap-1">
                 <FileText className="w-3 h-3" /> Browse File

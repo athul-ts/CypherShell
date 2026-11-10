@@ -6,6 +6,7 @@ import { prisma } from '../config/db'
 import { AuditService } from './audit.service'
 import { SftpService } from './sftp.service'
 import { TunnelService } from './tunnel.service'
+import { KeyService } from './key.service'
 
 export interface SSHSession {
   id: string
@@ -15,27 +16,89 @@ export interface SSHSession {
   host: string
   connectedAt: Date
   hasTcpListener?: boolean
-  /** FUN-10: Last time a consumer (WS/SFTP) accessed this session */
-  lastConsumedAt: number
+  /**
+   * BL-11: live users of the connection — terminal shells, running tunnels
+   * and in-flight SFTP transfers. A session with consumers is never reaped.
+   */
+  consumers: number
+  /**
+   * BL-11: last heartbeat from an open Profile Detail tab or SFTP window, or
+   * the last time a consumer was added or released.
+   */
+  lastActivityAt: number
+}
+
+export interface SessionSummary {
+  id: string
+  profileId: string
+  profileName: string
+  host: string
+  connectedAt: Date
+  consumers: number
 }
 
 export class SSHService {
   private static sessions = new Map<string, SSHSession>()
-  /** FUN-10: Reap orphaned sessions with no consumer activity */
-  private static readonly ORPHAN_TIMEOUT_MS = 60_000
+  /** FUN-10 / BL-11: an unused, unwatched session is closed after this long. */
+  static readonly ORPHAN_TIMEOUT_MS = 60_000
 
   private static reaperInterval: ReturnType<typeof setInterval> | null = null
 
   static startReaper(): void {
     if (this.reaperInterval) return
-    this.reaperInterval = setInterval(() => {
-      const now = Date.now()
-      for (const [id, session] of this.sessions) {
-        if (now - session.lastConsumedAt > this.ORPHAN_TIMEOUT_MS) {
-          this.removeSession(id)
-        }
+    this.reaperInterval = setInterval(() => this.reapIdleSessions(), 15_000)
+    this.reaperInterval.unref()
+  }
+
+  /**
+   * Closes sessions that nothing is using: no consumers and no heartbeat
+   * for `ORPHAN_TIMEOUT_MS` (BL-11). Returns the ids it closed.
+   */
+  static reapIdleSessions(now: number = Date.now()): string[] {
+    const reaped: string[] = []
+    for (const [id, session] of this.sessions) {
+      if (session.consumers === 0 && now - session.lastActivityAt > this.ORPHAN_TIMEOUT_MS) {
+        this.removeSession(id)
+        reaped.push(id)
       }
-    }, 15_000)
+    }
+    return reaped
+  }
+
+  /** Registers a live user of the session. Returns false if the session is gone. */
+  static acquire(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId)
+    if (!session) return false
+    session.consumers++
+    session.lastActivityAt = Date.now()
+    return true
+  }
+
+  /** Releases a user registered with `acquire()`. */
+  static release(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    session.consumers = Math.max(0, session.consumers - 1)
+    session.lastActivityAt = Date.now()
+  }
+
+  /** Renews the session's lease (an open tab or window is watching it). Returns false if it is gone. */
+  static heartbeat(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId)
+    if (!session) return false
+    session.lastActivityAt = Date.now()
+    return true
+  }
+
+  static listSessions(): SessionSummary[] {
+    return [...this.sessions.values()].map((session) => ({
+      id: session.id,
+      profileId: session.profileId,
+      profileName: session.profileName,
+      host: session.host,
+      connectedAt: session.connectedAt,
+      consumers: session.consumers
+    }))
   }
 
   static stopReaper(): void {
@@ -68,13 +131,19 @@ export class SSHService {
       const sshKey = await prisma.sSHKey.findUnique({ where: { id: profile.sshKeyId } })
       if (!sshKey) throw new Error('Associated SSH Key not found')
 
-      const privateKey = CryptoService.decrypt(sshKey.encryptedPrivateKey)
-      connectConfig.privateKey = privateKey
-
+      let passphrase: string | undefined
       if (profile.authMethod === 'key+passphrase') {
         if (!profile.encryptedPassword) throw new Error('Passphrase required but missing')
-        connectConfig.passphrase = CryptoService.decrypt(profile.encryptedPassword)
+        passphrase = CryptoService.decrypt(profile.encryptedPassword)
+        connectConfig.passphrase = passphrase
       }
+
+      // BL-12: keys stored before the OpenSSH fix are converted once, here.
+      connectConfig.privateKey = await KeyService.ensureUsablePrivateKey(
+        sshKey.id,
+        CryptoService.decrypt(sshKey.encryptedPrivateKey),
+        passphrase
+      )
     } else {
       throw new Error('Unsupported authentication method')
     }
@@ -89,7 +158,8 @@ export class SSHService {
           profileName: profile.name,
           host: profile.host,
           connectedAt,
-          lastConsumedAt: Date.now()
+          consumers: 0,
+          lastActivityAt: Date.now()
         }
         this.sessions.set(sessionId, session)
         this.startReaper()
@@ -139,11 +209,7 @@ export class SSHService {
   }
 
   static getSession(sessionId: string): SSHSession | undefined {
-    const session = this.sessions.get(sessionId)
-    if (session) {
-      session.lastConsumedAt = Date.now() // FUN-10: mark consumer activity
-    }
-    return session
+    return this.sessions.get(sessionId)
   }
 
   static removeSession(sessionId: string): void {

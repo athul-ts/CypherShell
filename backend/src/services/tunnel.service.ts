@@ -1,5 +1,24 @@
 import { SSHService } from './ssh.service'
 import net from 'net'
+import type { Duplex } from 'stream'
+import { logger } from './logger.service'
+
+/**
+ * Pipes a local TCP socket and an SSH channel both ways. Every stream gets an
+ * `error` listener: without one, a client that resets its connection raises
+ * an unhandled error that takes down the whole backend (BL-16). An error on
+ * either side closes both.
+ */
+function bridge(socket: net.Socket, channel: Duplex): void {
+  const teardown = (): void => {
+    socket.destroy()
+    channel.destroy()
+  }
+  socket.on('error', teardown)
+  channel.on('error', teardown)
+  socket.pipe(channel)
+  channel.pipe(socket)
+}
 
 export class TunnelService {
   private static localServers = new Map<string, net.Server>()
@@ -16,6 +35,33 @@ export class TunnelService {
     })
   }
 
+  /** Starts listening and, once bound, registers the tunnel as a session consumer (BL-11). */
+  private static listen(
+    server: net.Server,
+    id: string,
+    sessionId: string,
+    localPort: number
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(localPort, '127.0.0.1', () => {
+        server.off('error', reject)
+        server.on('error', (err) => logger.error(`Tunnel ${id} error: ${err.message}`))
+        this.localServers.set(id, server)
+        SSHService.acquire(sessionId)
+        resolve()
+      })
+    })
+  }
+
+  private static stopLocalServer(id: string, sessionId: string): void {
+    const server = this.localServers.get(id)
+    if (!server) return
+    server.close()
+    this.localServers.delete(id)
+    SSHService.release(sessionId)
+  }
+
   static async startLocalForward(
     sessionId: string,
     localPort: number,
@@ -29,33 +75,26 @@ export class TunnelService {
     if (!isFree) throw new Error(`Port ${localPort} is already in use`)
 
     const server = net.createServer((socket) => {
+      // Attach before the channel opens: the client may reset while we wait.
+      socket.on('error', () => socket.destroy())
       session.client.forwardOut('127.0.0.1', localPort, remoteHost, remotePort, (err, stream) => {
         if (err) {
-          socket.end()
+          socket.destroy()
           return
         }
-        socket.pipe(stream)
-        stream.pipe(socket)
+        if (socket.destroyed) {
+          stream.destroy()
+          return
+        }
+        bridge(socket, stream)
       })
     })
 
-    return new Promise<void>((resolve, reject) => {
-      server.listen(localPort, '127.0.0.1', () => {
-        const id = `local-${sessionId}-${localPort}`
-        this.localServers.set(id, server)
-        resolve()
-      })
-      server.on('error', reject)
-    })
+    await this.listen(server, `local-${sessionId}-${localPort}`, sessionId, localPort)
   }
 
   static async stopLocalForward(sessionId: string, localPort: number): Promise<void> {
-    const id = `local-${sessionId}-${localPort}`
-    const server = this.localServers.get(id)
-    if (server) {
-      server.close()
-      this.localServers.delete(id)
-    }
+    this.stopLocalServer(`local-${sessionId}-${localPort}`, sessionId)
   }
 
   // CODE-05: Per-session map of remotePort → forward target, used by a
@@ -98,16 +137,20 @@ export class TunnelService {
               rejectConnection()
               return
             }
+            let accepted = false
             const socket = net.connect(fwd.localPort, fwd.localHost, () => {
-              const stream = acceptConnection()
-              socket.pipe(stream)
-              stream.pipe(socket)
+              accepted = true
+              bridge(socket, acceptConnection())
             })
-            socket.on('error', () => rejectConnection())
+            // Before the bridge exists, a refused local port rejects the channel.
+            socket.on('error', () => {
+              if (!accepted) rejectConnection()
+            })
           })
           session.hasTcpListener = true
         }
 
+        SSHService.acquire(sessionId)
         resolve()
       })
     })
@@ -115,18 +158,19 @@ export class TunnelService {
 
   static async stopRemoteForward(sessionId: string, remotePort: number): Promise<void> {
     const sessionForwards = this.remoteForwards.get(sessionId)
-    if (sessionForwards) {
-      sessionForwards.delete(remotePort)
-      if (sessionForwards.size === 0) this.remoteForwards.delete(sessionId)
-    }
+    const existed = sessionForwards?.delete(remotePort) ?? false
+    if (sessionForwards && sessionForwards.size === 0) this.remoteForwards.delete(sessionId)
     const session = SSHService.getSession(sessionId)
     if (!session) return
     session.client.unforwardIn('127.0.0.1', remotePort, () => {})
+    if (existed) SSHService.release(sessionId)
   }
 
   static async startDynamicForward(sessionId: string, localPort: number): Promise<void> {
     const session = SSHService.getSession(sessionId)
     if (!session) throw new Error('Session not found')
+    // Captured after the null check so the nested SOCKS parser keeps the narrowed type.
+    const sshClient = session.client
 
     const isFree = await this.checkPort(localPort)
     if (!isFree) throw new Error(`Port ${localPort} is already in use`)
@@ -135,7 +179,7 @@ export class TunnelService {
       // CODE-04: Buffer incoming bytes and parse incrementally so we handle
       // TCP fragmentation correctly instead of assuming one chunk per message.
       let buf = Buffer.alloc(0)
-      let state: 'GREETING' | 'REQUEST' | 'CONNECTED' = 'GREETING'
+      let state: 'GREETING' | 'REQUEST' | 'CONNECTING' | 'CONNECTED' = 'GREETING'
 
       function tryParse(): void {
         if (state === 'GREETING') {
@@ -180,44 +224,40 @@ export class TunnelService {
             port = buf.readUInt16BE(5 + len)
           }
           buf = buf.subarray(headerLen)
+          state = 'CONNECTING' // stop parsing; buffer anything sent early
 
-          session.client.forwardOut('127.0.0.1', localPort, hostStr, port, (err, stream) => {
+          sshClient.forwardOut('127.0.0.1', localPort, hostStr, port, (err, stream) => {
             if (err) {
               socket.write(Buffer.from([0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
               return socket.end()
             }
+            if (socket.destroyed) {
+              stream.destroy()
+              return
+            }
             socket.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
-            socket.pipe(stream)
-            stream.pipe(socket)
             state = 'CONNECTED'
+            socket.off('data', onData)
+            if (buf.length > 0) stream.write(buf)
+            buf = Buffer.alloc(0)
+            bridge(socket, stream)
           })
         }
       }
 
-      socket.on('data', (chunk: Buffer) => {
+      const onData = (chunk: Buffer): void => {
         buf = Buffer.concat([buf, chunk])
         tryParse()
-      })
-      socket.on('error', () => {})
+      }
+      socket.on('data', onData)
+      socket.on('error', () => socket.destroy())
     })
 
-    return new Promise<void>((resolve, reject) => {
-      server.listen(localPort, '127.0.0.1', () => {
-        const id = `dynamic-${sessionId}-${localPort}`
-        this.localServers.set(id, server)
-        resolve()
-      })
-      server.on('error', reject)
-    })
+    await this.listen(server, `dynamic-${sessionId}-${localPort}`, sessionId, localPort)
   }
 
   static async stopDynamicForward(sessionId: string, localPort: number): Promise<void> {
-    const id = `dynamic-${sessionId}-${localPort}`
-    const server = this.localServers.get(id)
-    if (server) {
-      server.close()
-      this.localServers.delete(id)
-    }
+    this.stopLocalServer(`dynamic-${sessionId}-${localPort}`, sessionId)
   }
 
   /** FUN-05: Clean up all tunnel servers for a given session. */
@@ -232,5 +272,6 @@ export class TunnelService {
         this.localServers.delete(id)
       }
     }
+    this.remoteForwards.delete(sessionId)
   }
 }

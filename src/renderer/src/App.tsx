@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from './components/ui/sonner'
-import { api } from './lib/api'
+import { api, setUnauthorizedHandler } from './lib/api'
 import LockScreen from './pages/LockScreen'
 import SetupWizard from './pages/SetupWizard'
 import { HashRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
@@ -171,6 +171,27 @@ export default function App(): React.JSX.Element {
     }
 
     initToken().then(() => checkStatus(12)) // 12 retries × 1 s = up to 12 s while backend starts
+  }, [])
+
+  // BL-16: when the backend rejects the token — it expired, was revoked by a
+  // lock, or the backend restarted — run the auth check again: with lock off
+  // a new token is issued silently, with lock on the lock screen appears.
+  useEffect(() => {
+    let inFlight = false
+    const reauthenticate = (): void => {
+      if (inFlight) return
+      inFlight = true
+      sessionStorage.removeItem('jwt')
+      checkStatus(12).finally(() => {
+        inFlight = false
+      })
+    }
+    setUnauthorizedHandler(reauthenticate)
+    const unsubscribe = window.api.onBackendRestarted?.(reauthenticate)
+    return () => {
+      setUnauthorizedHandler(null)
+      unsubscribe?.()
+    }
   }, [])
 
   async function checkStatus(retriesLeft: number): Promise<void> {

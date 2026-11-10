@@ -42,7 +42,7 @@ Every commit message must include the spec ID (e.g. `feat(sftp): cancel transfer
 
 ## Project Overview
 
-CypherShell is a cross-platform SSH desktop client built with Electron 39, React 19, TypeScript, and an Express 4 backend. It supports SSH terminal sessions, SFTP file management, SSH key management, port forwarding, and a master-password-based app lock.
+CypherShell is a cross-platform SSH desktop client built with Electron 39, React 19, TypeScript, and an Express 5 backend. It supports SSH terminal sessions, SFTP file management, SSH key management, port forwarding, and a master-password-based app lock.
 
 ## Architecture — Three Processes
 
@@ -81,9 +81,9 @@ Electron Main (src/main/index.ts)
 - React 19, React Router v7 (HashRouter — required for `file://`)
 - Tailwind CSS 3.4, shadcn/ui (Radix primitives, copy-owned in `components/ui/`)
 - Zustand 5, TanStack Query v5, xterm.js v6
-- Express 4, Prisma ORM + better-sqlite3 (WAL mode)
+- Express 5, Prisma 7 ORM + better-sqlite3 (WAL mode)
 - ssh2 + ssh2-sftp-client, node-forge + sshpk
-- AES-256-GCM encryption at rest, PBKDF2-SHA512 (200k iterations), bcrypt cost 12, JWT 8h
+- AES-256-GCM encryption at rest, PBKDF2-SHA512 (200k iterations), bcrypt (`bcryptjs`) cost 12, JWT 1h
 
 ## Development Commands
 
@@ -140,24 +140,15 @@ npm run build                                     # compile backend TS → dist/
 - Never skip JWT middleware on any route except `POST /api/auth/unlock` and `POST /api/auth/setup`.
 - Context isolation is ON — never set `contextIsolation: false` or `nodeIntegration: true` in webPreferences.
 
-## v1.1 Backlog (features not yet implemented)
+## Backlog Status
 
-See `SRS_SSH_Desktop_App.md §17` for full details with implementation notes.
-| ID | Feature | Priority |
-|---|---|---|
-| BL-01 | Cancel in-progress SFTP transfer | High |
-| BL-02 | Port conflict detection before tunnel bind | Medium |
-| BL-03 | Warn before deleting SSH key used by profiles | Medium |
-| BL-04 | Audit log auto-purge scheduler | Medium |
-| BL-05 | SSH disconnect reason in audit log | Low |
-| BL-06 | DELETE /api/logs clear-all endpoint | Low |
-| BL-07 | SFTP keyboard shortcuts (F2, Ctrl+Shift+N) | Low |
-| BL-08 | Terminal right-click paste | Low |
+BL-01 … BL-16 are done, except BL-05 (disconnect reasons, partial) — see `specs/index.md`. The remaining gaps from the 2026-11-10 spec audit are recorded in `SRS_SSH_Desktop_App.md` as ⚠️ notes marked "tracked, not scheduled", plus the unimplemented requirements FR-07.8 (change master password), FR-11 (SSH host-key verification) and the NFR-02 additions (local-API caller authentication, token revocation on every transport). Spec them as BL items before implementing.
 
 ## Common Pitfalls
 
 - **Native module rebuild**: If you get `NODE_MODULE_VERSION` errors, run `npm run rebuild:native` from the project root.
 - **Prisma client out of sync**: Run `npx prisma generate` inside `backend/` after any schema change.
-- **Port already in use**: The backend port is auto-selected by `portfinder` starting at 3000 — kill any stale process if needed.
+- **Port already in use**: The backend port is auto-selected by `portfinder` starting at 4000 — kill any stale process if needed.
+- **Backend tests need a Node build of better-sqlite3**: `npm run test:backend` runs on system Node, so a binary built for Electron fails with `NODE_MODULE_VERSION`. Run `npm rebuild better-sqlite3 --prefix backend` before the tests (and `npm run rebuild:native` again before running the packaged app).
 - **HashRouter is intentional**: React Router uses `HashRouter` (not `BrowserRouter`) because the renderer loads via `file://`. Never change this.
 - **electron-vite aliases**: Path alias `@renderer` maps to `src/renderer/src/` — use it in renderer imports.
