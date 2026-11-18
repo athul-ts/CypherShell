@@ -603,15 +603,15 @@ CypherShell/
 
 ### FR-02: SSH Terminal
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-02.3, FR-02.6, FR-02.7 tracked)
+**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-02.6 tracked)
 
 - FR-02.1 — Connecting opens a Profile Details tab; users spawn standalone terminal console windows from it ✅
 - FR-02.2 — xterm.js renders with full ANSI colour and escape sequence support, including UTF-8 text ✅ (BL-15 — output is written as bytes and input is encoded as UTF-8)
-- FR-02.3 — PTY resizes dynamically when the standalone window resizes (`@xterm/addon-fit`) ⚠️ — resizes work, but the first resize is sent before the remote shell is ready and is dropped, so a new terminal starts at 80×24 until the window is resized (tracked, not scheduled)
+- FR-02.3 — PTY resizes dynamically when the standalone window resizes (`@xterm/addon-fit`) ✅ (BL-29 — a resize sent before the remote shell is ready is applied once it starts)
 - FR-02.4 — Copy (Ctrl+Shift+C) supported; right-click pastes the clipboard ✅ (BL-08)
 - FR-02.5 — Full keyboard support: Ctrl+C, Ctrl+Z, Tab, arrow keys, function keys ✅
-- FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ — a reconnect opens a fresh shell instead of resuming, a normal `exit` also triggers it, and an SSH-level drop is never re-established (the session is gone). The 15 s deferred cleanup that tore down the whole session is removed by BL-11; reconnect semantics are tracked, not scheduled
-- FR-02.7 — Connection status badge: connected / reconnecting / disconnected ⚠️ — the badge shows Connecting / Connected / Connection Lost; there is no "reconnecting" state (tracked, not scheduled)
+- FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ — a socket drop reconnects with that backoff to a new shell on the same SSH session; `exit` (close 1000), a vanished session (1008) and a lock (4001) are not retried (BL-29). An SSH-level drop is not re-established from the profile (tracked, not scheduled)
+- FR-02.7 — Connection status badge: connected / reconnecting / disconnected ✅ (BL-29)
 - FR-02.8 — Closing standalone terminal window closes its shell; the SSH session stays open while other terminals, tunnels, transfers or an open Profile Details tab use it ✅ (BL-11)
 - FR-02.9 — The JWT reaches popup windows through a one-time IPC hand-off, to that window only — no re-auth required, and no token in any window URL ✅ (BL-20)
 - FR-02.10 — Terminal font, font size, and color theme customizable ✅ (changes apply to newly opened terminals)
@@ -2077,11 +2077,11 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-### BL-29 — Terminal Resize & Reconnect
+### ~~BL-29 — Terminal Resize & Reconnect~~ ✅ Implemented
 
 **Requirements:** FR-02.3, FR-02.6, FR-02.7
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-18 — regression tests: `tests/backend/sessions.test.ts`, `tests/renderer/components/terminal/TerminalPane.test.tsx`
 
 **Problem:** The renderer sends the first `resize` as soon as the socket opens, but the backend registers its message handler only after the remote shell has started, so that resize is dropped and a new terminal stays 80×24 until the window is resized. A normal `exit` closes the socket with code 1000 and the renderer then "reconnects" to a fresh shell. A socket closed because the session no longer exists (1008) is also retried. The badge has no "reconnecting" state.
 
@@ -2091,10 +2091,10 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 **Acceptance Criteria:**
 
-- [ ] A `resize` sent right after connecting is applied to the remote PTY
-- [ ] Input sent before the shell is ready reaches the shell, in order
-- [ ] Close codes 1000, 1008 and 4001 never trigger a reconnect; an abnormal close does, with the 1 s → 2 s → 4 s backoff
-- [ ] The badge shows "Reconnecting" between attempts
+- [x] A `resize` sent right after connecting is applied to the remote PTY
+- [x] Input sent before the shell is ready reaches the shell, in order
+- [x] Close codes 1000, 1008 and 4001 never trigger a reconnect; an abnormal close does, with the 1 s → 2 s → 4 s backoff
+- [x] The badge shows "Reconnecting" between attempts
 
 ---
 

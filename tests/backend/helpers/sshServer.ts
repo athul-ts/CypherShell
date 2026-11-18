@@ -77,11 +77,22 @@ export async function startTestSshServer(
     client.on('ready', () => {
       client.on('session', (acceptSession) => {
         const session = acceptSession()
-        session.on('pty', (accept) => accept?.())
-        session.on('window-change', (accept) => accept?.())
+        // The PTY size the client asked for, so tests can read it back with "__size__".
+        let size = { cols: 80, rows: 24 }
+        session.on('pty', (accept, _reject, info) => {
+          size = { cols: info.cols, rows: info.rows }
+          accept?.()
+        })
+        session.on('window-change', (accept, _reject, info) => {
+          size = { cols: info.cols, rows: info.rows }
+          accept?.()
+        })
         session.on('shell', (accept) => {
           const stream = accept()
-          stream.on('data', (data: Buffer) => stream.write(data))
+          stream.on('data', (data: Buffer) => {
+            if (data.toString() === '__size__') stream.write(`size:${size.cols}x${size.rows}`)
+            else stream.write(data)
+          })
           stream.on('error', () => {})
         })
       })

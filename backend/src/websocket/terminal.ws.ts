@@ -1,4 +1,5 @@
 import WebSocket, { WebSocketServer } from 'ws'
+import type { ClientChannel } from 'ssh2'
 import type { Server } from 'http'
 import type { Duplex } from 'stream'
 import { verifyToken } from '../middleware/auth.middleware'
@@ -114,7 +115,31 @@ export function setupTerminalWebSocket(
     })
     ws.on('close', stopListeningForLock)
 
-    session.client.shell({ term: 'xterm-256color' }, (err, stream) => {
+    // BL-29: messages that arrive before the remote shell is ready are kept, not
+    // dropped — the renderer sends its first resize the moment the socket opens.
+    let stream: ClientChannel | null = null
+    let pendingResize: { cols: number; rows: number } | null = null
+    const pendingInput: Buffer[] = []
+
+    ws.on('message', (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString())
+        if (msg.type === 'input' && msg.data) {
+          const bytes = Buffer.from(msg.data, 'base64')
+          if (stream) stream.write(bytes)
+          else pendingInput.push(bytes)
+        } else if (msg.type === 'resize' && msg.cols && msg.rows) {
+          if (stream) stream.setWindow(msg.rows, msg.cols, 0, 0)
+          else pendingResize = { cols: msg.cols, rows: msg.rows }
+        } else if (msg.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }))
+        }
+      } catch (e) {
+        logger.error('WebSocket message error: ' + (e instanceof Error ? e.message : String(e)))
+      }
+    })
+
+    session.client.shell({ term: 'xterm-256color' }, (err, channel) => {
       if (err) {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'error', message: err.message }))
@@ -124,52 +149,40 @@ export function setupTerminalWebSocket(
       }
 
       if (ws.readyState !== WebSocket.OPEN) {
-        stream.end() // the terminal window closed (or the app locked) while the shell was starting
+        channel.end() // the terminal window closed (or the app locked) while the shell was starting
         return
       }
-      endShell = () => stream.end()
+      stream = channel
+      endShell = () => channel.end()
+      if (pendingResize) channel.setWindow(pendingResize.rows, pendingResize.cols, 0, 0)
+      for (const bytes of pendingInput.splice(0)) channel.write(bytes)
 
       ws.send(JSON.stringify({ type: 'status', state: 'connected' }))
 
-      stream.on('data', (data: Buffer) => {
+      channel.on('data', (data: Buffer) => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'output', data: data.toString('base64') }))
         }
       })
 
-      stream.on('error', (streamErr: Error) => {
+      channel.on('error', (streamErr: Error) => {
         logger.error('Shell stream error: ' + streamErr.message)
-        stream.end()
+        channel.end()
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
           ws.close(1011, 'Shell error')
         }
       })
 
-      stream.on('close', () => {
+      channel.on('close', () => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
           ws.close(1000, 'Shell closed')
         }
       })
 
-      ws.on('message', (message) => {
-        try {
-          const msg = JSON.parse(message.toString())
-          if (msg.type === 'input' && msg.data) {
-            stream.write(Buffer.from(msg.data, 'base64'))
-          } else if (msg.type === 'resize' && msg.cols && msg.rows) {
-            stream.setWindow(msg.rows, msg.cols, 0, 0)
-          } else if (msg.type === 'ping') {
-            ws.send(JSON.stringify({ type: 'pong' }))
-          }
-        } catch (e) {
-          logger.error('WebSocket message error: ' + (e instanceof Error ? e.message : String(e)))
-        }
-      })
-
       ws.on('close', () => {
-        stream.end()
+        channel.end()
       })
     })
 

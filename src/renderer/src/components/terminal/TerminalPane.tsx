@@ -10,6 +10,7 @@ import { decodeOutput, encodeInput } from '../../lib/terminalCodec'
 import {
   APP_LOCKED_CLOSE_CODE,
   openTerminalLink,
+  shouldReconnect,
   terminalSocketUrl
 } from '../../lib/terminalSocket'
 import '@xterm/xterm/css/xterm.css'
@@ -30,9 +31,9 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
   const reconnectRef = useRef<{ attempt: number; timer?: ReturnType<typeof setTimeout> }>({
     attempt: 0
   })
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
-    'connecting'
-  )
+  const [status, setStatus] = useState<
+    'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'
+  >('connecting')
   const { theme, fontSize, fontFamily } = useTerminalThemeStore()
 
   useEffect(() => {
@@ -87,7 +88,13 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     // FR-02.6 — Auto-reconnect with exponential backoff (max 3 attempts)
     function connectWs(): void {
       const wsUrl = terminalSocketUrl(backendPort, sessionId, wsToken, window.api.launchSecret)
-      ws.current?.close()
+      // Detach the old socket first so closing it cannot run the reconnect logic again.
+      if (ws.current) {
+        ws.current.onclose = null
+        ws.current.onerror = null
+        ws.current.close()
+      }
+      wsDisconnected = false // each attempt starts fresh — otherwise later drops are ignored
       ws.current = new WebSocket(wsUrl)
 
       ws.current.onopen = () => {
@@ -130,6 +137,17 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
           return
         }
 
+        // BL-29: the shell ended (`exit`) or the session is gone — reconnecting
+        // would open a fresh shell or fail, so stop here.
+        if (!shouldReconnect(event.code)) {
+          term.current?.write(
+            event.code === 1008
+              ? '\r\n\x1b[31mSession no longer exists.\x1b[0m\r\n'
+              : '\r\n\x1b[33mSession ended.\x1b[0m\r\n'
+          )
+          return
+        }
+
         // Auto-reconnect with exponential backoff (FR-02.6)
         const { attempt } = reconnectRef.current
         if (attempt < 3) {
@@ -138,6 +156,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
             `\r\n\x1b[33mConnection lost. Reconnecting in ${delay / 1000}s... (attempt ${attempt + 1}/3)\x1b[0m\r\n`
           )
           reconnectRef.current.attempt = attempt + 1
+          setStatus('reconnecting')
           reconnectRef.current.timer = setTimeout(connectWs, delay)
         } else {
           term.current?.write(
@@ -146,11 +165,10 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
         }
       }
 
+      // A failed or dropped socket always fires `close` after `error`, and `close`
+      // decides whether to reconnect — so `error` must not mark it handled.
       ws.current.onerror = () => {
-        if (!wsDisconnected) {
-          wsDisconnected = true
-          setStatus('error')
-        }
+        if (!wsDisconnected) setStatus('error')
       }
     }
 
@@ -203,14 +221,18 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
           }`}
         >
           {status === 'connected' && <CircleDot className="w-3.5 h-3.5" />}
-          {status === 'connecting' && <CircleDot className="w-3.5 h-3.5 animate-pulse" />}
+          {(status === 'connecting' || status === 'reconnecting') && (
+            <CircleDot className="w-3.5 h-3.5 animate-pulse" />
+          )}
           {status === 'error' && <ShieldAlert className="w-3.5 h-3.5" />}
 
           {status === 'connected'
             ? 'Connected'
             : status === 'connecting'
               ? 'Connecting...'
-              : 'Connection Lost'}
+              : status === 'reconnecting'
+                ? 'Reconnecting...'
+                : 'Connection Lost'}
         </div>
       </div>
 

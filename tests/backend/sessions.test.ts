@@ -160,6 +160,62 @@ describe('[FR-02.1][BL-11] terminal WebSocket', () => {
   })
 })
 
+describe('[FR-02.3][BL-29] messages sent before the shell is ready', () => {
+  /** Sends a resize and some input the moment the socket opens, like TerminalPane. */
+  function openEagerTerminal(sessionId: string, firstInput: string): Promise<Terminal> {
+    return new Promise((resolve, reject) => {
+      const url = `ws://127.0.0.1:${wsPort}/ws/terminal/${sessionId}?token=${encodeURIComponent(token)}&launch=${TEST_LAUNCH_SECRET}`
+      const ws = new WebSocket(url)
+      sockets.push(ws)
+      const outputs: string[] = []
+      const waiters: ((text: string) => void)[] = []
+      const frame = (data: object): string => JSON.stringify(data)
+      ws.on('open', () => {
+        ws.send(frame({ type: 'resize', cols: 132, rows: 43 }))
+        ws.send(frame({ type: 'input', data: Buffer.from(firstInput).toString('base64') }))
+      })
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString())
+        if (msg.type === 'output') {
+          const text = Buffer.from(msg.data, 'base64').toString('utf8')
+          const waiter = waiters.shift()
+          if (waiter) waiter(text)
+          else outputs.push(text)
+        } else if (msg.type === 'status' && msg.state === 'connected') {
+          resolve({
+            ws,
+            send: (text) =>
+              ws.send(frame({ type: 'input', data: Buffer.from(text).toString('base64') })),
+            nextOutput: () =>
+              outputs.length > 0
+                ? Promise.resolve(outputs.shift() as string)
+                : new Promise((r) => waiters.push(r))
+          })
+        }
+      })
+      ws.on('error', reject)
+    })
+  }
+
+  it('applies a resize that arrived before the shell started', async () => {
+    const sessionId = await connect()
+    const terminal = await openEagerTerminal(sessionId, 'early')
+    expect(await terminal.nextOutput()).toBe('early') // early input is kept, not dropped
+
+    terminal.send('__size__')
+    expect(await terminal.nextOutput()).toBe('size:132x43')
+  })
+
+  it('delivers early input in order before later input', async () => {
+    const sessionId = await connect()
+    const terminal = await openEagerTerminal(sessionId, 'first')
+    terminal.send('second')
+
+    const seen = (await terminal.nextOutput()) + (await terminal.nextOutput())
+    expect(seen).toBe('firstsecond')
+  })
+})
+
 describe('[FR-03.5][BL-11] consumer-aware reaping', () => {
   it('never reaps a session with an open terminal, however long it idles', async () => {
     const sessionId = await connect()

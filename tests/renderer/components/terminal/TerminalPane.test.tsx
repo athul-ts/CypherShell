@@ -134,6 +134,57 @@ describe('[BL-18] after the app locked', () => {
   })
 })
 
+describe('[FR-02.6][BL-29] when not to reconnect', () => {
+  it.each([
+    [1000, 'Session ended.'],
+    [1008, 'Session no longer exists.']
+  ])('does not reconnect after close code %i', (code, message) => {
+    render(<TerminalPane sessionId="session-1" />)
+    act(() => FakeSocket.instances[0].onclose?.({ code }))
+    act(() => vi.advanceTimersByTime(10_000))
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(xterm.written.join('')).toContain(message)
+  })
+
+  it('backs off 1 s, 2 s, 4 s after abnormal drops, then gives up', () => {
+    render(<TerminalPane sessionId="session-1" />)
+    act(() => FakeSocket.instances[0].onclose?.({ code: 1006 }))
+    act(() => vi.advanceTimersByTime(999))
+    expect(FakeSocket.instances).toHaveLength(1)
+    act(() => vi.advanceTimersByTime(1))
+    expect(FakeSocket.instances).toHaveLength(2)
+
+    act(() => FakeSocket.instances[1].onclose?.({ code: 1006 }))
+    act(() => vi.advanceTimersByTime(2_000))
+    expect(FakeSocket.instances).toHaveLength(3)
+
+    act(() => FakeSocket.instances[2].onclose?.({ code: 1006 }))
+    act(() => vi.advanceTimersByTime(4_000))
+    expect(FakeSocket.instances).toHaveLength(4)
+
+    act(() => FakeSocket.instances[3].onclose?.({ code: 1006 }))
+    act(() => vi.advanceTimersByTime(60_000))
+    expect(FakeSocket.instances).toHaveLength(4)
+    expect(xterm.written.join('')).toContain('Max reconnect attempts reached')
+  })
+
+  it('still reconnects when the browser reports error before close', () => {
+    render(<TerminalPane sessionId="session-1" />)
+    act(() => {
+      FakeSocket.instances[0].onerror?.()
+      FakeSocket.instances[0].onclose?.({ code: 1006 })
+    })
+    act(() => vi.advanceTimersByTime(1_000))
+    expect(FakeSocket.instances).toHaveLength(2)
+  })
+
+  it('shows "Reconnecting..." while a retry is pending', () => {
+    const { container } = render(<TerminalPane sessionId="session-1" />)
+    act(() => FakeSocket.instances[0].onclose?.({ code: 1006 }))
+    expect(container.textContent).toContain('Reconnecting...')
+  })
+})
+
 describe('[BL-21] terminal links', () => {
   it('open through window.open with the link URL', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null)

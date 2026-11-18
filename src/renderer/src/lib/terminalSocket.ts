@@ -1,6 +1,20 @@
 /** Close code the backend sends to every terminal when the app locks (BL-18). Never reconnected. */
 export const APP_LOCKED_CLOSE_CODE = 4001
 
+/** The shell ended normally (the user typed `exit`); a reconnect would open a new shell (BL-29). */
+export const SHELL_ENDED_CLOSE_CODE = 1000
+/** The SSH session no longer exists; a reconnect cannot succeed (BL-29). */
+export const SESSION_GONE_CLOSE_CODE = 1008
+
+/** Whether an unexpected close should be retried (FR-02.6). Only abnormal drops are. */
+export function shouldReconnect(code: number): boolean {
+  return (
+    code !== SHELL_ENDED_CLOSE_CODE &&
+    code !== SESSION_GONE_CLOSE_CODE &&
+    code !== APP_LOCKED_CLOSE_CODE
+  )
+}
+
 /**
  * The terminal WebSocket URL. WebSockets cannot set headers, so the JWT
  * (SEC-03) and the per-launch secret (BL-17) travel as query parameters.

@@ -37,17 +37,17 @@
 
 ### FR-02 — SSH Terminal
 
-**SRS §6.2** | Priority: High | Overall: ⚠️ Partially Implemented (FR-02.3, FR-02.6, FR-02.7 tracked)
+**SRS §6.2** | Priority: High | Overall: ⚠️ Partially Implemented (FR-02.6 tracked)
 
 | ID       | Requirement                                                    | Status |
 | -------- | -------------------------------------------------------------- | ------ |
 | FR-02.1  | Terminal spawned from Profile Details tab as standalone window | ✅     |
 | FR-02.2  | xterm.js full ANSI colour and escape sequence support          | ✅     |
-| FR-02.3  | PTY resizes dynamically (xterm-addon-fit)                      | ⚠️     |
+| FR-02.3  | PTY resizes dynamically (xterm-addon-fit)                      | ✅     |
 | FR-02.4  | Ctrl+Shift+C copy; right-click paste                           | ✅     |
 | FR-02.5  | Full keyboard support (Ctrl+C, arrows, function keys)          | ✅     |
 | FR-02.6  | Auto-reconnect with exponential backoff, max 3 retries         | ⚠️     |
-| FR-02.7  | Connection status badge                                        | ⚠️     |
+| FR-02.7  | Connection status badge                                        | ✅     |
 | FR-02.8  | Closing terminal window closes PTY session                     | ✅     |
 | FR-02.9  | JWT passed via route param — no re-auth in popup windows       | ✅     |
 | FR-02.10 | Font, font size, and color theme customizable                  | ✅     |
@@ -263,7 +263,7 @@
 | ~~BL-26~~ | ~~Master password policy (10 characters, strength hint)~~           | ~~Medium~~   | FR-07.1, FR-07.7                     | ✅ Done         |
 | ~~BL-27~~ | ~~E2E tests on a throwaway profile (`--user-data-dir`)~~            | ~~Medium~~   | NFR-06                               | ✅ Done         |
 | ~~BL-28~~ | ~~Audit log CSV export (API client + `saveTextFile`, quoting)~~     | ~~Medium~~   | FR-08.6                              | ✅ Done         |
-| BL-29     | Terminal resize and reconnect                                       | Medium       | FR-02.3, FR-02.6, FR-02.7            | ❌ Open         |
+| ~~BL-29~~ | ~~Terminal resize and reconnect~~                                   | ~~Medium~~   | FR-02.3, FR-02.6, FR-02.7            | ✅ Done         |
 | BL-30     | SFTP drag-in, retry, folder delete, paths                           | Medium       | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ❌ Open         |
 | BL-31     | Last connected, form validation, port error                         | Medium       | FR-01.2, FR-01.8.7, FR-06.6          | ❌ Open         |
 | BL-32     | Audit reasons, paging, filters, CSV safety                          | Medium       | FR-08.2, FR-08.5, FR-08.6            | ❌ Open         |
