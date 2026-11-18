@@ -2,10 +2,14 @@
 
 ## CypherShell — Secure SSH Desktop Client
 
-**Version:** 3.4
+**Version:** 3.5
 **Author:** Athul T S
-**Date:** 2026-11-11
+**Date:** 2026-11-18
 **Status:** Living Document — v1.0 Feature Complete, v1.1 Backlog Active (BL-10 … BL-16 implemented 2026-11-10; BL-17 … BL-28 implemented 2026-11-11)
+
+> **Changelog from v3.4:**
+>
+> - Phase 3 (2026-11-18): BL-29 … BL-35 specified for the remaining ⚠️ functional gaps — terminal resize/reconnect, SFTP drag-in/retry/folder delete/paths, last-connected and form validation, audit reasons/paging/CSV safety, key overwrite in place, saved tunnel rules, light theme and bundled font
 
 > **Changelog from v3.3:**
 >
@@ -2067,4 +2071,152 @@ All ten were implemented on 2026-11-11. Besides the unit and integration tests n
 
 ---
 
-_End of SRS Document — v3.4_
+### Phase 3 — Remaining Functional Gaps (BL-29 … BL-35)
+
+Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each item is implemented with regression tests, and its requirement badges are updated when it lands.
+
+---
+
+### BL-29 — Terminal Resize & Reconnect
+
+**Requirements:** FR-02.3, FR-02.6, FR-02.7
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problem:** The renderer sends the first `resize` as soon as the socket opens, but the backend registers its message handler only after the remote shell has started, so that resize is dropped and a new terminal stays 80×24 until the window is resized. A normal `exit` closes the socket with code 1000 and the renderer then "reconnects" to a fresh shell. A socket closed because the session no longer exists (1008) is also retried. The badge has no "reconnecting" state.
+
+**Backend work:** `terminal.ws.ts` registers its message handler as soon as the socket is accepted. It keeps the latest `resize` and any early `input` until the shell is ready, then applies the size and flushes the input in order.
+
+**Frontend work:** `TerminalPane.tsx` does not reconnect after close code 1000 (shell ended), 1008 (session gone) or 4001 (locked). Any other unexpected close reconnects as before. While a reconnect is pending or in progress the badge shows "Reconnecting". Re-creating a dropped SSH session from its profile is not part of this item (tracked, not scheduled).
+
+**Acceptance Criteria:**
+
+- [ ] A `resize` sent right after connecting is applied to the remote PTY
+- [ ] Input sent before the shell is ready reaches the shell, in order
+- [ ] Close codes 1000, 1008 and 4001 never trigger a reconnect; an abnormal close does, with the 1 s → 2 s → 4 s backoff
+- [ ] The badge shows "Reconnecting" between attempts
+
+---
+
+### BL-30 — SFTP Transfers & Paths
+
+**Requirements:** FR-04.4, FR-04.7, FR-04.13, FR-04.15
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problems:** Dragging files in from the OS reads `File.path`, which Electron removed in v32, so the drop uploads nothing. A failed transfer has no Retry action. Deleting a folder calls `unlink` and fails. An upload over an existing remote file fails at the final rename. Remote paths stay relative to the login directory, so `/etc` or `/var/www` cannot be reached.
+
+**Main/preload work:** `window.api.getPathForFile(file)` wraps `webUtils.getPathForFile` (both `src/preload/index.ts` and `index.d.ts`).
+
+**Backend work:** `SftpService.deleteFile` stats the target and uses `rmdir` for a directory (non-empty directories fail with the server's message; recursive delete is out of scope). Upload finishes with the OpenSSH `posix-rename@openssh.com` extension, which replaces an existing file, and falls back to unlink-then-rename on servers without it. New `GET /api/sftp/:sessionId/realpath?path=.` returns the absolute path.
+
+**Frontend work:** `SftpPane.tsx` resolves the starting directory through `realpath` and keeps absolute paths, so the breadcrumb reaches `/`. Dropped files use `getPathForFile`. A failed transfer shows a Retry button that starts the same transfer again.
+
+**Acceptance Criteria:**
+
+- [ ] A file dropped from the OS uploads, using the path from `getPathForFile`
+- [ ] A failed transfer shows its error and a Retry that starts a new transfer with the same source and target
+- [ ] Deleting an empty folder succeeds; deleting a non-empty one reports the server's error
+- [ ] Uploading over an existing remote file replaces it; a failure still emits an `error` event
+- [ ] The pane opens at the absolute home path, and the breadcrumb navigates up to `/`
+
+---
+
+### BL-31 — Profile Details: Last Connected, Validation, Port Errors
+
+**Requirements:** FR-01.2, FR-01.8.7, FR-06.6
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problems:** `lastConnectedAt` is never written and never shown. The profile form relies on HTML `required` and shows no field errors. A busy tunnel port shows a generic "Failed to start tunnel".
+
+**Backend work:** `connectProfile` sets `lastConnectedAt` after a successful connection. Starting a tunnel on a busy port answers `409 { code: 'PORT_IN_USE', port, error }`.
+
+**Frontend work:** Home cards show "Last connected <relative time>" or "Never connected". `ProfileForm` validates Name, Host, Username (required) and Port (1–65535) on submit, shows a message under each invalid field and does not call the API. The tunnel panel shows "Port N is already in use" for `PORT_IN_USE`.
+
+**Acceptance Criteria:**
+
+- [ ] A successful connect updates `lastConnectedAt`; a failed one does not
+- [ ] Cards show the last-connected time or "Never connected"
+- [ ] Blank Name/Host/Username and an out-of-range Port show inline errors and send nothing
+- [ ] A busy port yields `409 PORT_IN_USE` and the UI names the port
+
+---
+
+### BL-32 — Audit Log: Reasons, Paging, Filters, CSV Safety
+
+**Requirements:** FR-08.2, FR-08.5, BL-05, FR-08.6
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problems:** The disconnect reason is always "Connection closed", and an error after connecting writes a "connection failed" entry plus two disconnect entries. The log loads only the newest 100 entries and filters them in the browser. The type filter lacks "disconnection". CSV cells that start with `=`, `+`, `-` or `@` run as formulas in spreadsheet programs, and error text can come from a remote server.
+
+**Backend work:** `SSHService` writes exactly one disconnect entry per session with a reason: `user` (closed through `DELETE /api/sessions/:id`), `timeout` (idle reaper), `error` (SSH error, with its message) or `closed`. `GET /api/audit?page=&pageSize=&type=&from=&to=&q=` filters and pages on the server and answers `{ items, total, page, pageSize }`. `exportCSV` prefixes a cell that starts with `=`, `+`, `-`, `@`, tab or CR with a single quote.
+
+**Frontend work:** `Logs.tsx` sends the filters to the API, shows a pager, and adds the "Disconnection" type.
+
+**Acceptance Criteria:**
+
+- [ ] One disconnect entry per session; its detail names the reason (user, timeout, error, closed)
+- [ ] Pagination, type, date and search filters are applied by the API; `total` is the filtered count
+- [ ] The Logs page can select "Disconnection" and page through results
+- [ ] A cell beginning with `=`, `+`, `-` or `@` is exported with a leading single quote; values still round-trip through a CSV parser
+
+---
+
+### BL-33 — Key Bundle Import: Overwrite in Place
+
+**Requirements:** FR-10.6
+**Priority:** Low
+**Status:** ❌ Open
+
+**Problem:** Importing a `.cskb` with the Overwrite resolution deletes the existing key and then creates a new one, which unlinks every profile that used it and is not transactional.
+
+**Backend work:** `applyKeyImport` with `overwrite` updates the existing key row in place, so its id and its profile links survive. A failure leaves the old key untouched.
+
+**Acceptance Criteria:**
+
+- [ ] After Overwrite, the key keeps its id and every profile still references it
+- [ ] A failure while overwriting leaves the old key untouched
+
+---
+
+### BL-34 — Saved Tunnel Rules
+
+**Requirements:** FR-06.4, FR-09.2
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problem:** Tunnels exist only while running. The `Tunnel` table is touched only by profile import/export, so exports never contain rules. `TunnelModal.tsx` is dead code.
+
+**Backend work:** `GET/POST/DELETE /api/profiles/:id/tunnels` list, save and delete rules (type, local port, remote host/port, optional label), validated with zod. Remove `TunnelModal.tsx`.
+
+**Frontend work:** The tunnel panel in `ProfileDetailPane` lists saved rules with Start and Delete, and offers "Save rule" next to Start Forwarding.
+
+**Acceptance Criteria:**
+
+- [ ] A saved rule persists and appears in the profile's export
+- [ ] A saved rule can be started and deleted; invalid ports are rejected with 400
+- [ ] `TunnelModal.tsx` no longer exists
+
+---
+
+### BL-35 — Light Theme & Bundled Terminal Font
+
+**Requirements:** §11.2, §11.3, FR-02.10
+**Priority:** Low
+**Status:** ❌ Open
+
+**Problems:** Choosing "Light" toggles a class that no CSS styles. JetBrains Mono is named but not shipped, so terminals fall back to system fonts. Theme and font changes reach only terminals opened afterwards.
+
+**Frontend work:** Light-mode styles for the app's dark surfaces; JetBrains Mono bundled as a local asset with `@font-face` (CSP `font-src 'self'`). An open terminal updates when its theme or font changes.
+
+**Acceptance Criteria:**
+
+- [ ] Selecting Light changes the app background and text; System follows `prefers-color-scheme`
+- [ ] The terminal font loads from the bundled asset with no network request
+- [ ] Changing the terminal theme or font in Settings updates an open terminal
+
+---
+
+_End of SRS Document — v3.5_

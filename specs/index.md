@@ -1,6 +1,6 @@
 # CypherShell — Spec Index
 
-**SRS Version:** 3.4 | **Last Updated:** 2026-11-11
+**SRS Version:** 3.5 | **Last Updated:** 2026-11-18
 **Source of Truth:** `SRS_SSH_Desktop_App.md`
 
 > This file is the fast-lookup reference for all requirement IDs. For full text, acceptance criteria, and implementation notes, read the corresponding section in `SRS_SSH_Desktop_App.md`.
@@ -231,38 +231,45 @@
 
 ## v1.1 Backlog
 
-**SRS §17** | BL-01 … BL-09: v1.0 gaps. BL-10 … BL-16: defects found by the 2026-11-10 audit in requirements that were marked ✅ — all implemented the same day. BL-17 … BL-26: the audit's Phase 2, security hardening (NFR-02 additions) — all implemented 2026-11-11. BL-27: e2e tests on a throwaway profile (test-only). BL-28: audit-log CSV export (FR-08.6)
+**SRS §17** | BL-01 … BL-09: v1.0 gaps. BL-10 … BL-16: defects found by the 2026-11-10 audit in requirements that were marked ✅ — all implemented the same day. BL-17 … BL-26: the audit's Phase 2, security hardening (NFR-02 additions) — all implemented 2026-11-11. BL-27: e2e tests on a throwaway profile (test-only). BL-28: audit-log CSV export (FR-08.6). BL-29 … BL-35: Phase 3, remaining functional gaps (specified 2026-11-18)
 
-| ID        | Feature                                                             | Priority     | Linked FR                 | Est. Complexity |
-| --------- | ------------------------------------------------------------------- | ------------ | ------------------------- | --------------- |
-| ~~BL-01~~ | ~~Cancel in-progress SFTP transfer~~                                | ~~High~~     | FR-04.16                  | ✅ Done         |
-| ~~BL-02~~ | ~~Port conflict detection before tunnel bind~~                      | ~~Medium~~   | FR-06.6                   | ✅ Done         |
-| ~~BL-03~~ | ~~Warn when deleting SSH key in use by profiles~~                   | ~~Medium~~   | FR-05.11                  | ✅ Done         |
-| ~~BL-04~~ | ~~Audit log auto-purge scheduler~~                                  | ~~Medium~~   | FR-08.7                   | ✅ Done         |
-| BL-05     | SSH disconnect reason logging                                       | Low          | FR-08.2                   | ⚠️ Partial      |
-| ~~BL-06~~ | ~~DELETE /api/logs clear-all endpoint + UI button~~                 | ~~Low~~      | FR-08.8                   | ✅ Done         |
-| ~~BL-07~~ | ~~SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder)~~        | ~~Low~~      | FR-04.6, FR-04.8          | ✅ Done         |
-| ~~BL-08~~ | ~~Terminal right-click paste~~                                      | ~~Low~~      | FR-02.4                   | ✅ Done         |
-| ~~BL-09~~ | ~~Terminal auto-copy on text selection~~                            | ~~Medium~~   | FR-02.11                  | ✅ Done         |
-| ~~BL-10~~ | ~~Auth & lock lifecycle (first-run wizard, safe lock switch)~~      | ~~Critical~~ | FR-07.1, FR-07.7, FR-08.7 | ✅ Done         |
-| ~~BL-11~~ | ~~SSH session lifecycle (consumer-aware reaper, heartbeat)~~        | ~~Critical~~ | FR-02.8, FR-03.5, FR-06.5 | ✅ Done         |
-| ~~BL-12~~ | ~~SSH key formats (OpenSSH generation, import conversion)~~         | ~~Critical~~ | FR-05.1, FR-05.4, FR-05.6 | ✅ Done         |
-| ~~BL-13~~ | ~~Profile form edits (keep password, Key + Passphrase option)~~     | ~~Critical~~ | FR-01.1, FR-01.8          | ✅ Done         |
-| ~~BL-14~~ | ~~SFTP reliability (in-app dialogs, per-transfer channels)~~        | ~~Critical~~ | FR-04.6–FR-04.9, FR-04.16 | ✅ Done         |
-| ~~BL-15~~ | ~~Terminal text encoding (UTF-8 in and out)~~                       | ~~Critical~~ | FR-02.2                   | ✅ Done         |
-| ~~BL-16~~ | ~~Tunnel stability & backend auto-restart~~                         | ~~Critical~~ | FR-06.1, NFR-03           | ✅ Done         |
-| ~~BL-17~~ | ~~Local API caller auth (launch secret, Origin, Host)~~             | ~~Critical~~ | NFR-02                    | ✅ Done         |
-| ~~BL-18~~ | ~~Lock enforcement (WebSocket revocation, close windows, idle)~~    | ~~Critical~~ | FR-07.5, NFR-02           | ✅ Done         |
-| ~~BL-19~~ | ~~Token & secret hygiene (in-memory JWT secret, `jti`, 0600)~~      | ~~High~~     | NFR-02                    | ✅ Done         |
-| ~~BL-20~~ | ~~Connection window token hand-off only (no token in URL)~~         | ~~High~~     | FR-02.9                   | ✅ Done         |
-| ~~BL-21~~ | ~~Electron window hardening (window.open, navigation, IPC sender)~~ | ~~High~~     | NFR-02                    | ✅ Done         |
-| ~~BL-22~~ | ~~Dialog-bound file IPC (`saveTextFile` / `openTextFile`)~~         | ~~High~~     | FR-09.1, FR-09.4, FR-10.1 | ✅ Done         |
-| ~~BL-23~~ | ~~Request validation for SFTP, tunnel and config APIs~~             | ~~High~~     | NFR-02, FR-04.16, FR-06   | ✅ Done         |
-| ~~BL-24~~ | ~~macOS update notice (no unsigned auto-install)~~                  | ~~Medium~~   | NFR-07                    | ✅ Done         |
-| ~~BL-25~~ | ~~Single app instance~~                                             | ~~Medium~~   | NFR-03                    | ✅ Done         |
-| ~~BL-26~~ | ~~Master password policy (10 characters, strength hint)~~           | ~~Medium~~   | FR-07.1, FR-07.7          | ✅ Done         |
-| ~~BL-27~~ | ~~E2E tests on a throwaway profile (`--user-data-dir`)~~            | ~~Medium~~   | NFR-06                    | ✅ Done         |
-| ~~BL-28~~ | ~~Audit log CSV export (API client + `saveTextFile`, quoting)~~     | ~~Medium~~   | FR-08.6                   | ✅ Done         |
+| ID        | Feature                                                             | Priority     | Linked FR                            | Est. Complexity |
+| --------- | ------------------------------------------------------------------- | ------------ | ------------------------------------ | --------------- |
+| ~~BL-01~~ | ~~Cancel in-progress SFTP transfer~~                                | ~~High~~     | FR-04.16                             | ✅ Done         |
+| ~~BL-02~~ | ~~Port conflict detection before tunnel bind~~                      | ~~Medium~~   | FR-06.6                              | ✅ Done         |
+| ~~BL-03~~ | ~~Warn when deleting SSH key in use by profiles~~                   | ~~Medium~~   | FR-05.11                             | ✅ Done         |
+| ~~BL-04~~ | ~~Audit log auto-purge scheduler~~                                  | ~~Medium~~   | FR-08.7                              | ✅ Done         |
+| BL-05     | SSH disconnect reason logging                                       | Low          | FR-08.2                              | ⚠️ Partial      |
+| ~~BL-06~~ | ~~DELETE /api/logs clear-all endpoint + UI button~~                 | ~~Low~~      | FR-08.8                              | ✅ Done         |
+| ~~BL-07~~ | ~~SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder)~~        | ~~Low~~      | FR-04.6, FR-04.8                     | ✅ Done         |
+| ~~BL-08~~ | ~~Terminal right-click paste~~                                      | ~~Low~~      | FR-02.4                              | ✅ Done         |
+| ~~BL-09~~ | ~~Terminal auto-copy on text selection~~                            | ~~Medium~~   | FR-02.11                             | ✅ Done         |
+| ~~BL-10~~ | ~~Auth & lock lifecycle (first-run wizard, safe lock switch)~~      | ~~Critical~~ | FR-07.1, FR-07.7, FR-08.7            | ✅ Done         |
+| ~~BL-11~~ | ~~SSH session lifecycle (consumer-aware reaper, heartbeat)~~        | ~~Critical~~ | FR-02.8, FR-03.5, FR-06.5            | ✅ Done         |
+| ~~BL-12~~ | ~~SSH key formats (OpenSSH generation, import conversion)~~         | ~~Critical~~ | FR-05.1, FR-05.4, FR-05.6            | ✅ Done         |
+| ~~BL-13~~ | ~~Profile form edits (keep password, Key + Passphrase option)~~     | ~~Critical~~ | FR-01.1, FR-01.8                     | ✅ Done         |
+| ~~BL-14~~ | ~~SFTP reliability (in-app dialogs, per-transfer channels)~~        | ~~Critical~~ | FR-04.6–FR-04.9, FR-04.16            | ✅ Done         |
+| ~~BL-15~~ | ~~Terminal text encoding (UTF-8 in and out)~~                       | ~~Critical~~ | FR-02.2                              | ✅ Done         |
+| ~~BL-16~~ | ~~Tunnel stability & backend auto-restart~~                         | ~~Critical~~ | FR-06.1, NFR-03                      | ✅ Done         |
+| ~~BL-17~~ | ~~Local API caller auth (launch secret, Origin, Host)~~             | ~~Critical~~ | NFR-02                               | ✅ Done         |
+| ~~BL-18~~ | ~~Lock enforcement (WebSocket revocation, close windows, idle)~~    | ~~Critical~~ | FR-07.5, NFR-02                      | ✅ Done         |
+| ~~BL-19~~ | ~~Token & secret hygiene (in-memory JWT secret, `jti`, 0600)~~      | ~~High~~     | NFR-02                               | ✅ Done         |
+| ~~BL-20~~ | ~~Connection window token hand-off only (no token in URL)~~         | ~~High~~     | FR-02.9                              | ✅ Done         |
+| ~~BL-21~~ | ~~Electron window hardening (window.open, navigation, IPC sender)~~ | ~~High~~     | NFR-02                               | ✅ Done         |
+| ~~BL-22~~ | ~~Dialog-bound file IPC (`saveTextFile` / `openTextFile`)~~         | ~~High~~     | FR-09.1, FR-09.4, FR-10.1            | ✅ Done         |
+| ~~BL-23~~ | ~~Request validation for SFTP, tunnel and config APIs~~             | ~~High~~     | NFR-02, FR-04.16, FR-06              | ✅ Done         |
+| ~~BL-24~~ | ~~macOS update notice (no unsigned auto-install)~~                  | ~~Medium~~   | NFR-07                               | ✅ Done         |
+| ~~BL-25~~ | ~~Single app instance~~                                             | ~~Medium~~   | NFR-03                               | ✅ Done         |
+| ~~BL-26~~ | ~~Master password policy (10 characters, strength hint)~~           | ~~Medium~~   | FR-07.1, FR-07.7                     | ✅ Done         |
+| ~~BL-27~~ | ~~E2E tests on a throwaway profile (`--user-data-dir`)~~            | ~~Medium~~   | NFR-06                               | ✅ Done         |
+| ~~BL-28~~ | ~~Audit log CSV export (API client + `saveTextFile`, quoting)~~     | ~~Medium~~   | FR-08.6                              | ✅ Done         |
+| BL-29     | Terminal resize and reconnect                                       | Medium       | FR-02.3, FR-02.6, FR-02.7            | ❌ Open         |
+| BL-30     | SFTP drag-in, retry, folder delete, paths                           | Medium       | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ❌ Open         |
+| BL-31     | Last connected, form validation, port error                         | Medium       | FR-01.2, FR-01.8.7, FR-06.6          | ❌ Open         |
+| BL-32     | Audit reasons, paging, filters, CSV safety                          | Medium       | FR-08.2, FR-08.5, FR-08.6            | ❌ Open         |
+| BL-33     | Key bundle overwrite in place                                       | Low          | FR-10.6                              | ❌ Open         |
+| BL-34     | Saved tunnel rules                                                  | Medium       | FR-06.4, FR-09.2                     | ❌ Open         |
+| BL-35     | Light theme and bundled font                                        | Low          | §11.2, §11.3                         | ❌ Open         |
 
 ---
 
