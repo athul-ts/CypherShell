@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import {
   Server,
@@ -14,7 +14,9 @@ import {
   Play,
   Square,
   ArrowRightLeft,
-  Pencil
+  Pencil,
+  Save,
+  Trash2
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { ProfileForm } from './ProfileForm'
@@ -49,6 +51,35 @@ interface TunnelForm {
 
 interface ActiveForward extends TunnelForm {
   id: number
+}
+
+/** A saved port-forwarding rule (FR-06.4, BL-34). */
+interface SavedRule {
+  id: string
+  type: TunnelType
+  localPort: number
+  remoteHost: string | null
+  remotePort: number | null
+  label: string | null
+}
+
+function ruleToForm(rule: SavedRule): TunnelForm {
+  return {
+    type: rule.type,
+    localPort: String(rule.localPort),
+    remoteHost: rule.remoteHost ?? '127.0.0.1',
+    remotePort: rule.remotePort == null ? '' : String(rule.remotePort)
+  }
+}
+
+function describeRule(rule: SavedRule): string {
+  if (rule.type === 'dynamic') return `SOCKS5 proxy on :${rule.localPort}`
+  if (rule.type === 'remote') return `:${rule.remotePort} ↔ localhost:${rule.localPort}`
+  return `${rule.localPort} ↔ ${rule.remoteHost}:${rule.remotePort}`
+}
+
+function apiErrorText(err: unknown): string | undefined {
+  return (err as { response?: { data?: { error?: string } } })?.response?.data?.error
 }
 
 interface TerminalWindowApi {
@@ -135,13 +166,44 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
     )
   }
 
-  const handleStartTunnel = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault()
-    if (!sessionId) return
+  const queryClient = useQueryClient()
+  const { data: savedRulesData } = useQuery<SavedRule[]>({
+    queryKey: ['tunnels', profileId],
+    queryFn: async () => (await api.get<SavedRule[]>(`/profiles/${profileId}/tunnels`)).data
+  })
+  const savedRules = Array.isArray(savedRulesData) ? savedRulesData : []
+
+  /** BL-34: keep the current form as a rule of this profile. */
+  const handleSaveRule = async (): Promise<void> => {
     try {
-      await api.post(`/tunnels/${sessionId}/start`, tunnelForm)
-      setActiveForwards([...activeForwards, { ...tunnelForm, id: Date.now() }])
-      setTunnelForm({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' })
+      await api.post(`/profiles/${profileId}/tunnels`, {
+        type: tunnelForm.type,
+        localPort: tunnelForm.localPort,
+        remoteHost: tunnelForm.type === 'local' ? tunnelForm.remoteHost : undefined,
+        remotePort: tunnelForm.type === 'dynamic' ? undefined : tunnelForm.remotePort
+      })
+      queryClient.invalidateQueries({ queryKey: ['tunnels', profileId] })
+      toast.success('Tunnel rule saved')
+    } catch (err) {
+      toast.error(apiErrorText(err) ?? 'Failed to save tunnel rule')
+    }
+  }
+
+  const handleDeleteRule = async (rule: SavedRule): Promise<void> => {
+    try {
+      await api.delete(`/profiles/${profileId}/tunnels/${rule.id}`)
+      queryClient.invalidateQueries({ queryKey: ['tunnels', profileId] })
+    } catch (err) {
+      toast.error(apiErrorText(err) ?? 'Failed to delete tunnel rule')
+    }
+  }
+
+  const startForward = async (form: TunnelForm): Promise<boolean> => {
+    if (!sessionId) return false
+    try {
+      await api.post(`/tunnels/${sessionId}/start`, form)
+      setActiveForwards((current) => [...current, { ...form, id: Date.now() }])
+      return true
     } catch (err) {
       const data = (
         err as { response?: { data?: { code?: string; port?: number; error?: string } } }
@@ -152,6 +214,14 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
           ? `Port ${data.port} is already in use. Choose another local port.`
           : (data?.error ?? 'Failed to start tunnel')
       )
+      return false
+    }
+  }
+
+  const handleStartTunnel = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (await startForward(tunnelForm)) {
+      setTunnelForm({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' })
     }
   }
 
@@ -471,13 +541,63 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
                     </div>
                   </div>
 
-                  <button
-                    type="submit"
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors text-sm shadow-lg shadow-emerald-500/10"
-                  >
-                    <Play className="w-3.5 h-3.5" /> Start Forwarding
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors text-sm shadow-lg shadow-emerald-500/10"
+                    >
+                      <Play className="w-3.5 h-3.5" /> Start Forwarding
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveRule}
+                      className="px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors text-sm border border-slate-700"
+                    >
+                      <Save className="w-3.5 h-3.5" /> Save rule
+                    </button>
+                  </div>
                 </form>
+
+                {/* Saved rules (BL-34) */}
+                <div className="border-t border-slate-800/80 pt-4">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                    Saved Rules
+                  </h3>
+                  {savedRules.length === 0 ? (
+                    <div className="text-xs text-slate-500 italic text-center py-4 bg-[#0a0a0f]/50 rounded-xl border border-slate-800/60 border-dashed">
+                      No saved rules
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                      {savedRules.map((rule) => (
+                        <div
+                          key={rule.id}
+                          className="flex items-center justify-between bg-[#0a0a0f]/40 border border-slate-800/80 rounded-xl p-3"
+                        >
+                          <span className="text-slate-300 text-xs font-mono">
+                            {describeRule(rule)}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => startForward(ruleToForm(rule))}
+                              className="text-emerald-400 hover:text-emerald-300 p-1.5 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                              title="Start saved rule"
+                            >
+                              <Play className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRule(rule)}
+                              className="text-red-400 hover:text-red-300 p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
+                              title="Delete saved rule"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {/* List of active forwards */}
                 <div className="border-t border-slate-800/80 pt-4">

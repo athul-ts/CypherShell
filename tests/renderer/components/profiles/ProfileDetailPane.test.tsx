@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 const mockApi = api as unknown as {
   get: ReturnType<typeof vi.fn>
   post: ReturnType<typeof vi.fn>
+  delete: ReturnType<typeof vi.fn>
 }
 
 describe('[BL-23] tunnel stop request', () => {
@@ -109,5 +110,98 @@ describe('[FR-06.6][BL-31] busy tunnel port', () => {
         expect.stringContaining('Port 8080 is already in use')
       )
     )
+  })
+})
+
+describe('[FR-06.4][BL-34] saved tunnel rules', () => {
+  const profile = {
+    id: 'p1',
+    name: 'Box',
+    host: 'b',
+    port: 22,
+    username: 'me',
+    authMethod: 'password'
+  }
+  const saved = [
+    {
+      id: 't1',
+      type: 'local',
+      localPort: 8080,
+      remoteHost: 'db.internal',
+      remotePort: 5432,
+      label: null
+    },
+    { id: 't2', type: 'dynamic', localPort: 1080, remoteHost: null, remotePort: null, label: null }
+  ]
+
+  async function connected(rules: object[] = saved): Promise<void> {
+    mockApi.get.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/profiles'
+          ? { data: [profile] }
+          : url === '/profiles/p1/tunnels'
+            ? { data: rules }
+            : { data: { alive: true } }
+      )
+    )
+    mockApi.post.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith('/connect')
+          ? { data: { sessionId: 'session-7' } }
+          : { data: { success: true } }
+      )
+    )
+    mockApi.delete.mockResolvedValue({ data: { success: true } })
+    renderWithQuery(<ProfileDetailPane profileId="p1" />)
+    fireEvent.click(await screen.findByRole('button', { name: /^connect/i }))
+    await screen.findByText('Saved Rules')
+  }
+
+  it('lists the saved rules', async () => {
+    await connected()
+    expect(await screen.findByText('8080 ↔ db.internal:5432')).toBeInTheDocument()
+    expect(screen.getByText('SOCKS5 proxy on :1080')).toBeInTheDocument()
+  })
+
+  it('shows an empty state without rules', async () => {
+    await connected([])
+    expect(await screen.findByText('No saved rules')).toBeInTheDocument()
+  })
+
+  it('"Start saved rule" starts that tunnel on the session', async () => {
+    await connected()
+    fireEvent.click((await screen.findAllByTitle('Start saved rule'))[0])
+
+    await waitFor(() =>
+      expect(mockApi.post).toHaveBeenCalledWith('/tunnels/session-7/start', {
+        type: 'local',
+        localPort: '8080',
+        remoteHost: 'db.internal',
+        remotePort: '5432'
+      })
+    )
+    expect(await screen.findByText('Active Forwards')).toBeInTheDocument()
+  })
+
+  it('"Save rule" stores the form as a rule of the profile', async () => {
+    await connected([])
+    fireEvent.change(await screen.findByPlaceholderText('e.g. 8080'), { target: { value: '9000' } })
+    fireEvent.change(screen.getByPlaceholderText('80'), { target: { value: '443' } })
+    fireEvent.click(screen.getByRole('button', { name: /save rule/i }))
+
+    await waitFor(() =>
+      expect(mockApi.post).toHaveBeenCalledWith('/profiles/p1/tunnels', {
+        type: 'local',
+        localPort: '9000',
+        remoteHost: '127.0.0.1',
+        remotePort: '443'
+      })
+    )
+  })
+
+  it('"Delete saved rule" deletes it', async () => {
+    await connected()
+    fireEvent.click((await screen.findAllByTitle('Delete saved rule'))[1])
+    await waitFor(() => expect(mockApi.delete).toHaveBeenCalledWith('/profiles/p1/tunnels/t2'))
   })
 })

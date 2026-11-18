@@ -5,7 +5,7 @@ import { PortInUseError, TunnelService } from '../services/tunnel.service'
 // ─── BL-23: request validation ──────────────────────────────────────────────
 
 /** A TCP port. The Profile Details form sends ports as digit strings, so both forms are accepted. */
-const port = z
+export const PortSchema = z
   .union([
     z.number(),
     z
@@ -17,7 +17,7 @@ const port = z
   .pipe(z.number().int().min(1, 'Port must be 1–65535').max(65535, 'Port must be 1–65535'))
 
 /** A host name or address: no whitespace or control characters. */
-const host = z
+export const HostSchema = z
   .string()
   .trim()
   .min(1, 'Remote host required')
@@ -28,13 +28,18 @@ const host = z
   )
 
 const StartSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('local'), localPort: port, remoteHost: host, remotePort: port }),
-  z.object({ type: z.literal('remote'), localPort: port, remotePort: port }),
-  z.object({ type: z.literal('dynamic'), localPort: port })
+  z.object({
+    type: z.literal('local'),
+    localPort: PortSchema,
+    remoteHost: HostSchema,
+    remotePort: PortSchema
+  }),
+  z.object({ type: z.literal('remote'), localPort: PortSchema, remotePort: PortSchema }),
+  z.object({ type: z.literal('dynamic'), localPort: PortSchema })
 ])
 
 /** `port` is the local port for local and dynamic forwards, the remote port for remote ones (§9.8). */
-const StopSchema = z.object({ type: z.enum(['local', 'remote', 'dynamic']), port })
+const StopSchema = z.object({ type: z.enum(['local', 'remote', 'dynamic']), port: PortSchema })
 
 function badRequest(res: Response, error: z.ZodError): void {
   res.status(400).json({ error: error.issues[0]?.message ?? 'Invalid request' })

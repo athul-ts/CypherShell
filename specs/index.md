@@ -117,7 +117,7 @@
 
 ### FR-06 — Port Forwarding (Tunnels)
 
-**SRS §6.6** | Priority: High | Overall: ⚠️ Partially Implemented (FR-06.4 saved rules — BL-34)
+**SRS §6.6** | Priority: High | Overall: ✅ Implemented
 
 | ID      | Requirement                                                    | Status |
 | ------- | -------------------------------------------------------------- | ------ |
@@ -268,7 +268,7 @@
 | ~~BL-31~~ | ~~Last connected, form validation, port error~~                     | ~~Medium~~   | FR-01.2, FR-01.8.7, FR-06.6          | ✅ Done         |
 | ~~BL-32~~ | ~~Audit reasons, paging, filters, CSV safety~~                      | ~~Medium~~   | FR-08.2, FR-08.5, FR-08.6            | ✅ Done         |
 | ~~BL-33~~ | ~~Key bundle overwrite in place~~                                   | ~~Low~~      | FR-10.6                              | ✅ Done         |
-| BL-34     | Saved tunnel rules                                                  | Medium       | FR-06.4, FR-09.2                     | ❌ Open         |
+| ~~BL-34~~ | ~~Saved tunnel rules~~                                              | ~~Medium~~   | FR-06.4, FR-09.2                     | ✅ Done         |
 | BL-35     | Light theme and bundled font                                        | Low          | §11.2, §11.3                         | ❌ Open         |
 
 ---

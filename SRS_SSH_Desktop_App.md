@@ -676,12 +676,12 @@ CypherShell/
 
 ### FR-06: Port Forwarding (Tunnels)
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-06.4 saved rules — BL-34)
+**Priority:** High | **Status:** ✅ Implemented
 
 - FR-06.1 — Local forwarding: `localhost:localPort → remoteHost:remotePort` ✅ (BL-16 — a client reset no longer crashes the backend)
 - FR-06.2 — Remote forwarding: `remoteHost:remotePort → localhost:localPort` ✅
 - FR-06.3 — Dynamic SOCKS5 proxy ✅
-- FR-06.4 — Tunnel panel displayed inline inside Profile Details tab ✅ (tunnel rules are not saved to the `Tunnel` table; only profile import/export touches it — tracked, not scheduled)
+- FR-06.4 — Tunnel panel displayed inline inside Profile Details tab ✅ (BL-34 — rules can be saved to the profile, listed, started and deleted)
 - FR-06.5 — Start/stop individual tunnels without interrupting terminal/SFTP windows ✅
 - FR-06.6 — Port conflict detection before binding ✅ (BL-02, BL-31 — a busy local port answers `409 { code: 'PORT_IN_USE', port }` and the UI names the port)
 
@@ -724,7 +724,7 @@ CypherShell/
 Export and import connection profiles as JSON files for backup, sharing, and migration. SSH key material is intentionally excluded from profile exports — keys are managed separately via FR-10.
 
 - FR-09.1 — Export selected profiles or all profiles as a `.json` file via native save dialog ✅
-- FR-09.2 — Exported JSON includes all profile metadata: `name`, `host`, `port`, `username`, `authMethod`, `group`, `terminalTheme`, `fontSize`, `autoReconnect`, and port-forwarding rules ✅ (corrected in v3.3: Profile has no `description` column; the exported rules are empty until the UI saves tunnels — see FR-06.4)
+- FR-09.2 — Exported JSON includes all profile metadata: `name`, `host`, `port`, `username`, `authMethod`, `group`, `terminalTheme`, `fontSize`, `autoReconnect`, and port-forwarding rules ✅ (corrected in v3.3: Profile has no `description` column; saved tunnel rules are exported — FR-06.4, BL-34)
 - FR-09.3 — Exported JSON explicitly excludes all SSH key material (no private key, passphrase, or encrypted blob); if a profile has a linked key, only the key's display name is noted in a `linkedKeyName` field as a user hint ✅
 - FR-09.4 — Import profiles from a CypherShell profile export `.json` file via native file picker ✅
 - FR-09.5 — On import, if `linkedKeyName` is present, the backend resolves it against existing SSH keys by name and links the profile automatically. ✅
@@ -1081,7 +1081,10 @@ GET    /api/profiles/:id              → Get single profile (with tunnels)
 PUT    /api/profiles/:id              → Partial update — omitted fields are untouched; `password: ''` clears the stored password
 DELETE /api/profiles/:id              → Delete profile
 POST   /api/profiles/:id/duplicate    → Duplicate profile → the new profile
-POST   /api/profiles/:id/connect      → Open SSH connection → { sessionId: string }
+POST   /api/profiles/:id/connect      → Open SSH connection → { sessionId: string }; sets `lastConnectedAt` (BL-31)
+GET    /api/profiles/:id/tunnels      → Saved port-forwarding rules (BL-34)
+POST   /api/profiles/:id/tunnels      { type, localPort, remoteHost?, remotePort?, label? } → 201 rule | 400 | 409 if already saved (BL-34)
+DELETE /api/profiles/:id/tunnels/:tunnelId → Delete a saved rule of this profile (BL-34)
 ```
 
 ### 9.4 Sessions API
@@ -2183,11 +2186,11 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-### BL-34 — Saved Tunnel Rules
+### ~~BL-34 — Saved Tunnel Rules~~ ✅ Implemented
 
 **Requirements:** FR-06.4, FR-09.2
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-18 — regression tests: `tests/backend/tunnelRules.test.ts`, `tests/renderer/components/profiles/ProfileDetailPane.test.tsx`
 
 **Problem:** Tunnels exist only while running. The `Tunnel` table is touched only by profile import/export, so exports never contain rules. `TunnelModal.tsx` is dead code.
 
@@ -2197,9 +2200,9 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 **Acceptance Criteria:**
 
-- [ ] A saved rule persists and appears in the profile's export
-- [ ] A saved rule can be started and deleted; invalid ports are rejected with 400
-- [ ] `TunnelModal.tsx` no longer exists
+- [x] A saved rule persists and appears in the profile's export
+- [x] A saved rule can be started and deleted; invalid ports are rejected with 400
+- [x] `TunnelModal.tsx` no longer exists
 
 ---
 

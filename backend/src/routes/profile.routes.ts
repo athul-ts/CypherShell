@@ -10,6 +10,11 @@ import {
   exportProfiles,
   importProfiles
 } from '../controllers/profile.controller'
+import {
+  listTunnelRules,
+  createTunnelRule,
+  deleteTunnelRule
+} from '../controllers/tunnel-rule.controller'
 
 const router = Router()
 
@@ -23,5 +28,9 @@ router.put('/:id', updateProfile)
 router.delete('/:id', deleteProfile)
 router.post('/:id/duplicate', duplicateProfile)
 router.post('/:id/connect', connectProfile)
+// BL-34: saved port-forwarding rules
+router.get('/:id/tunnels', listTunnelRules)
+router.post('/:id/tunnels', createTunnelRule)
+router.delete('/:id/tunnels/:tunnelId', deleteTunnelRule)
 
 export default router
