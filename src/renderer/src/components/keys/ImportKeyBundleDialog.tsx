@@ -142,9 +142,9 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props): React.JSX.
             </div>
             {resolution === 'overwrite' && (
               <p className="text-xs text-red-400">
-                The existing key will be permanently deleted.
+                The existing key will be replaced by the imported one and cannot be recovered.
                 {conflictProfileCount > 0 &&
-                  ` ${conflictProfileCount} profile${conflictProfileCount === 1 ? '' : 's'} using it will lose their key assignment.`}
+                  ` ${conflictProfileCount} profile${conflictProfileCount === 1 ? '' : 's'} using it will keep their assignment and connect with the new key.`}
               </p>
             )}
             <div className="flex justify-end gap-3 pt-2 border-t border-slate-800 mt-2">

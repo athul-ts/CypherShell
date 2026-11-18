@@ -252,7 +252,6 @@ export class KeyService {
         }
       if (resolution === 'skip') return { status: 'skipped' }
       if (resolution === 'rename') finalName = `${bundle.keyName} (imported)`
-      if (resolution === 'overwrite') await prisma.sSHKey.delete({ where: { id: existing.id } })
     }
 
     // A key that carries its own passphrase cannot be parsed without it, so
@@ -272,19 +271,24 @@ export class KeyService {
       throw new Error(`Invalid private key in bundle: ${(err as Error).message}`)
     }
 
+    // Everything that can fail is done above, before the database changes (BL-33).
     const usableKey = hasPassphrase ? privateKeyPem : preparePrivateKey(privateKeyPem).privateKey
+    const data = {
+      description: bundle.description ?? null,
+      keyType,
+      encryptedPrivateKey: CryptoService.encrypt(usableKey),
+      publicKey: publicKeyStr,
+      fingerprint,
+      hasPassphrase
+    }
 
-    await prisma.sSHKey.create({
-      data: {
-        name: finalName,
-        description: bundle.description ?? undefined,
-        keyType,
-        encryptedPrivateKey: CryptoService.encrypt(usableKey),
-        publicKey: publicKeyStr,
-        fingerprint,
-        hasPassphrase
-      }
-    })
+    if (existing && resolution === 'overwrite') {
+      // Replace the key's contents in place: its id stays, so every profile that uses it keeps
+      // working with the new key. (Delete-then-create unlinked them and was not atomic.)
+      await prisma.sSHKey.update({ where: { id: existing.id }, data })
+    } else {
+      await prisma.sSHKey.create({ data: { ...data, name: finalName } })
+    }
 
     return { status: 'imported' }
   }

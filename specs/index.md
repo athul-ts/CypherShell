@@ -184,7 +184,7 @@
 
 ### FR-10 — SSH Key Export/Import
 
-**SRS §6.10** | Priority: Medium | Overall: ⚠️ Mostly Implemented (FR-10.6 tracked)
+**SRS §6.10** | Priority: Medium | Overall: ✅ Implemented
 
 | ID      | Requirement                                                                                                                                                         | Status |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
@@ -193,7 +193,7 @@
 | FR-10.3 | Export passphrase required and confirmed before file is written                                                                                                     | ✅     |
 | FR-10.4 | Import `.cskb` file via native file picker                                                                                                                          | ✅     |
 | FR-10.5 | On import: unwrap with export passphrase, re-encrypt under app master key — passphrase not retained                                                                 | ✅     |
-| FR-10.6 | Import conflict (key name exists): Skip / Rename / Overwrite                                                                                                        | ⚠️     |
+| FR-10.6 | Import conflict (key name exists): Skip / Rename / Overwrite                                                                                                        | ✅     |
 | FR-10.7 | Export and Import accessible from SSH Keys page per-key action menu                                                                                                 | ✅     |
 | FR-10.8 | `.cskb` format distinct from FR-05.9 public-key export (`.cskb` = full encrypted key backup)                                                                        | ✅     |
 
@@ -267,7 +267,7 @@
 | ~~BL-30~~ | ~~SFTP drag-in, retry, folder delete, paths~~                       | ~~Medium~~   | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ✅ Done         |
 | ~~BL-31~~ | ~~Last connected, form validation, port error~~                     | ~~Medium~~   | FR-01.2, FR-01.8.7, FR-06.6          | ✅ Done         |
 | ~~BL-32~~ | ~~Audit reasons, paging, filters, CSV safety~~                      | ~~Medium~~   | FR-08.2, FR-08.5, FR-08.6            | ✅ Done         |
-| BL-33     | Key bundle overwrite in place                                       | Low          | FR-10.6                              | ❌ Open         |
+| ~~BL-33~~ | ~~Key bundle overwrite in place~~                                   | ~~Low~~      | FR-10.6                              | ✅ Done         |
 | BL-34     | Saved tunnel rules                                                  | Medium       | FR-06.4, FR-09.2                     | ❌ Open         |
 | BL-35     | Light theme and bundled font                                        | Low          | §11.2, §11.3                         | ❌ Open         |
 

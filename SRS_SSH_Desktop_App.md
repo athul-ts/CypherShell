@@ -763,7 +763,7 @@ Export and import connection profiles as JSON files for backup, sharing, and mig
 
 ### FR-10: SSH Key Export/Import
 
-**Priority:** Medium | **Status:** ⚠️ Mostly Implemented (FR-10.6 Overwrite tracked)
+**Priority:** Medium | **Status:** ✅ Implemented
 
 Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup and migration. The bundle re-encrypts the private key with a user-supplied passphrase so it is never written to disk unprotected. Import restores from a `.cskb` file and re-encrypts with the current app master key.
 
@@ -772,7 +772,7 @@ Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup a
 - FR-10.3 — User must supply and confirm an export passphrase before export proceeds — the file is never written without passphrase encryption ✅
 - FR-10.4 — Import a `.cskb` file via native file picker ✅
 - FR-10.5 — On import, user is prompted for the export passphrase; the private key is unwrapped, then immediately re-encrypted with the current app master key and stored in the database — the export passphrase is not retained ✅ (keys with their own passphrase round-trip since BL-12)
-- FR-10.6 — On import conflict (key name already exists), the user is shown: **Skip**, **Rename** (append suffix), or **Overwrite** ✅ ⚠️ — Overwrite deletes the old key and creates a new one, unlinking the profiles that used it (tracked, not scheduled)
+- FR-10.6 — On import conflict (key name already exists), the user is shown: **Skip**, **Rename** (append suffix), or **Overwrite** ✅ (BL-33 — Overwrite replaces the key in place: its id and its profiles' links stay, and a bundle that fails to import leaves the old key untouched)
 - FR-10.7 — Export and Import are accessible from the SSH Keys management page via the per-key action/context menu ✅
 - FR-10.8 — The `.cskb` format is explicitly distinct from the raw PEM/public-key export in FR-05.9 — `.cskb` is a CypherShell-native full-key backup; FR-05.9 exports only the public key ✅
 
@@ -2166,11 +2166,11 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-### BL-33 — Key Bundle Import: Overwrite in Place
+### ~~BL-33 — Key Bundle Import: Overwrite in Place~~ ✅ Implemented
 
 **Requirements:** FR-10.6
 **Priority:** Low
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-18 — regression tests: `tests/backend/keyOverwrite.test.ts`
 
 **Problem:** Importing a `.cskb` with the Overwrite resolution deletes the existing key and then creates a new one, which unlinks every profile that used it and is not transactional.
 
@@ -2178,8 +2178,8 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 **Acceptance Criteria:**
 
-- [ ] After Overwrite, the key keeps its id and every profile still references it
-- [ ] A failure while overwriting leaves the old key untouched
+- [x] After Overwrite, the key keeps its id and every profile still references it
+- [x] A failure while overwriting leaves the old key untouched
 
 ---
 
