@@ -25,6 +25,8 @@ export interface TestSshServer {
   password: string
   /** Number of client connections currently open. */
   connectionCount(): number
+  /** Hangs up on every connected client, like a server dropping the link (BL-32). */
+  disconnectClients(): Promise<void>
   /** Accepts another OpenSSH-format public key for public-key auth. */
   authorize(publicKey: string): void
   close(): Promise<void>
@@ -116,6 +118,10 @@ export async function startTestSshServer(
     connectionCount: () => connections.size,
     authorize: (publicKey) => {
       authorized.push(parsePublicKey(publicKey))
+    },
+    disconnectClients: async () => {
+      for (const connection of connections) connection.end()
+      while (connections.size > 0) await new Promise((r) => setTimeout(r, 10))
     },
     close: () =>
       new Promise<void>((resolve) => {

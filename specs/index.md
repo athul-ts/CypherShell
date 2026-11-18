@@ -149,15 +149,15 @@
 
 ### FR-08 — Audit Logs
 
-**SRS §6.8** | Priority: Medium | Overall: ⚠️ Partially Implemented
+**SRS §6.8** | Priority: Medium | Overall: ✅ Implemented
 
 | ID      | Requirement                                               | Status |
 | ------- | --------------------------------------------------------- | ------ |
 | FR-08.1 | Log SSH connect (profile, host, timestamp, success/fail)  | ✅     |
-| FR-08.2 | Log SSH disconnect with duration and reason               | ⚠️     |
+| FR-08.2 | Log SSH disconnect with duration and reason               | ✅     |
 | FR-08.3 | Log SFTP upload (filename, size, remote path, timestamp)  | ✅     |
 | FR-08.4 | Log SFTP download (filename, size, local path, timestamp) | ✅     |
-| FR-08.5 | Paginated log table with search and date range filter     | ⚠️     |
+| FR-08.5 | Paginated log table with search and date range filter     | ✅     |
 | FR-08.6 | Export logs as CSV via native save dialog                 | ✅     |
 | FR-08.7 | Auto-purge logs older than N days                         | ✅     |
 | FR-08.8 | Clear all logs via UI                                     | ✅     |
@@ -239,7 +239,7 @@
 | ~~BL-02~~ | ~~Port conflict detection before tunnel bind~~                      | ~~Medium~~   | FR-06.6                              | ✅ Done         |
 | ~~BL-03~~ | ~~Warn when deleting SSH key in use by profiles~~                   | ~~Medium~~   | FR-05.11                             | ✅ Done         |
 | ~~BL-04~~ | ~~Audit log auto-purge scheduler~~                                  | ~~Medium~~   | FR-08.7                              | ✅ Done         |
-| BL-05     | SSH disconnect reason logging                                       | Low          | FR-08.2                              | ⚠️ Partial      |
+| ~~BL-05~~ | ~~SSH disconnect reason logging~~                                   | ~~Low~~      | FR-08.2                              | ✅ Done         |
 | ~~BL-06~~ | ~~DELETE /api/logs clear-all endpoint + UI button~~                 | ~~Low~~      | FR-08.8                              | ✅ Done         |
 | ~~BL-07~~ | ~~SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder)~~        | ~~Low~~      | FR-04.6, FR-04.8                     | ✅ Done         |
 | ~~BL-08~~ | ~~Terminal right-click paste~~                                      | ~~Low~~      | FR-02.4                              | ✅ Done         |
@@ -266,7 +266,7 @@
 | ~~BL-29~~ | ~~Terminal resize and reconnect~~                                   | ~~Medium~~   | FR-02.3, FR-02.6, FR-02.7            | ✅ Done         |
 | ~~BL-30~~ | ~~SFTP drag-in, retry, folder delete, paths~~                       | ~~Medium~~   | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ✅ Done         |
 | ~~BL-31~~ | ~~Last connected, form validation, port error~~                     | ~~Medium~~   | FR-01.2, FR-01.8.7, FR-06.6          | ✅ Done         |
-| BL-32     | Audit reasons, paging, filters, CSV safety                          | Medium       | FR-08.2, FR-08.5, FR-08.6            | ❌ Open         |
+| ~~BL-32~~ | ~~Audit reasons, paging, filters, CSV safety~~                      | ~~Medium~~   | FR-08.2, FR-08.5, FR-08.6            | ✅ Done         |
 | BL-33     | Key bundle overwrite in place                                       | Low          | FR-10.6                              | ❌ Open         |
 | BL-34     | Saved tunnel rules                                                  | Medium       | FR-06.4, FR-09.2                     | ❌ Open         |
 | BL-35     | Light theme and bundled font                                        | Low          | §11.2, §11.3                         | ❌ Open         |

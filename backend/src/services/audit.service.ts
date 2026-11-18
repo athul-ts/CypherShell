@@ -5,9 +5,51 @@ type AuditLogWithProfile = Prisma.AuditLogGetPayload<{
   include: { profile: { select: { name: true } } }
 }>
 
-/** RFC 4180 field: quoted, inner quotes doubled — `"`, `,` and line breaks survive (BL-28). */
-function csvField(value: string | null | undefined): string {
-  return `"${(value ?? '').replace(/"/g, '""')}"`
+/**
+ * RFC 4180 field: quoted, inner quotes doubled — `"`, `,` and line breaks survive (BL-28).
+ * A value a spreadsheet would run as a formula (it starts with `=`, `+`, `-`, `@`, tab or
+ * carriage return) gets a leading single quote, so error text from a remote server cannot
+ * execute when the export is opened (BL-32).
+ */
+export function csvField(value: string | null | undefined): string {
+  let text = value ?? ''
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+/** Why an SSH session ended (FR-08.2). */
+export type DisconnectReason = 'user' | 'timeout' | 'error' | 'closed'
+
+const DISCONNECT_REASON_TEXT: Record<DisconnectReason, string> = {
+  user: 'closed by user',
+  timeout: 'idle timeout',
+  error: 'connection error',
+  closed: 'closed by remote'
+}
+
+export const AUDIT_TYPES = [
+  'connection',
+  'disconnection',
+  'sftp_upload',
+  'sftp_download',
+  'key_used'
+] as const
+
+export interface AuditQuery {
+  page: number
+  pageSize: number
+  type?: (typeof AUDIT_TYPES)[number]
+  from?: Date
+  to?: Date
+  q?: string
+}
+
+export interface AuditPage {
+  items: AuditLogWithProfile[]
+  /** Entries matching the filters, across all pages. */
+  total: number
+  page: number
+  pageSize: number
 }
 
 export class AuditService {
@@ -35,8 +77,9 @@ export class AuditService {
     profileId: string | null,
     profileName: string | null,
     host: string | null,
-    reason: string,
-    durationMs?: number
+    reason: DisconnectReason,
+    durationMs?: number,
+    errorMessage?: string
   ): Promise<AuditLog> {
     return prisma.auditLog.create({
       data: {
@@ -44,8 +87,9 @@ export class AuditService {
         profileId,
         profileName,
         host,
-        detail: `Disconnected: ${reason}`,
-        success: true,
+        detail: `Disconnected: ${DISCONNECT_REASON_TEXT[reason]}`,
+        success: reason !== 'error',
+        errorMessage,
         durationMs
       }
     })
@@ -75,14 +119,32 @@ export class AuditService {
     })
   }
 
-  static async getLogs(limit: number = 100): Promise<AuditLogWithProfile[]> {
-    return prisma.auditLog.findMany({
-      orderBy: { timestamp: 'desc' },
-      take: limit,
-      include: {
-        profile: { select: { name: true } }
-      }
-    })
+  /** One page of entries, newest first, filtered on the server (FR-08.5). */
+  static async queryLogs({ page, pageSize, type, from, to, q }: AuditQuery): Promise<AuditPage> {
+    const where: Prisma.AuditLogWhereInput = {
+      ...(type && { type }),
+      ...((from || to) && { timestamp: { ...(from && { gte: from }), ...(to && { lte: to }) } }),
+      ...(q && {
+        OR: [
+          { detail: { contains: q } },
+          { type: { contains: q } },
+          { profileName: { contains: q } },
+          { host: { contains: q } },
+          { errorMessage: { contains: q } }
+        ]
+      })
+    }
+    const [total, items] = await prisma.$transaction([
+      prisma.auditLog.count({ where }),
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { timestamp: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { profile: { select: { name: true } } }
+      })
+    ])
+    return { items, total, page, pageSize }
   }
 
   static async exportCSV(): Promise<string> {

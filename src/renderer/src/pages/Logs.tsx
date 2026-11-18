@@ -1,9 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '../lib/api'
-import { FileText, Download, CheckCircle2, XCircle, Search, Trash2 } from 'lucide-react'
-import { format, isAfter, subDays, subMonths } from 'date-fns'
-import { useState } from 'react'
+import {
+  FileText,
+  Download,
+  CheckCircle2,
+  XCircle,
+  Search,
+  Trash2,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react'
+import { format } from 'date-fns'
+import { useEffect, useState } from 'react'
 
 interface LogEntry {
   id: string
@@ -13,6 +22,28 @@ interface LogEntry {
   timestamp: string
   errorMessage?: string | null
   success: boolean
+}
+
+/** One page of the audit log, as the API answers it (FR-08.5). */
+interface LogPage {
+  items: LogEntry[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+const PAGE_SIZE = 25
+const SEARCH_DEBOUNCE_MS = 300
+const RANGE_DAYS: Record<string, number> = { today: 1, week: 7, month: 30 }
+
+/** The value, but only after it has stopped changing for `ms` — keeps typing from querying per key. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return debounced
 }
 
 /** An error's message without Electron's "Error invoking remote method '…': Error: " prefix. */
@@ -43,17 +74,32 @@ export default function Logs(): React.JSX.Element {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [filterDate, setFilterDate] = useState('all')
+  const [page, setPage] = useState(1)
   const [exporting, setExporting] = useState(false)
   const queryClient = useQueryClient()
+  const search = useDebounced(searchTerm.trim(), SEARCH_DEBOUNCE_MS)
 
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ['logs'],
-    queryFn: async (): Promise<LogEntry[]> => {
-      const res = await api.get<LogEntry[]>('/audit')
+  // FR-08.5: the API filters and pages; changing a filter goes back to page 1.
+  const { data, isLoading } = useQuery({
+    queryKey: ['logs', page, filterType, filterDate, search],
+    queryFn: async (): Promise<LogPage> => {
+      const days = RANGE_DAYS[filterDate]
+      const res = await api.get<LogPage>('/audit', {
+        params: {
+          page,
+          pageSize: PAGE_SIZE,
+          ...(filterType !== 'all' && { type: filterType }),
+          ...(days && { from: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString() }),
+          ...(search && { q: search })
+        }
+      })
       return res.data
     },
     refetchInterval: 5000 // Refresh every 5s just in case
   })
+  const logs = data?.items
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const handleExport = async (): Promise<void> => {
     setExporting(true)
@@ -69,29 +115,6 @@ export default function Logs(): React.JSX.Element {
     await api.delete('/audit')
     queryClient.invalidateQueries({ queryKey: ['logs'] })
   }
-
-  const filteredLogs = logs?.filter((log: LogEntry) => {
-    // Text search
-    const matchesSearch =
-      log.detail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (log.profileName && log.profileName.toLowerCase().includes(searchTerm.toLowerCase()))
-
-    // Type filter
-    const matchesType = filterType === 'all' || log.type === filterType
-
-    // Date filter
-    let matchesDate = true
-    if (filterDate !== 'all') {
-      const logDate = new Date(log.timestamp)
-      const now = new Date()
-      if (filterDate === 'today') matchesDate = isAfter(logDate, subDays(now, 1))
-      else if (filterDate === 'week') matchesDate = isAfter(logDate, subDays(now, 7))
-      else if (filterDate === 'month') matchesDate = isAfter(logDate, subMonths(now, 1))
-    }
-
-    return matchesSearch && matchesType && matchesDate
-  })
 
   return (
     <div className="flex-1 p-8 bg-[#0a0a0f] h-full flex flex-col overflow-hidden">
@@ -124,25 +147,35 @@ export default function Logs(): React.JSX.Element {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value)
+                setPage(1)
+              }}
               placeholder="Search logs..."
               className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors text-sm"
             />
           </div>
           <select
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
+            onChange={(e) => {
+              setFilterType(e.target.value)
+              setPage(1)
+            }}
             className="bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors text-sm min-w-[150px]"
           >
             <option value="all">All Types</option>
             <option value="connection">Connection</option>
+            <option value="disconnection">Disconnection</option>
             <option value="sftp_upload">SFTP Upload</option>
             <option value="sftp_download">SFTP Download</option>
             <option value="key_used">Key Used</option>
           </select>
           <select
             value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
+            onChange={(e) => {
+              setFilterDate(e.target.value)
+              setPage(1)
+            }}
             className="bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors text-sm min-w-[150px]"
           >
             <option value="all">All Time</option>
@@ -155,7 +188,7 @@ export default function Logs(): React.JSX.Element {
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="text-center py-12 text-slate-500">Loading logs...</div>
-          ) : filteredLogs?.length === 0 ? (
+          ) : logs?.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 text-slate-600 mx-auto mb-4" />
               <div className="text-slate-400">No logs found matching your criteria.</div>
@@ -172,7 +205,7 @@ export default function Logs(): React.JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {filteredLogs?.map((log: LogEntry) => (
+                {logs?.map((log: LogEntry) => (
                   <tr
                     key={log.id}
                     className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
@@ -217,6 +250,35 @@ export default function Logs(): React.JSX.Element {
               </tbody>
             </table>
           )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-800 bg-slate-900/50 px-4 py-3 text-sm text-slate-400">
+          <span>
+            {total === 0
+              ? 'No entries'
+              : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              aria-label="Previous page"
+              className="rounded-lg border border-slate-700 p-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              aria-label="Next page"
+              className="rounded-lg border border-slate-700 p-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

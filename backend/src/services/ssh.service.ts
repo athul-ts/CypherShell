@@ -3,7 +3,7 @@ import { Client, ConnectConfig } from 'ssh2'
 import { Profile } from '@prisma/client'
 import { CryptoService } from './crypto.service'
 import { prisma } from '../config/db'
-import { AuditService } from './audit.service'
+import { AuditService, type DisconnectReason } from './audit.service'
 import { SftpService } from './sftp.service'
 import { TunnelService } from './tunnel.service'
 import { KeyService } from './key.service'
@@ -15,6 +15,9 @@ export interface SSHSession {
   profileName: string
   host: string
   connectedAt: Date
+  /** Why the session ended, set before it closes; absent means the remote closed it (BL-32). */
+  endReason?: DisconnectReason
+  endError?: string
   hasTcpListener?: boolean
   /**
    * BL-11: live users of the connection — terminal shells, running tunnels
@@ -58,7 +61,7 @@ export class SSHService {
     const reaped: string[] = []
     for (const [id, session] of this.sessions) {
       if (session.consumers === 0 && now - session.lastActivityAt > this.ORPHAN_TIMEOUT_MS) {
-        this.removeSession(id)
+        this.removeSession(id, 'timeout')
         reaped.push(id)
       }
     }
@@ -149,7 +152,22 @@ export class SSHService {
     }
 
     return new Promise((resolve, reject) => {
+      // Only for the handshake: after `ready` an error is part of the session's end (below),
+      // not a second "connection failed" entry (BL-32).
+      const onConnectError = (err: Error): void => {
+        AuditService.logConnection(
+          profile.id,
+          profile.name,
+          profile.host,
+          false,
+          err.message
+        ).catch(console.error)
+        reject(err)
+      }
+      client.on('error', onConnectError)
+
       client.on('ready', () => {
+        client.off('error', onConnectError)
         const connectedAt = new Date()
         const session: SSHSession = {
           id: sessionId,
@@ -167,41 +185,27 @@ export class SSHService {
           console.error
         )
 
+        // An error after `ready` (keepalive timeout, reset, …) ends the session; `close`
+        // follows and writes the single disconnect entry.
+        client.on('error', (postConnectErr) => {
+          session.endReason ??= 'error'
+          session.endError ??= postConnectErr.message
+        })
+
         client.on('close', () => {
           const durationMs = Date.now() - connectedAt.getTime()
           AuditService.logDisconnect(
             profile.id,
             profile.name,
             profile.host,
-            'Connection closed',
-            durationMs
+            session.endReason ?? 'closed',
+            durationMs,
+            session.endError
           ).catch(console.error)
           this.sessions.delete(sessionId)
         })
 
-        client.on('error', (postConnectErr) => {
-          const durationMs = Date.now() - connectedAt.getTime()
-          AuditService.logDisconnect(
-            profile.id,
-            profile.name,
-            profile.host,
-            postConnectErr.message,
-            durationMs
-          ).catch(console.error)
-        })
-
         resolve(session)
-      })
-
-      client.on('error', (err) => {
-        AuditService.logConnection(
-          profile.id,
-          profile.name,
-          profile.host,
-          false,
-          err.message
-        ).catch(console.error)
-        reject(err)
       })
 
       client.connect(connectConfig)
@@ -212,9 +216,11 @@ export class SSHService {
     return this.sessions.get(sessionId)
   }
 
-  static removeSession(sessionId: string): void {
+  /** Closes a session. `reason` is recorded in its disconnect log entry (FR-08.2). */
+  static removeSession(sessionId: string, reason: DisconnectReason = 'user'): void {
     const session = this.sessions.get(sessionId)
     if (session) {
+      session.endReason ??= reason
       session.client.end()
       this.sessions.delete(sessionId)
     }

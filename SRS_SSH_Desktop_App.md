@@ -704,14 +704,14 @@ CypherShell/
 
 ### FR-08: Audit Logs
 
-**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-08.2, FR-08.5 tracked)
+**Priority:** Medium | **Status:** ✅ Implemented
 
 - FR-08.1 — Log: SSH connect (profile, host, timestamp, success/fail, error message) ✅
-- FR-08.2 — Log: SSH disconnect with duration and reason ⚠️ — duration is logged, but the reason is always "Connection closed", and an error after connecting writes a "connection failed" entry plus two disconnect entries (tracked, not scheduled)
+- FR-08.2 — Log: SSH disconnect with duration and reason ✅ (BL-05, BL-32 — exactly one disconnect entry per session, with its duration and reason: closed by user, idle timeout, connection error (with the message) or closed by remote)
 - FR-08.3 — Log: SFTP upload (filename, size, remote path, timestamp, success/fail) ✅
 - FR-08.4 — Log: SFTP download (filename, size, local path, timestamp) ✅
-- FR-08.5 — Paginated log table with search and date range filter ⚠️ — only the newest 100 entries are fetched and filtered in the browser; there is no pagination (tracked, not scheduled)
-- FR-08.6 — Export logs as CSV via native save dialog — fetched through the API client with the session token, saved with `dialog:saveTextFile`; every text field is quoted ✅ (BL-28)
+- FR-08.5 — Paginated log table with search and date range filter ✅ (BL-32 — the API filters by type, date range and search text and returns one page with the total; the Logs page has a pager and a "Disconnection" type)
+- FR-08.6 — Export logs as CSV via native save dialog — fetched through the API client with the session token, saved with `dialog:saveTextFile`; every text field is quoted, and a value a spreadsheet would run as a formula gets a leading single quote ✅ (BL-28, BL-32)
 - FR-08.7 — Auto-purge logs older than N days — at startup and every 24 hours ✅ (BL-04, BL-10)
 - FR-08.8 — Clear all logs via UI with confirmation (`DELETE /api/audit`) ✅ (BL-06)
 
@@ -1178,12 +1178,12 @@ Validation (BL-23): ports are integers 1–65535, as numbers or digit strings (t
 ### 9.9 Audit Logs API
 
 ```
-GET    /api/audit     ?limit=100      → Newest entries first (default 100)
+GET    /api/audit     ?page=1&pageSize=50&type=&from=&to=&q=  → { items, total, page, pageSize }, newest first (BL-32)
 GET    /api/audit/export              → All entries as CSV (text/csv); the Logs page saves it via dialog:saveTextFile (BL-28)
 DELETE /api/audit                     → Clear all logs (BL-06)
 ```
 
-> The earlier design (`GET /api/logs ?type=&from=&to=&page=`) with server-side filtering and pagination is not implemented; the renderer filters the fetched page (see FR-08.5).
+> `type` is one of `connection`, `disconnection`, `sftp_upload`, `sftp_download`, `key_used`; `from`/`to` are ISO dates; `q` searches detail, type, profile, host and error. `pageSize` is at most 200; invalid parameters answer 400.
 
 ### 9.10 App Config API
 
@@ -1493,7 +1493,7 @@ Current build state as of v3.4 of this document (Phase 2 security hardening, 202
 | SftpPane (dual-pane)       | ✅ Complete | All file ops via in-app dialogs, progress, transfer queue (BL-14)                                                                             |
 | LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC (home directory only)                                                                                      |
 | Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                                                                            |
-| Logs page                  | ⚠️ Partial  | Filter, search, date range; CSV export via save dialog (BL-28); only the newest 100 entries, no pagination (FR-08.5)                          |
+| Logs page                  | ✅ Complete | Server-side filters and paging (BL-32); CSV export via save dialog (BL-28)                                                                    |
 | Settings page              | ✅ Complete | Theme, font, lock (re-encrypting, BL-10; 10-character minimum, BL-26), retention                                                              |
 | UpdateBanner               | ✅ Complete | Auto-update notification + install; Releases link on macOS (BL-24)                                                                            |
 | SSH service                | ✅ Complete | Session pool, password + key auth, consumer-aware reaper (BL-11)                                                                              |
@@ -1501,7 +1501,7 @@ Current build state as of v3.4 of this document (Phase 2 security hardening, 202
 | Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                                                                          |
 | Key service                | ✅ Complete | OpenSSH generation (BL-12), import + conversion, fingerprint, .cskb export/import                                                             |
 | Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5; socket errors handled (BL-16)                                                                                  |
-| Audit service              | ✅ Complete | Event logging + CSV generation; every text field quoted (BL-28)                                                                               |
+| Audit service              | ✅ Complete | Event logging with disconnect reasons, filtered paging, CSV with formula guard (BL-28, BL-32)                                                 |
 | Config service             | ✅ Complete | AppConfig singleton read/update; never creates the row (BL-10)                                                                                |
 | Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                                                                                |
 | WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O; consumer counting (BL-11); caller + revocation checks, closes on lock (BL-17, BL-18)                            |
@@ -1560,14 +1560,14 @@ Implemented: logs older than `AppConfig.logRetentionDays` are purged at startup 
 
 ---
 
-### BL-05 — SSH Disconnect Reason Logging ⚠️ Partially Implemented
+### ~~BL-05 — SSH Disconnect Reason Logging~~ ✅ Implemented
 
 **Requirement:** FR-08.2
 **Priority:** Low
 
 Implemented: disconnects are logged with their duration.
 
-⚠️ Remaining: the reason is always "Connection closed" (user, idle-reap and error disconnects are not distinguished), and because the pre-ready `error` listener stays attached, an error after connecting writes a "connection failed" entry plus two disconnect entries (tracked, not scheduled).
+Completed by BL-32: the reason is recorded (user, idle timeout, error, closed by remote) and an error after connecting no longer writes extra entries.
 
 **Backend work:** In `SshService`, record why a session ends (`user` from `DELETE /api/sessions/:id`, `timeout` from the reaper, `error` from the client `error` event), log one disconnect entry from the `close` handler, and detach the pre-ready listeners once `ready` fires.
 
@@ -2145,11 +2145,11 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-### BL-32 — Audit Log: Reasons, Paging, Filters, CSV Safety
+### ~~BL-32 — Audit Log: Reasons, Paging, Filters, CSV Safety~~ ✅ Implemented
 
 **Requirements:** FR-08.2, FR-08.5, BL-05, FR-08.6
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-18 — regression tests: `tests/backend/auditLog.test.ts`, `tests/backend/auditExport.test.ts`, `tests/renderer/pages/LogsPaging.test.tsx`
 
 **Problems:** The disconnect reason is always "Connection closed", and an error after connecting writes a "connection failed" entry plus two disconnect entries. The log loads only the newest 100 entries and filters them in the browser. The type filter lacks "disconnection". CSV cells that start with `=`, `+`, `-` or `@` run as formulas in spreadsheet programs, and error text can come from a remote server.
 
@@ -2159,10 +2159,10 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 **Acceptance Criteria:**
 
-- [ ] One disconnect entry per session; its detail names the reason (user, timeout, error, closed)
-- [ ] Pagination, type, date and search filters are applied by the API; `total` is the filtered count
-- [ ] The Logs page can select "Disconnection" and page through results
-- [ ] A cell beginning with `=`, `+`, `-` or `@` is exported with a leading single quote; values still round-trip through a CSV parser
+- [x] One disconnect entry per session; its detail names the reason (user, timeout, error, closed)
+- [x] Pagination, type, date and search filters are applied by the API; `total` is the filtered count
+- [x] The Logs page can select "Disconnection" and page through results
+- [x] A cell beginning with `=`, `+`, `-` or `@` is exported with a leading single quote; values still round-trip through a CSV parser
 
 ---
 
