@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { formatDistanceToNow } from 'date-fns'
 import { ProfileForm } from '../components/profiles/ProfileForm'
 import { useTabStore } from '../store/tabStore'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -33,6 +34,7 @@ interface Profile {
   authMethod: 'password' | 'key' | 'key+passphrase'
   sshKeyId?: string | null
   hasPassword?: boolean
+  lastConnectedAt?: string | null
 }
 
 interface ImportResult {
@@ -339,6 +341,11 @@ export default function Home(): React.JSX.Element {
                     </div>
                     <p className="text-sm text-slate-500">
                       {profile.username}@{profile.host}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {profile.lastConnectedAt
+                        ? `Last connected ${formatDistanceToNow(new Date(profile.lastConnectedAt), { addSuffix: true })}`
+                        : 'Never connected'}
                     </p>
                   </div>
                 </div>

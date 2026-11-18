@@ -20,18 +20,18 @@
 
 ### FR-01 — Saved Connection Profiles
 
-**SRS §6.1** | Priority: High | Overall: ⚠️ Partially Implemented (FR-01.2, FR-01.8.7 tracked)
+**SRS §6.1** | Priority: High | Overall: ✅ Implemented
 
 | ID      | Requirement                                                                  | Status |
 | ------- | ---------------------------------------------------------------------------- | ------ |
 | FR-01.1 | Profile fields: name, host, port, username, auth method                      | ✅     |
-| FR-01.2 | Home page profile cards with name, host, group, last-connected               | ⚠️     |
+| FR-01.2 | Home page profile cards with name, host, group, last-connected               | ✅     |
 | FR-01.3 | "Manage Profile" opens Profile Detail tab                                    | ✅     |
 | FR-01.4 | Passwords/passphrases AES-256-GCM encrypted in SQLite                        | ✅     |
 | FR-01.5 | One-click profile duplication                                                | ✅     |
 | FR-01.6 | Profile tagging/grouping                                                     | ✅     |
 | FR-01.7 | Real-time search and filter                                                  | ✅     |
-| FR-01.8 | Edit existing profile fields from Profile Detail tab and Home page card menu | ⚠️     |
+| FR-01.8 | Edit existing profile fields from Profile Detail tab and Home page card menu | ✅     |
 
 ---
 
@@ -117,7 +117,7 @@
 
 ### FR-06 — Port Forwarding (Tunnels)
 
-**SRS §6.6** | Priority: High | Overall: ⚠️ Partially Implemented (FR-06.6 UI tracked)
+**SRS §6.6** | Priority: High | Overall: ⚠️ Partially Implemented (FR-06.4 saved rules — BL-34)
 
 | ID      | Requirement                                                    | Status |
 | ------- | -------------------------------------------------------------- | ------ |
@@ -126,7 +126,7 @@
 | FR-06.3 | Dynamic SOCKS5 proxy                                           | ✅     |
 | FR-06.4 | Tunnel panel in Profile Details tab                            | ✅     |
 | FR-06.5 | Start/stop tunnels independently of terminal/SFTP sessions     | ✅     |
-| FR-06.6 | Port conflict detection before binding                         | ⚠️     |
+| FR-06.6 | Port conflict detection before binding                         | ✅     |
 
 ---
 
@@ -265,7 +265,7 @@
 | ~~BL-28~~ | ~~Audit log CSV export (API client + `saveTextFile`, quoting)~~     | ~~Medium~~   | FR-08.6                              | ✅ Done         |
 | ~~BL-29~~ | ~~Terminal resize and reconnect~~                                   | ~~Medium~~   | FR-02.3, FR-02.6, FR-02.7            | ✅ Done         |
 | ~~BL-30~~ | ~~SFTP drag-in, retry, folder delete, paths~~                       | ~~Medium~~   | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ✅ Done         |
-| BL-31     | Last connected, form validation, port error                         | Medium       | FR-01.2, FR-01.8.7, FR-06.6          | ❌ Open         |
+| ~~BL-31~~ | ~~Last connected, form validation, port error~~                     | ~~Medium~~   | FR-01.2, FR-01.8.7, FR-06.6          | ✅ Done         |
 | BL-32     | Audit reasons, paging, filters, CSV safety                          | Medium       | FR-08.2, FR-08.5, FR-08.6            | ❌ Open         |
 | BL-33     | Key bundle overwrite in place                                       | Low          | FR-10.6                              | ❌ Open         |
 | BL-34     | Saved tunnel rules                                                  | Medium       | FR-06.4, FR-09.2                     | ❌ Open         |

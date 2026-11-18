@@ -129,3 +129,28 @@ describe('[FR-06.1][BL-16] local forward resilience', () => {
     expect(await roundTrip(forwardPort, 'again')).toBe('again')
   })
 })
+
+describe('[FR-06.6][BL-31] starting a tunnel on a busy port', () => {
+  it('answers 409 PORT_IN_USE and names the port', async () => {
+    const res = await request(app)
+      .post(`/api/tunnels/${sessionId}/start`)
+      .set(...auth())
+      .send({ type: 'local', localPort: forwardPort, remoteHost: '127.0.0.1', remotePort: 7 })
+
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({
+      code: 'PORT_IN_USE',
+      port: forwardPort,
+      error: `Port ${forwardPort} is already in use`
+    })
+  })
+
+  it('also reports a busy port for a dynamic (SOCKS5) tunnel', async () => {
+    const res = await request(app)
+      .post(`/api/tunnels/${sessionId}/start`)
+      .set(...auth())
+      .send({ type: 'dynamic', localPort: forwardPort })
+    expect(res.status).toBe(409)
+    expect(res.body.code).toBe('PORT_IN_USE')
+  })
+})

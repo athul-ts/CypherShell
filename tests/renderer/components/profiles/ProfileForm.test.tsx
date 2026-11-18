@@ -140,3 +140,69 @@ describe('[FR-01.8.4][BL-13] ProfileForm edit', () => {
     expect(options).toEqual(['password', 'key', 'key+passphrase'])
   })
 })
+
+describe('[FR-01.8.7][BL-31] inline validation', () => {
+  function renderNew(): void {
+    mockApi.get.mockResolvedValue({ data: [] })
+    renderWithQuery(<ProfileForm open onOpenChange={() => {}} />)
+  }
+
+  it('blank Name, Host, Username and Password show errors and send nothing', async () => {
+    renderNew()
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
+
+    expect(await screen.findByText('Name is required')).toBeInTheDocument()
+    expect(screen.getByText('Host is required')).toBeInTheDocument()
+    expect(screen.getByText('Username is required')).toBeInTheDocument()
+    expect(screen.getByText('Password is required')).toBeInTheDocument()
+    expect(mockApi.post).not.toHaveBeenCalled()
+  })
+
+  it.each(['0', '65536'])('port %s is rejected', async (port) => {
+    renderNew()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'n' } })
+    fireEvent.change(screen.getByLabelText('Host'), { target: { value: 'h' } })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'u' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'p' } })
+    fireEvent.change(screen.getByLabelText('Port'), { target: { value: port } })
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
+
+    expect(await screen.findByText('Port must be a number from 1 to 65535')).toBeInTheDocument()
+    expect(mockApi.post).not.toHaveBeenCalled()
+  })
+
+  it('an error clears as soon as its field is edited', async () => {
+    renderNew()
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
+    expect(await screen.findByText('Name is required')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } })
+    expect(screen.queryByText('Name is required')).not.toBeInTheDocument()
+    expect(screen.getByText('Host is required')).toBeInTheDocument() // others stay
+  })
+
+  it('SSH key methods require a key', async () => {
+    renderNew()
+    fireEvent.change(screen.getByLabelText('Auth Method'), { target: { value: 'key' } })
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
+    expect(await screen.findByText('Select an SSH key')).toBeInTheDocument()
+  })
+
+  it('a valid form is submitted', async () => {
+    mockApi.get.mockResolvedValue({ data: [] })
+    mockApi.post.mockResolvedValue({ data: {} })
+    renderWithQuery(<ProfileForm open onOpenChange={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Web' } })
+    fireEvent.change(screen.getByLabelText('Host'), { target: { value: 'web.local' } })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'root' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } })
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
+
+    await waitFor(() =>
+      expect(mockApi.post).toHaveBeenCalledWith(
+        '/profiles',
+        expect.objectContaining({ name: 'Web', host: 'web.local', username: 'root', port: 22 })
+      )
+    )
+  })
+})

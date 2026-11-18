@@ -142,8 +142,16 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
       await api.post(`/tunnels/${sessionId}/start`, tunnelForm)
       setActiveForwards([...activeForwards, { ...tunnelForm, id: Date.now() }])
       setTunnelForm({ type: 'local', localPort: '', remoteHost: '127.0.0.1', remotePort: '' })
-    } catch {
-      toast.error('Failed to start tunnel')
+    } catch (err) {
+      const data = (
+        err as { response?: { data?: { code?: string; port?: number; error?: string } } }
+      )?.response?.data
+      // BL-31: name the busy port instead of a generic failure
+      toast.error(
+        data?.code === 'PORT_IN_USE'
+          ? `Port ${data.port} is already in use. Choose another local port.`
+          : (data?.error ?? 'Failed to start tunnel')
+      )
     }
   }
 

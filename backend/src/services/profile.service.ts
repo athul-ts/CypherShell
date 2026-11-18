@@ -39,6 +39,11 @@ export interface ExportBundle {
 export type ConflictResolution = 'skip' | 'rename' | 'overwrite'
 
 export class ProfileService {
+  /** Records a successful connection for the "last connected" line on the profile card (FR-01.2). */
+  static async markConnected(profileId: string): Promise<void> {
+    await prisma.profile.update({ where: { id: profileId }, data: { lastConnectedAt: new Date() } })
+  }
+
   static async buildExportPayload(ids?: string[]): Promise<ExportBundle> {
     const where = ids && ids.length > 0 ? { id: { in: ids } } : {}
     const profiles = await prisma.profile.findMany({

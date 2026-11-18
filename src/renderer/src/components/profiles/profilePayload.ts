@@ -35,6 +35,32 @@ export type ProfilePayload = Partial<{
   sshKeyId: string
 }>
 
+export type ProfileField = 'name' | 'host' | 'port' | 'username' | 'sshKeyId' | 'password'
+
+/**
+ * Field errors for the profile form (FR-01.8.7): Name, Host and Username are
+ * required, Port must be 1–65535, key methods need a key, and a password or
+ * passphrase is required whenever `secretRequired` says so. Empty when valid.
+ */
+export function validateProfile(
+  original: ProfileSnapshot | undefined,
+  values: ProfileFormValues
+): Partial<Record<ProfileField, string>> {
+  const errors: Partial<Record<ProfileField, string>> = {}
+  if (!values.name.trim()) errors.name = 'Name is required'
+  if (!values.host.trim()) errors.host = 'Host is required'
+  if (!values.username.trim()) errors.username = 'Username is required'
+  if (!Number.isInteger(values.port) || values.port < 1 || values.port > 65535) {
+    errors.port = 'Port must be a number from 1 to 65535'
+  }
+  if (values.authMethod !== 'password' && !values.sshKeyId) errors.sshKeyId = 'Select an SSH key'
+  if (secretRequired(original, values) && !values.password) {
+    errors.password =
+      values.authMethod === 'password' ? 'Password is required' : 'Passphrase is required'
+  }
+  return errors
+}
+
 const usesKey = (method: AuthMethod): boolean => method !== 'password'
 const needsSecret = (method: AuthMethod): boolean => method !== 'key'
 

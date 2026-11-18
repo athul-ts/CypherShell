@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { z } from 'zod'
-import { TunnelService } from '../services/tunnel.service'
+import { PortInUseError, TunnelService } from '../services/tunnel.service'
 
 // ─── BL-23: request validation ──────────────────────────────────────────────
 
@@ -66,6 +66,10 @@ export async function startForward(req: Request, res: Response): Promise<void> {
     }
     res.json({ success: true })
   } catch (error: unknown) {
+    if (error instanceof PortInUseError) {
+      res.status(409).json({ code: 'PORT_IN_USE', port: error.port, error: error.message })
+      return
+    }
     res
       .status(500)
       .json({ error: error instanceof Error ? error.message : 'Failed to start forward' })

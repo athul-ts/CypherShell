@@ -20,6 +20,14 @@ function bridge(socket: net.Socket, channel: Duplex): void {
   channel.pipe(socket)
 }
 
+/** The local port a tunnel needs is already taken (BL-31); the API answers 409 `PORT_IN_USE`. */
+export class PortInUseError extends Error {
+  constructor(readonly port: number) {
+    super(`Port ${port} is already in use`)
+    this.name = 'PortInUseError'
+  }
+}
+
 export class TunnelService {
   private static localServers = new Map<string, net.Server>()
 
@@ -72,7 +80,7 @@ export class TunnelService {
     if (!session) throw new Error('Session not found')
 
     const isFree = await this.checkPort(localPort)
-    if (!isFree) throw new Error(`Port ${localPort} is already in use`)
+    if (!isFree) throw new PortInUseError(localPort)
 
     const server = net.createServer((socket) => {
       // Attach before the channel opens: the client may reset while we wait.
@@ -173,7 +181,7 @@ export class TunnelService {
     const sshClient = session.client
 
     const isFree = await this.checkPort(localPort)
-    if (!isFree) throw new Error(`Port ${localPort} is already in use`)
+    if (!isFree) throw new PortInUseError(localPort)
 
     const server = net.createServer((socket) => {
       // CODE-04: Buffer incoming bytes and parse incrementally so we handle

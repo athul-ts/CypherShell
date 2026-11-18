@@ -548,10 +548,10 @@ CypherShell/
 
 ### FR-01: Saved Connection Profiles
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-01.2, FR-01.8.7 tracked)
+**Priority:** High | **Status:** ✅ Implemented
 
 - FR-01.1 — Profile fields: Name, Host, Port (default 22), Username, Auth method (Password / SSH Key / Key + Passphrase) ✅ (BL-13)
-- FR-01.2 — Home page shows profile cards: name, host, group tag, last connected time ⚠️ — `lastConnectedAt` is never written on connect and the cards do not show it (tracked, not scheduled)
+- FR-01.2 — Home page shows profile cards: name, host, group tag, last connected time ✅ (BL-31 — a successful connection records `lastConnectedAt`; cards show "Last connected <time ago>" or "Never connected")
 - FR-01.3 — "Manage Profile" opens a Profile Detail tab; Terminal and SFTP windows spawn from there
 - FR-01.4 — Stored in SQLite via Prisma; passwords/passphrases AES-256-GCM encrypted before write
 - FR-01.5 — Profiles can be duplicated with one click ✅
@@ -561,7 +561,7 @@ CypherShell/
 
 ### FR-01.8: Profile Edit
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-01.8.7 tracked)
+**Priority:** High | **Status:** ✅ Implemented
 
 #### Requirements
 
@@ -571,7 +571,7 @@ CypherShell/
 - FR-01.8.4 — On save, the form issues `PUT /api/profiles/:id` with only the changed fields ✅ (BL-13) — the password or passphrase is sent only when typed, and switching to plain SSH-key auth sends `password: ''` to clear it (FR-01.8.6)
 - FR-01.8.5 — On successful save, TanStack Query caches for `['profiles']` and `['profile', profileId]` are invalidated so all views reflect the update immediately ✅
 - FR-01.8.6 — If the profile's `authMethod` changes (e.g. from Password to SSH Key), the form clears the irrelevant credential fields before submitting ✅
-- FR-01.8.7 — Form validation mirrors the create flow: Name, Host, Port, and Username are required; Port must be 1–65535 ⚠️ — enforced by HTML `required` and the API only; there are no inline field errors (tracked, not scheduled)
+- FR-01.8.7 — Form validation mirrors the create flow: Name, Host, Port, and Username are required; Port must be 1–65535 ✅ (BL-31 — the form shows an error under each invalid field and sends nothing until it is valid; a key method also needs a key, and a new password or passphrase where one is required)
 
 #### Acceptance Criteria
 
@@ -676,14 +676,14 @@ CypherShell/
 
 ### FR-06: Port Forwarding (Tunnels)
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-06.6 UI tracked)
+**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-06.4 saved rules — BL-34)
 
 - FR-06.1 — Local forwarding: `localhost:localPort → remoteHost:remotePort` ✅ (BL-16 — a client reset no longer crashes the backend)
 - FR-06.2 — Remote forwarding: `remoteHost:remotePort → localhost:localPort` ✅
 - FR-06.3 — Dynamic SOCKS5 proxy ✅
 - FR-06.4 — Tunnel panel displayed inline inside Profile Details tab ✅ (tunnel rules are not saved to the `Tunnel` table; only profile import/export touches it — tracked, not scheduled)
 - FR-06.5 — Start/stop individual tunnels without interrupting terminal/SFTP windows ✅
-- FR-06.6 — Port conflict detection before binding ⚠️ — the backend detects a busy port (BL-02), but the UI shows a generic "Failed to start tunnel" instead of the busy port (tracked, not scheduled)
+- FR-06.6 — Port conflict detection before binding ✅ (BL-02, BL-31 — a busy local port answers `409 { code: 'PORT_IN_USE', port }` and the UI names the port)
 
 ---
 
@@ -1169,7 +1169,7 @@ DELETE /api/keys/:id                  → Delete key (linked profiles keep their
 ### 9.8 Tunnels API
 
 ```
-POST   /api/tunnels/:sessionId/start  { type: 'local' | 'remote' | 'dynamic', localPort, remoteHost?, remotePort? }
+POST   /api/tunnels/:sessionId/start  { type: 'local' | 'remote' | 'dynamic', localPort, remoteHost?, remotePort? }   — 409 { code: 'PORT_IN_USE', port, error } if the local port is taken (BL-31)
 POST   /api/tunnels/:sessionId/stop   { type, port }   — port is localPort for local/dynamic, remotePort for remote
 ```
 
@@ -2124,11 +2124,11 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-### BL-31 — Profile Details: Last Connected, Validation, Port Errors
+### ~~BL-31 — Profile Details: Last Connected, Validation, Port Errors~~ ✅ Implemented
 
 **Requirements:** FR-01.2, FR-01.8.7, FR-06.6
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-18 — regression tests: `tests/backend/profileConnect.test.ts`, `tests/backend/tunnelStability.test.ts`, `tests/renderer/components/profiles/ProfileForm.test.tsx`, `tests/renderer/components/profiles/ProfileDetailPane.test.tsx`, `tests/renderer/pages/Home.test.tsx`
 
 **Problems:** `lastConnectedAt` is never written and never shown. The profile form relies on HTML `required` and shows no field errors. A busy tunnel port shows a generic "Failed to start tunnel".
 
@@ -2138,10 +2138,10 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 **Acceptance Criteria:**
 
-- [ ] A successful connect updates `lastConnectedAt`; a failed one does not
-- [ ] Cards show the last-connected time or "Never connected"
-- [ ] Blank Name/Host/Username and an out-of-range Port show inline errors and send nothing
-- [ ] A busy port yields `409 PORT_IN_USE` and the UI names the port
+- [x] A successful connect updates `lastConnectedAt`; a failed one does not
+- [x] Cards show the last-connected time or "Never connected"
+- [x] Blank Name/Host/Username and an out-of-range Port show inline errors and send nothing
+- [x] A busy port yields `409 PORT_IN_USE` and the UI names the port
 
 ---
 

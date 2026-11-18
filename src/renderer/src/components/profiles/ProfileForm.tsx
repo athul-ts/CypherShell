@@ -4,7 +4,8 @@ import { api } from '../../lib/api'
 import { Server, Save, X } from 'lucide-react'
 import {
   buildProfilePayload,
-  secretRequired,
+  validateProfile,
+  type ProfileField,
   type AuthMethod,
   type ProfileFormValues,
   type ProfilePayload,
@@ -56,6 +57,16 @@ export function ProfileForm({
   })
 
   const [formData, setFormData] = useState<ProfileFormValues>(() => initialValues(profile))
+  // FR-01.8.7: field errors, shown after the first submit and cleared as each field is edited
+  const [errors, setErrors] = useState<Partial<Record<ProfileField, string>>>({})
+  const change = (patch: Partial<ProfileFormValues>): void => {
+    setFormData((current) => ({ ...current, ...patch }))
+    setErrors((current) => {
+      const next = { ...current }
+      for (const key of Object.keys(patch) as (keyof ProfileFormValues)[]) delete next[key]
+      return next
+    })
+  }
 
   const mutation = useMutation({
     mutationFn: async (data: ProfilePayload) => {
@@ -77,6 +88,9 @@ export function ProfileForm({
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
+    const found = validateProfile(profile, formData)
+    setErrors(found)
+    if (Object.keys(found).length > 0) return // nothing is sent until the form is valid
     // FR-01.8.4: on edit, send only the changed fields — never an empty password.
     const payload = buildProfilePayload(profile, formData)
     if (profile && Object.keys(payload).length === 0) {
@@ -88,15 +102,22 @@ export function ProfileForm({
 
   const handleCancel = (): void => {
     setFormData(initialValues(profile))
+    setErrors({})
     mutation.reset()
     onOpenChange(false)
   }
 
   if (!open) return null
 
+  const fieldError = (key: ProfileField): React.JSX.Element | null =>
+    errors[key] ? (
+      <p role="alert" className="mt-1 text-xs text-red-400">
+        {errors[key]}
+      </p>
+    ) : null
+
   const usesKey = formData.authMethod !== 'password'
   const needsSecret = formData.authMethod !== 'key'
-  const secretIsRequired = secretRequired(profile, formData)
   const keepsStoredSecret =
     !!profile?.hasPassword && profile.authMethod === formData.authMethod && needsSecret
   const secretLabel = formData.authMethod === 'password' ? 'Password' : 'Key Passphrase'
@@ -123,7 +144,7 @@ export function ProfileForm({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        <form onSubmit={handleSubmit} noValidate className="p-6">
           <div className="space-y-4">
             <div>
               <label
@@ -134,13 +155,14 @@ export function ProfileForm({
               </label>
               <input
                 id="profile-name"
-                required
+                aria-invalid={!!errors.name}
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => change({ name: e.target.value })}
                 className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 placeholder="e.g. Production Web Server"
               />
+              {fieldError('name')}
             </div>
 
             <div>
@@ -170,13 +192,14 @@ export function ProfileForm({
                 </label>
                 <input
                   id="profile-host"
-                  required
+                  aria-invalid={!!errors.host}
                   type="text"
                   value={formData.host}
-                  onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                  onChange={(e) => change({ host: e.target.value })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                   placeholder="192.168.1.10"
                 />
+                {fieldError('host')}
               </div>
               <div className="w-24">
                 <label
@@ -187,14 +210,15 @@ export function ProfileForm({
                 </label>
                 <input
                   id="profile-port"
-                  required
+                  aria-invalid={!!errors.port}
                   type="number"
                   min={1}
                   max={65535}
-                  value={formData.port}
-                  onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) })}
+                  value={Number.isNaN(formData.port) ? '' : formData.port}
+                  onChange={(e) => change({ port: parseInt(e.target.value) })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 />
+                {fieldError('port')}
               </div>
             </div>
 
@@ -207,13 +231,14 @@ export function ProfileForm({
               </label>
               <input
                 id="profile-username"
-                required
+                aria-invalid={!!errors.username}
                 type="text"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) => change({ username: e.target.value })}
                 className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 placeholder="root"
               />
+              {fieldError('username')}
             </div>
 
             <div>
@@ -252,9 +277,9 @@ export function ProfileForm({
                 </label>
                 <select
                   id="profile-ssh-key"
-                  required
+                  aria-invalid={!!errors.sshKeyId}
                   value={formData.sshKeyId || ''}
-                  onChange={(e) => setFormData({ ...formData, sshKeyId: e.target.value })}
+                  onChange={(e) => change({ sshKeyId: e.target.value })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 >
                   <option value="">Select a key...</option>
@@ -264,6 +289,7 @@ export function ProfileForm({
                     </option>
                   ))}
                 </select>
+                {fieldError('sshKeyId')}
               </div>
             )}
 
@@ -277,10 +303,10 @@ export function ProfileForm({
                 </label>
                 <input
                   id="profile-secret"
-                  required={secretIsRequired}
+                  aria-invalid={!!errors.password}
                   type="password"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) => change({ password: e.target.value })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                   placeholder={
                     keepsStoredSecret
@@ -290,6 +316,7 @@ export function ProfileForm({
                         : 'Passphrase for the selected key'
                   }
                 />
+                {fieldError('password')}
               </div>
             )}
 

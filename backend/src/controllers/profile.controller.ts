@@ -5,6 +5,7 @@ import { prisma } from '../config/db'
 import { CryptoService } from '../services/crypto.service'
 import { SSHService } from '../services/ssh.service'
 import { ProfileService } from '../services/profile.service'
+import { logger } from '../services/logger.service'
 import type { ExportedProfile, ConflictResolution } from '../services/profile.service'
 import { z } from 'zod'
 
@@ -165,6 +166,10 @@ export async function connectProfile(req: Request, res: Response): Promise<void 
 
   try {
     const session = await SSHService.createSession(profile)
+    // A failure to record the time must not fail a connection that succeeded.
+    await ProfileService.markConnected(profile.id).catch((err) =>
+      logger.error('Could not record lastConnectedAt: ' + String(err))
+    )
     res.json({ sessionId: session.id })
   } catch (error: unknown) {
     res.status(500).json({
