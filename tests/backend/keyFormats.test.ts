@@ -12,7 +12,7 @@ import type { Express } from 'express'
 import { generateKeyPairSync } from 'crypto'
 import sshpk from 'sshpk'
 import { utils } from 'ssh2'
-import { createApp } from './helpers/createApp'
+import { createApp, launch } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
@@ -29,7 +29,11 @@ beforeAll(async () => {
   await prisma.sSHKey.deleteMany()
   await prisma.appConfig.deleteMany()
   CryptoService.clearActiveKey()
-  token = (await request(app).post('/api/auth/setup/skip')).body.token
+  token = (
+    await request(app)
+      .post('/api/auth/setup/skip')
+      .set(...launch())
+  ).body.token
   server = await startTestSshServer()
 })
 

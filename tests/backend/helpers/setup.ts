@@ -1,7 +1,7 @@
 /**
  * Vitest setupFile for backend tests.
  * Runs once (singleFork + isolate:false) before all backend test files.
- * DATABASE_URL and JWT_SECRET are already injected by vitest.config env option.
+ * DATABASE_URL and LAUNCH_SECRET are already injected by vitest.config env option.
  */
 import fs from 'fs'
 import path from 'path'

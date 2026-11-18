@@ -16,7 +16,7 @@ import WebSocket from 'ws'
 import net, { type AddressInfo } from 'net'
 import type { Server } from 'http'
 import type { Express } from 'express'
-import { createApp } from './helpers/createApp'
+import { createApp, launch, TEST_LAUNCH_SECRET } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
 import { setupTerminalWebSocket } from '../../backend/src/websocket/terminal.ws'
 import { SSHService } from '../../backend/src/services/ssh.service'
@@ -40,7 +40,11 @@ beforeAll(async () => {
   await prisma.profile.deleteMany()
   await prisma.appConfig.deleteMany()
   CryptoService.clearActiveKey()
-  token = (await request(app).post('/api/auth/setup/skip')).body.token
+  token = (
+    await request(app)
+      .post('/api/auth/setup/skip')
+      .set(...launch())
+  ).body.token
 
   sshServer = await startTestSshServer()
   const profile = await request(app)
@@ -92,10 +96,10 @@ interface Terminal {
   send: (text: string) => void
 }
 
-/** Opens a terminal the way TerminalPane does: `/ws/terminal/<id>?token=<jwt>`. */
+/** Opens a terminal the way TerminalPane does: `/ws/terminal/<id>?token=<jwt>&launch=<secret>`. */
 function openTerminal(sessionId: string): Promise<Terminal> {
   return new Promise((resolve, reject) => {
-    const url = `ws://127.0.0.1:${wsPort}/ws/terminal/${sessionId}?token=${encodeURIComponent(token)}`
+    const url = `ws://127.0.0.1:${wsPort}/ws/terminal/${sessionId}?token=${encodeURIComponent(token)}&launch=${TEST_LAUNCH_SECRET}`
     const ws = new WebSocket(url)
     sockets.push(ws)
     const outputs: string[] = []

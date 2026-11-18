@@ -4,11 +4,16 @@ import { prisma } from '../config/db'
 import { CryptoService } from '../services/crypto.service'
 import { SecretsService, type RekeyResult } from '../services/secrets.service'
 import { TokenStore } from '../services/token-store.service'
+import { AppLockService } from '../services/app-lock.service'
 import { env } from '../config/env'
 import { z } from 'zod'
 
+/** BL-26: minimum length of a new master password. Existing shorter passwords keep working. */
+export const MIN_MASTER_PASSWORD_LENGTH = 10
+const TOO_SHORT = `Password must be at least ${MIN_MASTER_PASSWORD_LENGTH} characters.`
+
 const SetupSchema = z.object({
-  password: z.string().min(6)
+  password: z.string().min(MIN_MASTER_PASSWORD_LENGTH, TOO_SHORT)
 })
 
 const UnlockSchema = z.object({
@@ -18,7 +23,10 @@ const UnlockSchema = z.object({
 function generateJWT(): string {
   // Include a random jti so tokens can be individually revoked on lock (SEC-06)
   const jti = TokenStore.issue()
-  return jwt.sign({ session: 'active', jti }, env.jwtSecret, { expiresIn: '1h' })
+  return jwt.sign({ session: 'active', jti }, env.jwtSecret, {
+    algorithm: 'HS256',
+    expiresIn: '1h'
+  })
 }
 
 /**
@@ -73,6 +81,7 @@ export async function setup(req: Request, res: Response): Promise<void> {
 
   const key = await CryptoService.deriveKey(result.data.password, salt)
   CryptoService.setActiveKey(key)
+  await AppLockService.publishPolicy() // BL-18: lock is on now
 
   const token = generateJWT()
   res.json({ token })
@@ -97,6 +106,7 @@ export async function setupSkip(_req: Request, res: Response): Promise<void> {
   // Use the OS-managed storage key (SEC-05 — never a public constant)
   const key = await CryptoService.deriveKey(storageSecret(), salt)
   CryptoService.setActiveKey(key)
+  await AppLockService.publishPolicy() // BL-18
 
   const token = generateJWT()
   res.json({ token })
@@ -146,8 +156,10 @@ export async function unlock(req: Request, res: Response): Promise<void> {
   res.json({ token })
 }
 
+// BL-26: the length rule applies only to a new password (checked below); an
+// existing master password that restores lock may be shorter.
 const SetPasswordSchema = z.object({
-  password: z.string().min(6)
+  password: z.string().min(1, 'Password required.')
 })
 
 /**
@@ -165,7 +177,7 @@ const SetPasswordSchema = z.object({
 export async function setupMasterPassword(req: Request, res: Response): Promise<void> {
   const result = SetPasswordSchema.safeParse(req.body)
   if (!result.success) {
-    res.status(400).json({ error: 'Password must be at least 6 characters.' })
+    res.status(400).json({ error: result.error.issues[0].message })
     return
   }
   const { password } = result.data
@@ -194,6 +206,10 @@ export async function setupMasterPassword(req: Request, res: Response): Promise<
     newKey = await CryptoService.deriveKey(password, config.encryptionKeySalt)
     rekey = await SecretsService.rekey(oldKeys, newKey, { lockEnabled: true })
   } else {
+    if (password.length < MIN_MASTER_PASSWORD_LENGTH) {
+      res.status(400).json({ error: TOO_SHORT })
+      return
+    }
     const salt = CryptoService.generateSalt()
     const hash = await CryptoService.hashPassword(password)
     newKey = await CryptoService.deriveKey(password, salt)
@@ -205,6 +221,7 @@ export async function setupMasterPassword(req: Request, res: Response): Promise<
   }
 
   CryptoService.setActiveKey(newKey)
+  await AppLockService.publishPolicy() // BL-18: auto-lock applies from now on
   res.json({ token: generateJWT(), unreadableSecrets: rekey.unreadable })
 }
 
@@ -254,11 +271,16 @@ export async function disableLock(req: Request, res: Response): Promise<void> {
   })
 
   CryptoService.setActiveKey(newKey)
+  await AppLockService.publishPolicy() // BL-18: no auto-lock without a lock
   res.json({ success: true, unreadableSecrets: rekey.unreadable })
 }
 
+/**
+ * Locks the app (FR-07.5, BL-18): forgets the key, revokes every token
+ * (SEC-06), closes open terminals and SFTP progress streams, and tells the
+ * main process to close the connection windows.
+ */
 export async function lock(_req: Request, res: Response): Promise<void> {
-  CryptoService.clearActiveKey()
-  TokenStore.revokeAll() // Invalidate all issued JWTs immediately (SEC-06)
+  AppLockService.lock()
   res.json({ success: true })
 }

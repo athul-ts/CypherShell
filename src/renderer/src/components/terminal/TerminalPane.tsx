@@ -7,6 +7,11 @@ import { SearchAddon } from '@xterm/addon-search'
 import { useTerminalThemeStore } from '../../store/terminalThemeStore'
 import { TERMINAL_THEMES } from '../../lib/terminalThemes'
 import { decodeOutput, encodeInput } from '../../lib/terminalCodec'
+import {
+  APP_LOCKED_CLOSE_CODE,
+  openTerminalLink,
+  terminalSocketUrl
+} from '../../lib/terminalSocket'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalPaneProps {
@@ -43,7 +48,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
 
     fitAddon.current = new FitAddon()
     term.current.loadAddon(fitAddon.current)
-    term.current.loadAddon(new WebLinksAddon())
+    term.current.loadAddon(new WebLinksAddon(openTerminalLink)) // BL-21
     term.current.loadAddon(new SearchAddon())
 
     term.current.open(terminalRef.current)
@@ -81,7 +86,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
 
     // FR-02.6 — Auto-reconnect with exponential backoff (max 3 attempts)
     function connectWs(): void {
-      const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`
+      const wsUrl = terminalSocketUrl(backendPort, sessionId, wsToken, window.api.launchSecret)
       ws.current?.close()
       ws.current = new WebSocket(wsUrl)
 
@@ -109,10 +114,16 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
         }
       }
 
-      ws.current.onclose = () => {
+      ws.current.onclose = (event) => {
         if (wsDisconnected) return
         wsDisconnected = true
         setStatus('disconnected')
+
+        // BL-18: the app locked — the shell is gone and this window is closing
+        if (event.code === APP_LOCKED_CLOSE_CODE) {
+          term.current?.write('\r\n\x1b[33mApp locked.\x1b[0m\r\n')
+          return
+        }
 
         if (intentionalClose) {
           term.current?.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n')

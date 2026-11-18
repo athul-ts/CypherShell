@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api } from '../lib/api'
 import { FileText, Download, CheckCircle2, XCircle, Search, Trash2 } from 'lucide-react'
 import { format, isAfter, subDays, subMonths } from 'date-fns'
@@ -14,10 +15,35 @@ interface LogEntry {
   success: boolean
 }
 
+/** An error's message without Electron's "Error invoking remote method '…': Error: " prefix. */
+function failureReason(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '')
+}
+
+/**
+ * FR-08.6 / BL-28: the CSV is fetched through the API client, so the JWT and
+ * launch secret are sent, and main shows the save dialog and writes it.
+ */
+async function exportAuditLogs(): Promise<void> {
+  try {
+    const { data: csv } = await api.get<string>('/audit/export', { responseType: 'text' })
+    const savedTo = await window.api.saveTextFile({
+      kind: 'csv',
+      defaultName: `cyphershell-audit-${format(new Date(), 'yyyy-MM-dd')}.csv`,
+      content: csv
+    })
+    if (savedTo) toast.success('Audit logs exported.')
+  } catch (err) {
+    toast.error(`Export failed: ${failureReason(err)}`)
+  }
+}
+
 export default function Logs(): React.JSX.Element {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [filterDate, setFilterDate] = useState('all')
+  const [exporting, setExporting] = useState(false)
   const queryClient = useQueryClient()
 
   const { data: logs, isLoading } = useQuery({
@@ -29,9 +55,13 @@ export default function Logs(): React.JSX.Element {
     refetchInterval: 5000 // Refresh every 5s just in case
   })
 
-  const handleExport = (): void => {
-    const backendPort = window.api.backendPort
-    window.location.href = `http://127.0.0.1:${backendPort}/api/audit/export`
+  const handleExport = async (): Promise<void> => {
+    setExporting(true)
+    try {
+      await exportAuditLogs()
+    } finally {
+      setExporting(false)
+    }
   }
 
   const handleClearAll = async (): Promise<void> => {
@@ -74,7 +104,8 @@ export default function Logs(): React.JSX.Element {
         </div>
         <button
           onClick={handleExport}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
+          disabled={exporting}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="w-4 h-4" /> Export CSV
         </button>

@@ -5,6 +5,11 @@ type AuditLogWithProfile = Prisma.AuditLogGetPayload<{
   include: { profile: { select: { name: true } } }
 }>
 
+/** RFC 4180 field: quoted, inner quotes doubled — `"`, `,` and line breaks survive (BL-28). */
+function csvField(value: string | null | undefined): string {
+  return `"${(value ?? '').replace(/"/g, '""')}"`
+}
+
 export class AuditService {
   static async logConnection(
     profileId: string | null,
@@ -89,11 +94,11 @@ export class AuditService {
     const rows = logs.map((log) => {
       const time = log.timestamp.toISOString()
       const type = log.type
-      const profile = `"${log.profileName || ''}"`
-      const host = `"${log.host || ''}"`
-      const detail = `"${log.detail.replace(/"/g, '""')}"`
+      const profile = csvField(log.profileName)
+      const host = csvField(log.host)
+      const detail = csvField(log.detail)
       const success = log.success ? 'Yes' : 'No'
-      const error = `"${log.errorMessage || ''}"`
+      const error = csvField(log.errorMessage)
       const size = log.fileSizeBytes || ''
       return `${time},${type},${profile},${host},${detail},${success},${error},${size}`
     })

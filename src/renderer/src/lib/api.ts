@@ -7,9 +7,15 @@ const BASE_URL = `http://127.0.0.1:${window.api?.backendPort ?? 4000}/api`
 
 export const api = axios.create({ baseURL: BASE_URL })
 
+/** BL-17: header that proves a request comes from CypherShell's own renderer. */
+export const LAUNCH_SECRET_HEADER = 'X-CypherShell-Launch'
+
 api.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('jwt')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // BL-17: required on /api/auth/*; sent everywhere so no call can forget it
+  const launchSecret = window.api?.launchSecret
+  if (launchSecret) config.headers[LAUNCH_SECRET_HEADER] = launchSecret
   return config
 })
 

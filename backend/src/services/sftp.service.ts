@@ -50,6 +50,13 @@ export class SftpService {
   static activeTransfers = new Map<string, ActiveTransfer>()
   // Transfers explicitly cancelled — guards against emitting 'error' after cancel
   static cancelledTransfers = new Set<string>()
+  /** BL-23: ids of transfers that are starting or running (reserved before the channel opens). */
+  private static transferIdsInUse = new Set<string>()
+
+  /** BL-23: true while a transfer with this id is starting, running, or was just cancelled. */
+  static isTransferIdInUse(transferId: string): boolean {
+    return this.transferIdsInUse.has(transferId) || this.cancelledTransfers.has(transferId)
+  }
 
   // FUN-03: Cache one long-lived SFTP client per sessionId for listings and
   // file operations, instead of opening a new channel on every request.
@@ -90,9 +97,17 @@ export class SftpService {
     sessionId: string,
     transferId: string
   ): Promise<ActiveTransfer> {
-    const session = SSHService.getSession(sessionId)
-    if (!session) throw new Error('Invalid session ID')
-    const channel = await openSftpChannel(session.client)
+    // Reserved synchronously, so a second request with the same id is refused (BL-23)
+    this.transferIdsInUse.add(transferId)
+    let channel: SFTPWrapper
+    try {
+      const session = SSHService.getSession(sessionId)
+      if (!session) throw new Error('Invalid session ID')
+      channel = await openSftpChannel(session.client)
+    } catch (err) {
+      this.transferIdsInUse.delete(transferId)
+      throw err
+    }
     channel.on('error', () => {
       /* surfaced through the transfer callback */
     })
@@ -105,6 +120,7 @@ export class SftpService {
         if (finished) return
         finished = true
         this.activeTransfers.delete(transferId)
+        this.transferIdsInUse.delete(transferId)
         SSHService.release(sessionId)
         try {
           if (abort) channel.destroy()

@@ -46,7 +46,9 @@ export default defineConfig({
     minWorkers: 1,
     env: {
       DATABASE_URL: `file:${path.resolve('tests/backend/test.db')}`,
-      JWT_SECRET: 'vitest-test-secret'
+      // BL-17: the per-launch secret the main process normally passes. (There
+      // is no JWT_SECRET: since BL-19 the backend creates it in memory.)
+      LAUNCH_SECRET: 'vitest-launch-secret'
     },
     setupFiles: ['tests/backend/helpers/setup.ts']
   }

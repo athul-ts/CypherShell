@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
-import { createApp } from './helpers/createApp'
+import { createApp, launch } from './helpers/createApp'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
 
@@ -43,6 +43,7 @@ async function restartAndUnlock(password?: string): Promise<void> {
   CryptoService.clearActiveKey()
   const res = await request(app)
     .post('/api/auth/unlock')
+    .set(...launch())
     .send(password ? { password } : {})
   expect(res.status).toBe(200)
   token = res.body.token
@@ -60,7 +61,9 @@ async function readSecrets(): Promise<{ password: string; privateKey: string }> 
 
 describe('[FR-07.7][BL-10] lock-mode changes preserve encrypted data', () => {
   it('stores secrets on a skip-lock install', async () => {
-    const skip = await request(app).post('/api/auth/setup/skip')
+    const skip = await request(app)
+      .post('/api/auth/setup/skip')
+      .set(...launch())
     expect(skip.status).toBe(200)
     token = skip.body.token
 
@@ -89,6 +92,7 @@ describe('[FR-07.7][BL-10] lock-mode changes preserve encrypted data', () => {
   it('setting a master password keeps secrets readable after a restart', async () => {
     const res = await request(app)
       .post('/api/auth/setup-password')
+      .set(...launch())
       .set(...auth())
       .send({ password: 'master-one' })
     expect(res.status).toBe(200)
@@ -115,11 +119,14 @@ describe('[FR-07.7][BL-10] lock-mode changes preserve encrypted data', () => {
   it('turning lock off with a wrong password changes nothing', async () => {
     const res = await request(app)
       .post('/api/auth/disable-lock')
+      .set(...launch())
       .set(...auth())
       .send({ password: 'not-the-password' })
     expect(res.status).toBe(401)
 
-    const status = await request(app).get('/api/auth/status')
+    const status = await request(app)
+      .get('/api/auth/status')
+      .set(...launch())
     expect(status.body.locked).toBe(true)
     expect((await readSecrets()).password).toBe(PROFILE_PASSWORD)
   })
@@ -127,12 +134,15 @@ describe('[FR-07.7][BL-10] lock-mode changes preserve encrypted data', () => {
   it('turning lock off keeps secrets readable after a restart', async () => {
     const res = await request(app)
       .post('/api/auth/disable-lock')
+      .set(...launch())
       .set(...auth())
       .send({ password: 'master-one' })
     expect(res.status).toBe(200)
     expect(res.body.unreadableSecrets).toBe(0)
 
-    const status = await request(app).get('/api/auth/status')
+    const status = await request(app)
+      .get('/api/auth/status')
+      .set(...launch())
     expect(status.body).toEqual({ configured: true, locked: false })
 
     await restartAndUnlock()
@@ -149,6 +159,7 @@ describe('[FR-07.7][BL-10] lock-mode changes preserve encrypted data', () => {
   it('lock can be turned on again after it was turned off', async () => {
     const res = await request(app)
       .post('/api/auth/setup-password')
+      .set(...launch())
       .set(...auth())
       .send({ password: 'master-two' })
     expect(res.status).toBe(200)
@@ -181,12 +192,14 @@ describe('[FR-07.7][BL-10] recovering from the pre-fix lock toggle', () => {
 
     const wrong = await request(app)
       .post('/api/auth/setup-password')
+      .set(...launch())
       .set(...auth())
       .send({ password: 'some-new-password' })
     expect(wrong.status).toBe(401)
 
     const res = await request(app)
       .post('/api/auth/setup-password')
+      .set(...launch())
       .set(...auth())
       .send({ password: 'master-two' })
     expect(res.status).toBe(200)

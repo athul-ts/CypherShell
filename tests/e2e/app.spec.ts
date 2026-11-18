@@ -5,12 +5,15 @@
  *   npm run build:e2e   (builds backend + electron-vite)
  *
  * Runs via: npm run test:e2e
+ *
+ * BL-27: every launch runs on a throwaway profile. Main keeps the database, secrets and
+ * app.log in app.getPath('userData'), which without `--user-data-dir` is the user's real
+ * profile (%APPDATA%\cyphershell on Windows).
  */
-import { test, expect, _electron as electron } from '@playwright/test'
+import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
-import crypto from 'crypto'
 
 const MAIN_JS = path.resolve('out/main/index.js')
 
@@ -20,26 +23,66 @@ test.beforeAll(() => {
   }
 })
 
-function makeTestDb(): string {
-  return path.join(os.tmpdir(), `cs-e2e-${crypto.randomUUID()}.db`)
+interface LaunchedApp {
+  app: ElectronApplication
+  /** Temp directory the app uses as its userData; deleted by closeApp(). */
+  userDataDir: string
+}
+
+function removeProfile(dir: string): void {
+  // Retries cover Windows file locks held for a moment after the app and backend exit.
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+}
+
+async function launchApp(): Promise<LaunchedApp> {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-e2e-'))
+  try {
+    const app = await electron.launch({
+      args: [
+        MAIN_JS,
+        `--user-data-dir=${userDataDir}`,
+        ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])
+      ],
+      env: {
+        ...process.env,
+        // Suppress the auto-updater in tests
+        ELECTRON_IS_DEV: '1'
+      }
+    })
+    return { app, userDataDir }
+  } catch (err) {
+    removeProfile(userDataDir)
+    throw err
+  }
+}
+
+async function closeApp({ app, userDataDir }: LaunchedApp): Promise<void> {
+  try {
+    await app.close()
+  } finally {
+    removeProfile(userDataDir)
+  }
+}
+
+/** The app runs on the throwaway profile: its userData, log and database are all in it. */
+async function expectThrowawayProfile(launched: LaunchedApp): Promise<void> {
+  const { userDataDir } = launched
+  const userData = await launched.app.evaluate(({ app }) => app.getPath('userData'))
+  // realpath: os.tmpdir() can be an 8.3 short path on Windows or a symlink on macOS.
+  expect(fs.realpathSync.native(userData)).toBe(fs.realpathSync.native(userDataDir))
+  expect(fs.existsSync(path.join(userDataDir, 'app.log'))).toBe(true)
+  await expect
+    .poll(() => fs.existsSync(path.join(userDataDir, 'sshclient.db')), { timeout: 15000 })
+    .toBe(true)
 }
 
 test('app launches and shows the initial UI', async () => {
-  const dbPath = makeTestDb()
-  const app = await electron.launch({
-    args: [MAIN_JS, ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])],
-    env: {
-      ...process.env,
-      DATABASE_URL: `file:${dbPath}`,
-      JWT_SECRET: 'e2e-test-secret',
-      // Suppress the auto-updater in tests
-      ELECTRON_IS_DEV: '1'
-    }
-  })
+  const launched = await launchApp()
 
   try {
-    const win = await app.firstWindow()
+    const win = await launched.app.firstWindow()
     await win.waitForLoadState('domcontentloaded')
+    await expectThrowawayProfile(launched)
 
     // The app renders at all
     const title = await win.title()
@@ -52,26 +95,17 @@ test('app launches and shows the initial UI', async () => {
     // Take a screenshot on the first launch for visual inspection
     await win.screenshot({ path: 'tests/e2e/screenshots/launch.png' })
   } finally {
-    await app.close()
-    fs.rmSync(dbPath, { force: true })
+    await closeApp(launched)
   }
 })
 
 test('setup wizard — skip lock renders dashboard', async () => {
-  const dbPath = makeTestDb()
-  const app = await electron.launch({
-    args: [MAIN_JS, ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])],
-    env: {
-      ...process.env,
-      DATABASE_URL: `file:${dbPath}`,
-      JWT_SECRET: 'e2e-test-secret',
-      ELECTRON_IS_DEV: '1'
-    }
-  })
+  const launched = await launchApp()
 
   try {
-    const win = await app.firstWindow()
+    const win = await launched.app.firstWindow()
     await win.waitForLoadState('domcontentloaded')
+    await expectThrowawayProfile(launched)
 
     // If the setup wizard is shown, click "Skip" to bypass the master password
     const skipBtn = win.getByRole('button', { name: /skip/i })
@@ -83,7 +117,6 @@ test('setup wizard — skip lock renders dashboard', async () => {
 
     await win.screenshot({ path: 'tests/e2e/screenshots/after-setup.png' })
   } finally {
-    await app.close()
-    fs.rmSync(dbPath, { force: true })
+    await closeApp(launched)
   }
 })

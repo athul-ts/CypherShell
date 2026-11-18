@@ -10,7 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import net, { type AddressInfo } from 'net'
 import type { Express } from 'express'
-import { createApp } from './helpers/createApp'
+import { createApp, launch } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
 import { SSHService } from '../../backend/src/services/ssh.service'
 import { TunnelService } from '../../backend/src/services/tunnel.service'
@@ -58,7 +58,11 @@ beforeAll(async () => {
   await prisma.profile.deleteMany()
   await prisma.appConfig.deleteMany()
   CryptoService.clearActiveKey()
-  token = (await request(app).post('/api/auth/setup/skip')).body.token
+  token = (
+    await request(app)
+      .post('/api/auth/setup/skip')
+      .set(...launch())
+  ).body.token
   sshServer = await startTestSshServer()
   const profile = await request(app)
     .post('/api/profiles')

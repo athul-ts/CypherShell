@@ -1,5 +1,20 @@
 import { Request, Response } from 'express'
+import { z } from 'zod'
 import { AppNotConfiguredError, ConfigService } from '../services/config.service'
+import { AppLockService } from '../services/app-lock.service'
+
+/**
+ * BL-23: the settings `PUT /api/config` may change. Unknown keys — notably
+ * `lockEnabled`, which only the auth endpoints change (FR-07.7) — are
+ * stripped, as before.
+ */
+const ConfigUpdateSchema = z.object({
+  theme: z.enum(['dark', 'light', 'system']).optional(),
+  defaultFont: z.string().trim().min(1).max(200).optional(),
+  defaultFontSize: z.number().int().min(8).max(72).optional(),
+  logRetentionDays: z.number().int().min(0).max(3650).optional(),
+  autoLockMinutes: z.number().int().min(1).max(1440).optional()
+})
 
 function sendError(res: Response, error: unknown): void {
   if (error instanceof AppNotConfiguredError) {
@@ -20,8 +35,17 @@ export async function getConfig(_req: Request, res: Response): Promise<void> {
 }
 
 export async function updateConfig(req: Request, res: Response): Promise<void> {
+  const body = ConfigUpdateSchema.safeParse(req.body)
+  if (!body.success) {
+    const issue = body.error.issues[0]
+    res
+      .status(400)
+      .json({ error: `Invalid ${issue?.path.join('.') || 'settings'}: ${issue?.message}` })
+    return
+  }
   try {
-    const config = await ConfigService.updateConfig(req.body)
+    const config = await ConfigService.updateConfig(body.data)
+    await AppLockService.publishPolicy() // BL-18: the idle timeout may have changed
     res.json(stripSecrets(config))
   } catch (error: unknown) {
     sendError(res, error)

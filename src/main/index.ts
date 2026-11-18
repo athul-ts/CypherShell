@@ -1,4 +1,14 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  safeStorage,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type WebContents
+} from 'electron'
 import { join, resolve, relative, isAbsolute, dirname, basename } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -6,25 +16,60 @@ import { spawn, type ChildProcess } from 'child_process'
 import portfinder from 'portfinder'
 import iconPng from '../../resources/icon.png?asset'
 import iconIco from '../../build/icon.ico?asset'
-const icon = process.platform === 'win32' ? iconIco : iconPng
-import {
-  writeFileSync,
-  appendFileSync,
-  readFileSync,
-  realpathSync,
-  existsSync,
-  mkdirSync
-} from 'fs'
-import { stat, readdir, mkdir, rename, rm } from 'fs/promises'
+import { writeFileSync, appendFileSync, realpathSync, existsSync } from 'fs'
+import { stat, readdir, readFile, writeFile } from 'fs/promises'
 import * as crypto from 'crypto'
 import * as os from 'os'
 import { BackendSupervisor } from './backendSupervisor'
+import { IdleLock, parseBackendMessage } from './idleLock'
+import { loadOrCreateStorageKey, removeLegacyJwtSecret } from './secretFiles'
+import {
+  ConnectionTokenBroker,
+  connectionWindowRoute,
+  parseConnectionWindowRequest,
+  type ConnectionWindowRequest,
+  type ConnectionWindowType
+} from './connectionTokens'
+import {
+  externalUrlToOpen,
+  isAppRendererUrl,
+  isTrustedSenderFrame,
+  type RendererLocation
+} from './windowSecurity'
+import { openTextFile, saveTextFile, type TextFileDeps } from './textFiles'
+import { RELEASES_URL, updatePolicyFor } from './updatePolicy'
+import { bringToFront } from './singleInstance'
+
+const icon = process.platform === 'win32' ? iconIco : iconPng
 
 let backendPort = 4000
 /** NFR-03 / BL-16: owns the backend child process and restarts it after a crash. */
 let backendSupervisor: BackendSupervisor | null = null
 /** CODE-15: Track app-lifetime intervals so they can be cleared on shutdown. */
 const appIntervals: ReturnType<typeof setInterval>[] = []
+
+/**
+ * BL-17: per-launch secret, held in memory only. The backend gets it as
+ * `LAUNCH_SECRET` (the same value for every BL-16 restart) and the renderers
+ * through the preload; the local API refuses `/api/auth/*` and terminal
+ * WebSockets without it.
+ */
+const launchSecret = crypto.randomBytes(32).toString('hex')
+
+/** Where the renderer is loaded from: the electron-vite dev server, or the packaged index.html. */
+const devServerUrl = is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined
+const rendererLocation: RendererLocation = {
+  devServerUrl,
+  indexHtmlPath: join(__dirname, '../renderer/index.html')
+}
+
+let mainWindow: BrowserWindow | null = null
+/** BL-18: terminal and SFTP windows, closed on every lock. */
+const connectionWindows = new Set<BrowserWindow>()
+/** SEC-07 / BL-20: each new connection window's one-time JWT hand-off. */
+const connectionTokens = new ConnectionTokenBroker()
+/** BL-18: one idle clock for every window; the backend publishes the policy. */
+const idleLock = new IdleLock({ lock: requestLock })
 
 function logToFile(message: string): void {
   try {
@@ -37,13 +82,56 @@ function logToFile(message: string): void {
   }
 }
 
-// Initialize log file
-try {
-  const logPath = join(app.getPath('userData'), 'app.log')
-  writeFileSync(logPath, `=== APP STARTUP: ${new Date().toISOString()} ===\n`)
-  console.log(`[Main] Diagnostic log file initialized at: ${logPath}`)
-} catch (err) {
-  console.error('Failed to initialize log file:', err)
+function initLogFile(): void {
+  try {
+    const logPath = join(app.getPath('userData'), 'app.log')
+    writeFileSync(logPath, `=== APP STARTUP: ${new Date().toISOString()} ===\n`)
+  } catch (err) {
+    console.error('Failed to initialize log file:', err)
+  }
+}
+
+/** Sends to the main window if it is still open. */
+function sendToMainWindow(channel: string, ...args: unknown[]): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args)
+}
+
+/** BL-18: the app locked — close every terminal and SFTP window and show the lock screen. */
+function onAppLocked(): void {
+  for (const win of [...connectionWindows]) {
+    if (!win.isDestroyed()) win.destroy()
+  }
+  connectionWindows.clear()
+  sendToMainWindow('app:locked')
+}
+
+/** BL-18: the idle clock ran out — ask the backend to lock. */
+function requestLock(): void {
+  logToFile('Idle timeout reached; locking the app')
+  const child = backendSupervisor?.process
+  if (child?.connected) {
+    child.send({ type: 'lock' }, (err) => {
+      if (err) {
+        logToFile(`Could not ask the backend to lock: ${err.message}`)
+        onAppLocked()
+      }
+    })
+  } else {
+    onAppLocked() // no backend holds a key right now; still hide every window's content
+  }
+}
+
+/** BL-18: messages from the backend over the IPC channel. */
+function handleBackendMessage(raw: unknown): void {
+  const message = parseBackendMessage(raw)
+  if (!message) return
+  if (message.type === 'lock-policy') {
+    idleLock.setPolicy(message)
+    logToFile(`Auto-lock: ${message.enabled ? `after ${message.autoLockMinutes} min idle` : 'off'}`)
+  } else {
+    logToFile('App locked')
+    onAppLocked()
+  }
 }
 
 async function startBackend(): Promise<number> {
@@ -53,54 +141,29 @@ async function startBackend(): Promise<number> {
   logToFile(`Using backend port: ${backendPort}`)
   logToFile(`Using SQLite database path: ${dbPath}`)
 
-  // ─── Per-install random JWT secret (SEC-01) ────────────────────────
-  // Generate once, persist to userData. If the file is missing at boot
-  // (first launch, or user deleted it), we create a new one. This means
-  // existing JWTs are invalidated when the file is deleted.
-  const jwtSecretDir = join(app.getPath('userData'), 'secrets')
-  const jwtSecretPath = join(jwtSecretDir, 'jwt-secret')
-  let jwtSecret: string
-  try {
-    jwtSecret = readFileSync(jwtSecretPath, 'utf8').trim()
-  } catch {
-    mkdirSync(jwtSecretDir, { recursive: true })
-    jwtSecret = crypto.randomBytes(48).toString('hex')
-    writeFileSync(jwtSecretPath, jwtSecret, 'utf8')
-    // On POSIX: chmod 600 equivalent. On Windows this is handled by userData ACLs.
-    logToFile('Generated new JWT secret')
-  }
-  logToFile('JWT secret loaded from userData')
+  // BL-19: the backend creates its JWT signing secret in memory. Older
+  // versions kept one on disk; remove it.
+  const secretsDir = join(app.getPath('userData'), 'secrets')
+  if (removeLegacyJwtSecret(secretsDir)) logToFile('Removed the legacy JWT secret file')
 
-  // ─── Per-install random storage key (SEC-05) ───────────────────────
+  // ─── Per-install random storage key (SEC-05, BL-19) ────────────────
   // Used by the backend as the PBKDF2 password when the user chooses
   // "skip lock" mode. Stored via Electron safeStorage (OS keychain:
-  // DPAPI on Windows, Keychain on macOS, libsecret on Linux) so the
-  // at-rest encryption key is never derived from a public constant.
-  const storageKeyPath = join(jwtSecretDir, 'storage-key')
-  let storageKey: string
-  if (safeStorage.isEncryptionAvailable()) {
-    try {
-      const encrypted = readFileSync(storageKeyPath)
-      storageKey = safeStorage.decryptString(encrypted)
-    } catch {
-      storageKey = crypto.randomBytes(32).toString('hex')
-      const encrypted = safeStorage.encryptString(storageKey)
-      mkdirSync(jwtSecretDir, { recursive: true })
-      writeFileSync(storageKeyPath, encrypted)
-      logToFile('Generated new storage key via safeStorage')
-    }
-  } else {
-    // Fallback: unencrypted file (Linux without keychain, etc.)
-    try {
-      storageKey = readFileSync(storageKeyPath, 'utf8').trim()
-    } catch {
-      storageKey = crypto.randomBytes(32).toString('hex')
-      mkdirSync(jwtSecretDir, { recursive: true })
-      writeFileSync(storageKeyPath, storageKey, 'utf8')
-      logToFile('Generated new storage key (safeStorage unavailable, file-based fallback)')
-    }
-  }
-  logToFile('Storage key loaded')
+  // DPAPI on Windows, Keychain on macOS, libsecret on Linux) when it is
+  // available, otherwise as plaintext — owner-only (0600 in 0700) either way.
+  const keychain = safeStorage.isEncryptionAvailable()
+  const { key: storageKey, created } = loadOrCreateStorageKey(
+    secretsDir,
+    {
+      available: keychain,
+      encrypt: (plain) => safeStorage.encryptString(plain),
+      decrypt: (encrypted) => safeStorage.decryptString(encrypted)
+    },
+    () => crypto.randomBytes(32).toString('hex')
+  )
+  logToFile(
+    `Storage key ${created ? 'generated' : 'loaded'} (${keychain ? 'safeStorage' : 'file-based fallback'})`
+  )
 
   // In dev: use system `node` and source paths.
   // In production: use Electron's own Node.js runtime (ELECTRON_RUN_AS_NODE=1)
@@ -119,32 +182,44 @@ async function startBackend(): Promise<number> {
   logToFile(`backendScript: ${backendScript}`)
   logToFile(`backendCwd: ${backendCwd}`)
 
+  // BL-19: a JWT_SECRET inherited from the environment is never passed on.
+  const inheritedEnv: NodeJS.ProcessEnv = { ...process.env }
+  delete inheritedEnv.JWT_SECRET
+
   const spawnBackend = (): ChildProcess => {
     logToFile('Spawning backend child process...')
     const child = spawn(nodeExecutable, [backendScript], {
       cwd: backendCwd,
+      // BL-18: an IPC channel for lock requests and lock-state reports
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       env: {
-        ...process.env,
+        ...inheritedEnv,
         ELECTRON_RUN_AS_NODE: '1', // Makes Electron binary behave as Node.js
         PORT: String(backendPort),
         DATABASE_URL: `file:${dbPath}`,
-        JWT_SECRET: jwtSecret,
         STORAGE_KEY: storageKey,
+        LAUNCH_SECRET: launchSecret, // BL-17
+        // BL-17: extra CORS origin for the electron-vite dev server only;
+        // cleared otherwise so an inherited value never reaches the backend.
+        ALLOWED_CORS_ORIGINS: devServerUrl ? new URL(devServerUrl).origin : '',
+        CYPHERSHELL_HOST_IPC: '1', // BL-18
         NODE_ENV: 'production'
       }
     })
 
-    child.stdout.on('data', (data) => {
+    child.stdout?.on('data', (data) => {
       const message = data.toString().trim()
       console.log(`Backend: ${message}`)
       logToFile(`[Backend STDOUT] ${message}`)
     })
 
-    child.stderr.on('data', (data) => {
+    child.stderr?.on('data', (data) => {
       const message = data.toString().trim()
       console.error(`Backend error: ${message}`)
       logToFile(`[Backend STDERR] ${message}`)
     })
+
+    child.on('message', handleBackendMessage)
 
     child.on('close', (code) => {
       logToFile(`Backend child process exited with code ${code}`)
@@ -176,21 +251,27 @@ async function startBackend(): Promise<number> {
   return backendPort
 }
 
-function setupAutoUpdater(mainWindow: BrowserWindow): void {
-  if (is.dev) return // Skip auto-update in development
+let autoUpdaterStarted = false
+
+/** Starts the auto-updater once, for the lifetime of the app. */
+function setupAutoUpdater(): void {
+  if (is.dev || autoUpdaterStarted) return // Skip auto-update in development
+  autoUpdaterStarted = true
 
   logToFile('Initializing AutoUpdater...')
-  autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  // BL-24: unsigned macOS builds cannot install updates (ADR-004) — notify only
+  const policy = updatePolicyFor(process.platform)
+  autoUpdater.autoDownload = policy.autoDownload
+  autoUpdater.autoInstallOnAppQuit = policy.autoInstallOnAppQuit
 
-  autoUpdater.on('update-available', () => {
-    logToFile('AutoUpdater: update-available')
-    mainWindow.webContents.send('update:available')
+  autoUpdater.on('update-available', (info) => {
+    logToFile(`AutoUpdater: update-available ${info.version}${policy.manual ? ' (manual)' : ''}`)
+    sendToMainWindow('update:available', { version: info.version, manual: policy.manual })
   })
 
   autoUpdater.on('update-downloaded', () => {
     logToFile('AutoUpdater: update-downloaded')
-    mainWindow.webContents.send('update:downloaded')
+    sendToMainWindow('update:downloaded')
   })
 
   autoUpdater.on('error', (err) => {
@@ -218,12 +299,10 @@ function setupAutoUpdater(mainWindow: BrowserWindow): void {
 }
 
 function createConnectionWindow(
-  type: 'terminal' | 'sftp',
-  sessionId: string,
-  profileId: string,
-  title: string,
-  token: string
+  type: ConnectionWindowType,
+  request: ConnectionWindowRequest
 ): void {
+  const { sessionId, profileId, title, token } = request
   logToFile(
     `Creating connection window of type: ${type} for sessionId: ${sessionId}, profileId: ${profileId}`
   )
@@ -242,31 +321,33 @@ function createConnectionWindow(
       sandbox: true
     }
   })
+  connectionWindows.add(connWindow)
+  const windowId = connWindow.webContents.id
+  connWindow.on('closed', () => {
+    connectionWindows.delete(connWindow)
+    connectionTokens.forget(windowId)
+  })
 
   connWindow.on('ready-to-show', () => {
     connWindow.show()
   })
 
-  // Store token for secure IPC retrieval — never embed in URL (SEC-07)
-  const timer = setTimeout(() => pendingConnectionTokens.delete(sessionId), 30_000)
-  pendingConnectionTokens.set(sessionId, { token, timer })
+  // SEC-07 / BL-20: the token travels only through the one-time IPC hand-off,
+  // to this window alone — never in the URL.
+  if (token) connectionTokens.offer(windowId, token)
 
-  const hashPath = `#/connection/${type}/${sessionId}?profileId=${profileId}`
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    connWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}${hashPath}`)
+  const route = connectionWindowRoute(type, sessionId, profileId)
+  if (devServerUrl) {
+    connWindow.loadURL(`${devServerUrl}#${route}`)
   } else {
-    // In production, load file with hash using the hash option
-    connWindow.loadFile(join(__dirname, '../renderer/index.html'), {
-      hash: `/connection/${type}/${sessionId}?profileId=${profileId}&token=${token}`
-    })
+    connWindow.loadFile(rendererLocation.indexHtmlPath, { hash: route })
   }
 }
 
 function createWindow(): void {
   logToFile('Creating BrowserWindow...')
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -280,117 +361,143 @@ function createWindow(): void {
       sandbox: true
     }
   })
-
-  mainWindow.on('ready-to-show', () => {
-    logToFile('BrowserWindow ready-to-show. Revealing window...')
-    mainWindow.show()
-    setupAutoUpdater(mainWindow)
+  mainWindow = win
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    // SEC-08: Only allow http(s): URLs through shell.openExternal
-    try {
-      const parsed = new URL(details.url)
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-        shell.openExternal(details.url)
-      } else {
-        logToFile(`Blocked openExternal for disallowed protocol: ${parsed.protocol}`)
-      }
-    } catch {
-      logToFile(`Blocked openExternal for invalid URL: ${details.url}`)
-    }
-    return { action: 'deny' }
+  win.on('ready-to-show', () => {
+    logToFile('BrowserWindow ready-to-show. Revealing window...')
+    win.show()
+    setupAutoUpdater()
   })
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  if (devServerUrl) {
+    win.loadURL(devServerUrl)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    win.loadFile(rendererLocation.indexHtmlPath)
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(async () => {
-  logToFile('Electron app whenReady triggered')
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.cyphershell.app')
-
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+/**
+ * BL-21: every webContents the app creates — main, terminal and SFTP windows
+ * alike — denies new windows and navigation away from the app. BL-18: its
+ * input feeds the shared idle clock.
+ */
+function hardenWebContents(contents: WebContents): void {
+  contents.setWindowOpenHandler(({ url }) => {
+    // SEC-08: Only http(s) URLs leave the app, in the system browser
+    const external = externalUrlToOpen(url)
+    if (external) {
+      shell
+        .openExternal(external)
+        .catch((err) =>
+          logToFile(`openExternal failed: ${err instanceof Error ? err.message : err}`)
+        )
+    } else {
+      logToFile(`Blocked window.open for ${url}`)
+    }
+    return { action: 'deny' }
   })
 
-  // Start the backend before creating the window
-  logToFile('Starting backend service...')
-  await startBackend()
-
-  // IPC handlers
-  ipcMain.on('ping', () => console.log('pong'))
-  ipcMain.on('get-backend-port', (event) => {
-    event.returnValue = backendPort
+  contents.on('will-navigate', (event) => {
+    if (!isAppRendererUrl(event.url, rendererLocation)) {
+      event.preventDefault()
+      logToFile(`Blocked navigation to ${event.url}`)
+    }
   })
+
+  contents.on('input-event', () => idleLock.recordActivity())
+}
+
+/** BL-21: IPC is served only to a top-level frame showing the app's renderer. */
+function isTrustedSender(event: IpcMainEvent | IpcMainInvokeEvent, channel: string): boolean {
+  if (isTrustedSenderFrame(event.senderFrame, rendererLocation)) return true
+  logToFile(`Refused IPC "${channel}" from ${event.senderFrame?.url ?? 'a closed frame'}`)
+  return false
+}
+
+function handleTrusted(
+  channel: string,
+  listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
+): void {
+  ipcMain.handle(channel, (event, ...args: unknown[]) => {
+    if (!isTrustedSender(event, channel)) throw new Error('IPC refused: untrusted sender')
+    return listener(event, ...args)
+  })
+}
+
+function onSyncTrusted(channel: string, value: () => unknown): void {
+  ipcMain.on(channel, (event) => {
+    event.returnValue = isTrustedSender(event, channel) ? value() : null
+  })
+}
+
+function openConnectionWindow(type: ConnectionWindowType, raw: unknown): void {
+  const request = parseConnectionWindowRequest(raw)
+  if (!request) throw new Error('Invalid connection window request')
+  createConnectionWindow(type, request)
+}
+
+function registerIpcHandlers(): void {
+  onSyncTrusted('get-backend-port', () => backendPort)
+  onSyncTrusted('get-launch-secret', () => launchSecret) // BL-17
   // app.getVersion() reads `version` from the packaged app's package.json, so the
   // renderer reports the released version instead of a hardcoded literal that
   // silently goes stale on every bump.
-  ipcMain.on('get-app-version', (event) => {
-    event.returnValue = app.getVersion()
-  })
+  onSyncTrusted('get-app-version', () => app.getVersion())
 
-  ipcMain.handle('dialog:openFile', async () => {
+  handleTrusted('dialog:openFile', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openFile'] })
     if (!canceled) return filePaths
     return []
   })
 
-  ipcMain.handle('dialog:openDirectory', async () => {
+  handleTrusted('dialog:openDirectory', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] })
     if (!canceled) return filePaths[0]
     return null
   })
 
-  ipcMain.handle('dialog:saveFile', async (_, defaultName) => {
-    const { canceled, filePath } = await dialog.showSaveDialog({ defaultPath: defaultName })
+  // SFTP download target: the backend writes the file the user picks here.
+  handleTrusted('dialog:saveFile', async (_event, defaultName) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: typeof defaultName === 'string' ? basename(defaultName) : undefined
+    })
     if (!canceled) return filePath
     return null
   })
 
-  ipcMain.handle('dialog:openJsonFile', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'JSON Files', extensions: ['json'] }]
-    })
-    if (!canceled) return filePaths
-    return []
-  })
-
-  ipcMain.handle('dialog:openCskbFile', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'CypherShell Key Bundle', extensions: ['cskb'] }]
-    })
-    if (!canceled) return filePaths
-    return []
-  })
+  // BL-22: text export/import — the renderer never names a path; main runs
+  // the dialog and reads or writes only the file the user picked.
+  const textFileDeps: TextFileDeps = {
+    showSaveDialog: (options) => dialog.showSaveDialog(options),
+    showOpenDialog: (options) => dialog.showOpenDialog(options),
+    writeFile: (filePath, content) => writeFile(filePath, content, 'utf8'),
+    readFile: (filePath) => readFile(filePath, 'utf8'),
+    stat: async (filePath) => {
+      const stats = await stat(filePath)
+      return { isFile: stats.isFile(), size: stats.size }
+    }
+  }
+  handleTrusted('dialog:saveTextFile', (_event, request) => saveTextFile(request, textFileDeps))
+  handleTrusted('dialog:openTextFile', (_event, request) => openTextFile(request, textFileDeps))
 
   // Auto-updater IPC
-  ipcMain.handle('updater:install', () => {
-    autoUpdater.quitAndInstall()
+  handleTrusted('updater:install', () => {
+    if (!updatePolicyFor(process.platform).manual) autoUpdater.quitAndInstall() // BL-24
   })
+  handleTrusted('updater:openDownloadPage', () => shell.openExternal(RELEASES_URL)) // BL-24
 
   // Connection Window IPC
-  ipcMain.handle('window:openTerminal', async (_, { sessionId, profileId, title, token }) => {
-    createConnectionWindow('terminal', sessionId, profileId, title, token)
-  })
-
-  ipcMain.handle('window:openSftp', async (_, { sessionId, profileId, title, token }) => {
-    createConnectionWindow('sftp', sessionId, profileId, title, token)
-  })
+  handleTrusted('window:openTerminal', (_event, request) =>
+    openConnectionWindow('terminal', request)
+  )
+  handleTrusted('window:openSftp', (_event, request) => openConnectionWindow('sftp', request))
+  // SEC-07 / BL-20: only the window a token was issued for can claim it, once
+  handleTrusted('get-connection-token', (event) => connectionTokens.claim(event.sender.id))
 
   // ─── Path validation for local filesystem operations ────────────────
   // Resolves user-supplied paths against allowed base directories to
@@ -433,9 +540,13 @@ app.whenReady().then(async () => {
     return realPath
   }
 
-  ipcMain.handle('fs:readDir', async (_, dirPath) => {
+  // Local pane listing (FR-04.2) — read-only, home directory only
+  handleTrusted('fs:readDir', async (_event, dirPath) => {
     try {
-      const p = dirPath ? validateFilePath(dirPath) : realpathSync(os.homedir())
+      const p =
+        typeof dirPath === 'string' && dirPath
+          ? validateFilePath(dirPath)
+          : realpathSync(os.homedir())
       const dirents = await readdir(p, { withFileTypes: true })
       const files = await Promise.all(
         dirents.map(async (d) => {
@@ -458,71 +569,7 @@ app.whenReady().then(async () => {
       throw new Error(err instanceof Error ? err.message : String(err))
     }
   })
-
-  ipcMain.handle('fs:executeOp', async (_, op, args) => {
-    try {
-      // Validate all file paths against allowed base directories (SEC-04)
-      if (op === 'mkdir') {
-        const safePath = validateFilePath(args.path)
-        await mkdir(safePath)
-      } else if (op === 'rename') {
-        const safeOld = validateFilePath(args.oldPath)
-        const safeNew = validateFilePath(args.newPath)
-        await rename(safeOld, safeNew)
-      } else if (op === 'delete') {
-        const safePath = validateFilePath(args.path)
-        // Only allow deleting files, not recursive directories
-        const stat_result = await stat(safePath)
-        if (stat_result.isDirectory()) {
-          throw new Error('Directory deletion not allowed via this API')
-        }
-        await rm(safePath, { force: true })
-      } else if (op === 'writeFile') {
-        const safePath = validateFilePath(args.path)
-        writeFileSync(safePath, args.content, 'utf8')
-      } else if (op === 'readFile') {
-        const safePath = validateFilePath(args.path)
-        return readFileSync(safePath, 'utf8')
-      }
-      return true
-    } catch (err: unknown) {
-      throw new Error(err instanceof Error ? err.message : String(err))
-    }
-  })
-
-  createWindow()
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  logToFile('All windows closed event triggered')
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
-
-// ─── Connection-window token exchange (SEC-07) ─────────────────────
-// Holds JWTs briefly so child windows can retrieve them via IPC
-// instead of embedding the token in the loadable URL.
-const pendingConnectionTokens = new Map<string, { token: string; timer: NodeJS.Timeout }>()
-
-ipcMain.handle('get-connection-token', (_event, sessionId: string) => {
-  const entry = pendingConnectionTokens.get(sessionId)
-  if (entry) {
-    clearTimeout(entry.timer)
-    pendingConnectionTokens.delete(sessionId)
-    return entry.token
-  }
-  return null
-})
+}
 
 /** CODE-08: Kill the backend child process with SIGTERM + SIGKILL fallback. */
 function killBackendProcess(): void {
@@ -551,26 +598,87 @@ function killBackendProcess(): void {
   }
 }
 
-// Clean up the backend process when Electron quits
-app.on('will-quit', () => {
-  logToFile('will-quit event triggered: Cleaning up...')
-  // CODE-15: Clear app-lifetime intervals
-  for (const id of appIntervals) clearInterval(id)
-  appIntervals.length = 0
-  killBackendProcess()
-})
+/** Everything the (single) running instance does. */
+function startPrimaryInstance(): void {
+  initLogFile()
 
-process.on('exit', () => {
-  const backendProcess = backendSupervisor?.process
-  backendSupervisor?.stop()
-  if (backendProcess) {
-    try {
-      backendProcess.kill('SIGTERM')
-    } catch {
-      // Ignore — process exiting anyway
+  // BL-25: a second launch brings this instance's main window to the front.
+  app.on('second-instance', () => {
+    logToFile('Second instance launched; focusing the running app')
+    if (!bringToFront(mainWindow) && app.isReady()) createWindow()
+  })
+
+  // BL-21 / BL-18: harden every window as it is created.
+  app.on('web-contents-created', (_event, contents) => hardenWebContents(contents))
+
+  // This method will be called when Electron has finished
+  // initialization and is ready to create browser windows.
+  // Some APIs can only be used after this event occurs.
+  app.whenReady().then(async () => {
+    logToFile('Electron app whenReady triggered')
+    // Set app user model id for windows
+    electronApp.setAppUserModelId('com.cyphershell.app')
+
+    // Default open or close DevTools by F12 in development
+    // and ignore CommandOrControl + R in production.
+    // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    // Start the backend before creating the window
+    logToFile('Starting backend service...')
+    await startBackend()
+    idleLock.start()
+
+    registerIpcHandlers()
+    createWindow()
+
+    app.on('activate', function () {
+      // On macOS it's common to re-create a window in the app when the
+      // dock icon is clicked and there are no other windows open.
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+
+  // Quit when all windows are closed, except on macOS. There, it's common
+  // for applications and their menu bar to stay active until the user quits
+  // explicitly with Cmd + Q.
+  app.on('window-all-closed', () => {
+    logToFile('All windows closed event triggered')
+    if (process.platform !== 'darwin') {
+      app.quit()
     }
-  }
-})
+  })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+  // Clean up the backend process when Electron quits
+  app.on('will-quit', () => {
+    logToFile('will-quit event triggered: Cleaning up...')
+    // CODE-15: Clear app-lifetime intervals
+    for (const id of appIntervals) clearInterval(id)
+    appIntervals.length = 0
+    idleLock.stop()
+    killBackendProcess()
+  })
+
+  process.on('exit', () => {
+    const backendProcess = backendSupervisor?.process
+    backendSupervisor?.stop()
+    if (backendProcess) {
+      try {
+        backendProcess.kill('SIGTERM')
+      } catch {
+        // Ignore — process exiting anyway
+      }
+    }
+  })
+}
+
+// BL-25: only one instance runs. The lock is taken before anything else, so a
+// second launch neither truncates app.log nor starts a backend; it hands over
+// to the running instance through 'second-instance' and quits.
+if (app.requestSingleInstanceLock()) {
+  startPrimaryInstance()
+} else {
+  app.quit()
+}

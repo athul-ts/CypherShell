@@ -1,39 +1,65 @@
 import WebSocket, { WebSocketServer } from 'ws'
-import { Server } from 'http'
-import jwt from 'jsonwebtoken'
-import { env } from '../config/env'
+import type { Server } from 'http'
+import type { Duplex } from 'stream'
+import { verifyToken } from '../middleware/auth.middleware'
+import {
+  callerPolicyFromEnv,
+  upgradeRefusal,
+  type CallerPolicy
+} from '../middleware/caller.middleware'
 import { SSHService } from '../services/ssh.service'
+import { AppLockService } from '../services/app-lock.service'
 import { logger } from '../services/logger.service'
 
-export function setupTerminalWebSocket(server: Server): void {
+/** Close code sent to every terminal when the app locks (BL-18). The renderer does not reconnect. */
+export const APP_LOCKED_CLOSE_CODE = 4001
+
+export interface TerminalWebSocketOptions {
+  /** BL-17: who may open a terminal. Defaults to `LAUNCH_SECRET` / `ALLOWED_CORS_ORIGINS`. */
+  callerPolicy?: CallerPolicy
+}
+
+/** Answers a refused upgrade with a plain HTTP status and drops the socket. */
+function refuse(socket: Duplex, status: '401 Unauthorized' | '403 Forbidden'): void {
+  socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`)
+  socket.destroy()
+}
+
+export function setupTerminalWebSocket(
+  server: Server,
+  { callerPolicy = callerPolicyFromEnv() }: TerminalWebSocketOptions = {}
+): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
 
   server.on('upgrade', (request, socket, head) => {
-    if (request.url?.startsWith('/ws/terminal/')) {
-      // Extract token from query parameter (SEC-03)
-      const urlObj = new URL(request.url, 'http://localhost')
-      const token = urlObj.searchParams.get('token')
-
-      if (!token) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-        socket.destroy()
-        return
-      }
-
-      try {
-        jwt.verify(token, env.jwtSecret)
-      } catch {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-        socket.destroy()
-        return
-      }
-
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request)
-      })
-    } else {
+    if (!request.url?.startsWith('/ws/terminal/')) {
       socket.destroy()
+      return
     }
+    const urlObj = new URL(request.url, 'http://localhost')
+
+    // BL-17: the same Host / Origin rules as REST, plus the launch secret.
+    const refusal = upgradeRefusal(callerPolicy, request, urlObj)
+    if (refusal) {
+      logger.warn(`Refused terminal WebSocket: ${refusal}`)
+      refuse(socket, '403 Forbidden')
+      return
+    }
+
+    // Token from the query parameter (SEC-03). BL-18: the full check REST and
+    // SSE use — signature, expiry and a jti that a lock has not revoked.
+    const token = urlObj.searchParams.get('token')
+    try {
+      if (!token) throw new Error('Missing token')
+      verifyToken(token)
+    } catch {
+      refuse(socket, '401 Unauthorized')
+      return
+    }
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request)
+    })
   })
 
   // CODE-06: Server-side ping interval — detects half-open sockets
@@ -78,17 +104,30 @@ export function setupTerminalWebSocket(server: Server): void {
       ;(ws as WebSocket & { isAlive?: boolean }).isAlive = true
     })
 
+    // BL-18: a lock ends this terminal's shell at once and closes the socket.
+    let endShell: (() => void) | null = null
+    const stopListeningForLock = AppLockService.onLock(() => {
+      endShell?.()
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close(APP_LOCKED_CLOSE_CODE, 'App locked')
+      }
+    })
+    ws.on('close', stopListeningForLock)
+
     session.client.shell({ term: 'xterm-256color' }, (err, stream) => {
       if (err) {
-        ws.send(JSON.stringify({ type: 'error', message: err.message }))
-        ws.close(1011, 'Failed to start shell')
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'error', message: err.message }))
+          ws.close(1011, 'Failed to start shell')
+        }
         return
       }
 
       if (ws.readyState !== WebSocket.OPEN) {
-        stream.end() // the terminal window closed while the shell was starting
+        stream.end() // the terminal window closed (or the app locked) while the shell was starting
         return
       }
+      endShell = () => stream.end()
 
       ws.send(JSON.stringify({ type: 'status', state: 'connected' }))
 
@@ -139,4 +178,6 @@ export function setupTerminalWebSocket(server: Server): void {
       release()
     })
   })
+
+  return wss
 }

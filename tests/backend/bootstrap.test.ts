@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
-import { createApp } from './helpers/createApp'
+import { createApp, launch } from './helpers/createApp'
 import { purgeExpiredLogs } from '../../backend/src/app'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
@@ -36,14 +36,19 @@ describe('[FR-07.1][BL-10] fresh install', () => {
 
   it('GET /api/auth/status still reports configured:false after startup jobs ran', async () => {
     await purgeExpiredLogs()
-    const res = await request(app).get('/api/auth/status')
+    const res = await request(app)
+      .get('/api/auth/status')
+      .set(...launch())
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ configured: false, locked: false })
   })
 
   it('first-run setup succeeds after startup jobs ran', async () => {
     await purgeExpiredLogs()
-    const res = await request(app).post('/api/auth/setup').send({ password: 'first-run-password' })
+    const res = await request(app)
+      .post('/api/auth/setup')
+      .set(...launch())
+      .send({ password: 'first-run-password' })
     expect(res.status).toBe(200)
     expect(typeof res.body.token).toBe('string')
   })

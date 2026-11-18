@@ -10,6 +10,13 @@ import tunnelRoutes from './routes/tunnel.routes'
 import auditRoutes from './routes/audit.routes'
 import configRoutes from './routes/config.routes'
 import { requireAuth, requireAuthFlexible } from './middleware/auth.middleware'
+import {
+  callerPolicyFromEnv,
+  corsOptions,
+  requireLaunchSecret,
+  trustedCallerOnly,
+  type CallerPolicy
+} from './middleware/caller.middleware'
 import { progressStream } from './controllers/sftp.controller'
 import { ConfigService } from './services/config.service'
 import { AuditService } from './services/audit.service'
@@ -21,31 +28,8 @@ export interface CreateAppOptions {
    * 5-attempts-per-minute unlock limit does not throttle them.
    */
   rateLimit?: boolean
-}
-
-function corsOrigin(
-  origin: string | undefined,
-  callback: (err: Error | null, allow?: boolean) => void
-): void {
-  // Allow server-to-server (no origin) — curl, health checks
-  if (!origin) return callback(null, true)
-
-  // In dev mode, the Vite dev server origin comes via env
-  const allowedFromEnv = process.env.ALLOWED_CORS_ORIGINS
-  if (allowedFromEnv) {
-    const origins = new Set(allowedFromEnv.split(',').map((o) => o.trim().replace(/\/$/, '')))
-    if (origins.has(origin) || origins.has('*')) return callback(null, true)
-  }
-
-  // Allow file:// and null (production renderer via HashRouter)
-  if (origin === 'file://' || origin === 'null') return callback(null, true)
-
-  // Allow any localhost origin (dev mode fallback)
-  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin)) {
-    return callback(null, true)
-  }
-
-  callback(new Error('Not allowed by CORS'))
+  /** BL-17: who may call the API. Defaults to `LAUNCH_SECRET` / `ALLOWED_CORS_ORIGINS`. */
+  callerPolicy?: CallerPolicy
 }
 
 /**
@@ -53,11 +37,23 @@ function corsOrigin(
  * Does not listen and does not start background jobs, so tests exercise the
  * exact production wiring through Supertest.
  */
-export function createApp({ rateLimit: withRateLimit = true }: CreateAppOptions = {}): Express {
+export function createApp({
+  rateLimit: withRateLimit = true,
+  callerPolicy = callerPolicyFromEnv()
+}: CreateAppOptions = {}): Express {
   const app = express()
 
-  app.use(cors({ origin: corsOrigin }))
   app.disable('x-powered-by') // SEC: don't leak framework version
+
+  // BL-17: refuse foreign Host (DNS rebinding) and Origin headers before
+  // anything else runs, then answer CORS for the allowed origins only.
+  app.use(trustedCallerOnly(callerPolicy))
+  app.use(cors(corsOptions(callerPolicy)))
+  // BL-17: only CypherShell's own renderer knows the per-launch secret. This
+  // runs before the rate limiter, so callers without it cannot use up the
+  // unlock budget of the real renderer.
+  app.use('/api/auth', requireLaunchSecret(callerPolicy))
+
   app.use(express.json())
 
   if (withRateLimit) {

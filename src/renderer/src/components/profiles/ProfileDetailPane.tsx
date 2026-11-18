@@ -150,9 +150,10 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
   const handleStopTunnel = async (forward: ActiveForward): Promise<void> => {
     if (!sessionId) return
     try {
+      // §9.8 / BL-23: the local port for local and dynamic forwards, the remote port for remote
       await api.post(`/tunnels/${sessionId}/stop`, {
         type: forward.type,
-        port: forward.type === 'local' ? forward.localPort : forward.remotePort
+        port: forward.type === 'remote' ? forward.remotePort : forward.localPort
       })
       setActiveForwards(activeForwards.filter((f) => f.id !== forward.id))
     } catch {

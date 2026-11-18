@@ -1,15 +1,11 @@
+import { randomBytes } from 'crypto'
+
 export const env = {
-  jwtSecret:
-    process.env.JWT_SECRET ||
-    (() => {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error(
-          'FATAL: JWT_SECRET environment variable is not set. ' +
-            'The main process must generate and pass a random secret. ' +
-            'See SEC-01 in security review.'
-        )
-      }
-      // Dev-only fallback — never reaches production
-      return 'default-dev-secret-do-not-use-in-prod'
-    })()
+  /**
+   * BL-19: the JWT signing secret exists only in this backend process's
+   * memory. It is never read from disk or from the environment, so a token can
+   * be minted only by this process and stops working when it exits (a BL-16
+   * restart already empties the token store, so nothing is lost).
+   */
+  jwtSecret: randomBytes(48).toString('hex')
 }

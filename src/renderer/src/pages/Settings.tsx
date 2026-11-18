@@ -13,6 +13,8 @@ import {
 import { useState, useEffect } from 'react'
 import { useTerminalThemeStore } from '../store/terminalThemeStore'
 import { TERMINAL_THEMES, THEME_LABELS } from '../lib/terminalThemes'
+import { MIN_MASTER_PASSWORD_LENGTH } from '../lib/passwordStrength'
+import { PasswordStrengthHint } from '../components/PasswordStrengthHint'
 
 interface AppConfig {
   theme: string
@@ -112,8 +114,9 @@ export default function Settings(): React.JSX.Element {
 
   const handleLockSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    if (needsNewPassword && lockPassword.length < 6) {
-      setLockError('Password must be at least 6 characters.')
+    // BL-26: a new master password needs 10 characters (an existing one may be shorter)
+    if (needsNewPassword && lockPassword.length < MIN_MASTER_PASSWORD_LENGTH) {
+      setLockError(`Password must be at least ${MIN_MASTER_PASSWORD_LENGTH} characters.`)
       return
     }
     setLockBusy(true)
@@ -400,10 +403,13 @@ export default function Settings(): React.JSX.Element {
                   type="password"
                   value={lockPassword}
                   onChange={(e) => setLockPassword(e.target.value)}
-                  placeholder={needsNewPassword ? 'Minimum 6 characters' : ''}
+                  placeholder={
+                    needsNewPassword ? `Minimum ${MIN_MASTER_PASSWORD_LENGTH} characters` : ''
+                  }
                   autoFocus
                   className="w-full bg-[#0f1117] border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors"
                 />
+                {needsNewPassword && <PasswordStrengthHint password={lockPassword} />}
               </div>
               {lockError && (
                 <div className="text-red-400 text-sm bg-red-950/30 border border-red-900/40 rounded-xl px-4 py-3">
@@ -422,7 +428,9 @@ export default function Settings(): React.JSX.Element {
                   type="submit"
                   disabled={
                     lockBusy ||
-                    (needsNewPassword ? lockPassword.length < 6 : lockPassword.length === 0)
+                    (needsNewPassword
+                      ? lockPassword.length < MIN_MASTER_PASSWORD_LENGTH
+                      : lockPassword.length === 0)
                   }
                   className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 disabled:opacity-50 transition-colors"
                 >
