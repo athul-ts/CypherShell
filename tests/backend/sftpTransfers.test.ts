@@ -22,10 +22,37 @@ import { CryptoService } from '../../backend/src/services/crypto.service'
 
 type Callback = (err?: Error | null) => void
 
+/** BL-30: what the fake server has — directories, and how it treats posix-rename@openssh.com. */
+let fakeDirectories = new Set<string>()
+let fakeExtRename: 'ok' | 'unsupported' = 'ok'
+
 /** Minimal stand-in for ssh2's SFTPWrapper. */
 class FakeChannel extends EventEmitter {
   destroyed = false
   pendingTransfer: Callback | null = null
+  /** Every file operation this channel received, in order (BL-30). */
+  calls: string[] = []
+
+  ext_openssh_rename(from: string, to: string, cb: Callback): void {
+    this.calls.push(`ext-rename ${from} -> ${to}`)
+    // ssh2 throws synchronously when the server lacks the extension
+    if (fakeExtRename === 'unsupported')
+      throw new Error('Server does not support this extended request')
+    cb(null)
+  }
+  lstat(
+    path: string,
+    cb: (err: Error | undefined, attrs: { isDirectory(): boolean }) => void
+  ): void {
+    cb(undefined, { isDirectory: () => fakeDirectories.has(path) })
+  }
+  rmdir(path: string, cb: Callback): void {
+    this.calls.push(`rmdir ${path}`)
+    cb(path === '/data/full' ? new Error('Failure: directory not empty') : null)
+  }
+  realpath(path: string, cb: (err: Error | undefined, absolute: string) => void): void {
+    cb(undefined, path === '.' ? '/home/tester' : path)
+  }
 
   fastPut(_local: string, _remote: string, _opts: unknown, cb: Callback): void {
     this.pendingTransfer = cb
@@ -37,10 +64,12 @@ class FakeChannel extends EventEmitter {
     if (this.destroyed) cb(new Error('No SFTP channel'), [])
     else cb(undefined, [])
   }
-  rename(_from: string, _to: string, cb: Callback): void {
+  rename(from: string, to: string, cb: Callback): void {
+    this.calls.push(`rename ${from} -> ${to}`)
     cb(this.destroyed ? new Error('No SFTP channel') : null)
   }
-  unlink(_path: string, cb: Callback): void {
+  unlink(path: string, cb: Callback): void {
+    this.calls.push(`unlink ${path}`)
     cb(null)
   }
   destroy(): void {
@@ -88,6 +117,8 @@ beforeAll(async () => {
 
 afterEach(() => {
   for (const session of SSHService.listSessions()) SSHService.removeSession(session.id)
+  fakeDirectories = new Set()
+  fakeExtRename = 'ok'
 })
 
 afterAll(async () => {
@@ -183,10 +214,68 @@ describe('[FR-04.16][BL-14] cancelling a transfer', () => {
     const upload = SftpService.upload(sessionId, __filename, '/remote/z', 'up-rename')
     await waitFor(() => channels.length === 1 && !!channels[0].pendingTransfer)
     const channel = channels[0]
-    channel.rename = (_from: string, _to: string, cb: Callback) => cb(new Error('Failure'))
+    channel.ext_openssh_rename = (_from: string, _to: string, cb: Callback) =>
+      cb(new Error('Failure'))
 
     channel.pendingTransfer!(null)
     await expect(upload).rejects.toThrow('Failure')
     expect(events.map((e) => e.status)).toEqual(['error'])
+  })
+})
+
+describe('[FR-04.7][BL-30] deleting files and folders', () => {
+  it('unlinks a file and removes an empty folder with rmdir', async () => {
+    fakeDirectories = new Set(['/data/empty'])
+    const sessionId = await connectWithFakeSftp()
+
+    await SftpService.deleteFile(sessionId, '/data/file.txt')
+    await SftpService.deleteFile(sessionId, '/data/empty')
+
+    expect(channels[0].calls).toEqual(['unlink /data/file.txt', 'rmdir /data/empty'])
+  })
+
+  it("reports the server's error for a non-empty folder", async () => {
+    fakeDirectories = new Set(['/data/full'])
+    const sessionId = await connectWithFakeSftp()
+    await expect(SftpService.deleteFile(sessionId, '/data/full')).rejects.toThrow(/not empty/)
+  })
+})
+
+describe('[FR-04.4][BL-30] uploading over an existing file', () => {
+  async function runUpload(): Promise<FakeChannel> {
+    const sessionId = await connectWithFakeSftp()
+    const upload = SftpService.upload(sessionId, __filename, '/data/report.txt', 'up-over')
+    await waitFor(() => channels.length === 1 && !!channels[0].pendingTransfer)
+    channels[0].pendingTransfer!(null)
+    await upload
+    return channels[0]
+  }
+
+  it('replaces the target with posix-rename when the server supports it', async () => {
+    fakeExtRename = 'ok'
+    const channel = await runUpload()
+    expect(channel.calls).toEqual(['ext-rename /data/report.txt.partial -> /data/report.txt'])
+  })
+
+  it('falls back to unlink-then-rename on servers without the extension', async () => {
+    fakeExtRename = 'unsupported'
+    const channel = await runUpload()
+    expect(channel.calls).toEqual([
+      'ext-rename /data/report.txt.partial -> /data/report.txt',
+      'unlink /data/report.txt',
+      'rename /data/report.txt.partial -> /data/report.txt'
+    ])
+  })
+})
+
+describe('[FR-04.15][BL-30] absolute remote paths', () => {
+  it('GET /sftp/:id/realpath resolves "." to the absolute home directory', async () => {
+    const sessionId = await connectWithFakeSftp()
+    const res = await request(app)
+      .get(`/api/sftp/${sessionId}/realpath`)
+      .query({ path: '.' })
+      .set(...auth())
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ path: '/home/tester' })
   })
 })

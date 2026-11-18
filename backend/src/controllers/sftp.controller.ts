@@ -116,6 +116,18 @@ function startTransfer(
   res.json({ success: true, transferId })
 }
 
+export async function resolveRemotePath(req: Request, res: Response): Promise<void> {
+  const sessionId = req.params.sessionId as string
+  const query = ListQuerySchema.pick({ path: true }).safeParse(req.query)
+  if (!query.success) return badRequest(res, query.error)
+
+  try {
+    res.json({ path: await SftpService.realpath(sessionId, query.data.path || '.') })
+  } catch (error: unknown) {
+    res.status(500).json({ error: errorMessage(error) || 'Could not resolve the path' })
+  }
+}
+
 export async function uploadFile(req: Request, res: Response): Promise<void> {
   const sessionId = req.params.sessionId as string
   const body = UploadSchema.safeParse(req.body)

@@ -326,6 +326,7 @@ interface ElectronAPI {
   openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) => void
   openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) => void
   getConnectionToken: () => Promise<string | null> // this window's token, once (BL-20)
+  getPathForFile: (file: File) => string // absolute path of a file dropped from the OS (BL-30)
   readLocalDir: (dirPath?: string) => Promise<{ path: string; files: DirEntry[] }>
   onUpdateAvailable: (cb: (info: { version: string; manual: boolean }) => void) => () => void // returns an unsubscribe function
   onUpdateDownloaded: (cb: () => void) => () => void
@@ -633,23 +634,23 @@ CypherShell/
 
 ### FR-04: SFTP File Manager
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-04.4, FR-04.7, FR-04.13, FR-04.15 tracked)
+**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-04.15 local pane tracked)
 
 - FR-04.1 — SFTP Explorer opens in standalone window from Profile Details tab ✅
 - FR-04.2 — Left pane: local machine files; Right pane: remote server files ✅
 - FR-04.3 — Navigate by double-clicking folders ✅
-- FR-04.4 — Upload: Upload button (native file dialog) + drag-and-drop ⚠️ — the button and drags from the local pane work; dragging files in from the OS reads `File.path`, which Electron removed in v32 (tracked, not scheduled)
+- FR-04.4 — Upload: Upload button (native file dialog) + drag-and-drop ✅ (BL-30 — files dropped from the OS use `webUtils.getPathForFile`; uploading over an existing file replaces it)
 - FR-04.5 — Download: Download button (native save dialog) ✅
 - FR-04.6 — Rename in-place via the row action and F2 ✅ (BL-14 — in-app dialog)
-- FR-04.7 — Delete with confirmation ⚠️ — works for files; deleting a folder uses `unlink` and fails (tracked, not scheduled)
+- FR-04.7 — Delete with confirmation ✅ (BL-30 — files, and empty folders through `rmdir`; a non-empty folder fails with the server's message, recursive delete is out of scope)
 - FR-04.8 — Create new folder via button and Ctrl+Shift+N ✅ (BL-14 — in-app dialog)
 - FR-04.9 — Show and edit Unix permissions (chmod) ✅ (BL-14 — in-app dialog with octal validation)
 - FR-04.10 — Per-transfer progress via SSE: filename, bytes, %, speed + elapsed computed from progress deltas ✅
 - FR-04.11 — Multiple simultaneous transfers in a queue; each has its own SSE stream and its own SFTP channel ✅ (BL-14)
 - FR-04.12 — Transfer history: completed, active, and failed ✅
-- FR-04.13 — Failed transfers: one-click retry with error reason shown ⚠️ — the error reason is shown; there is no retry action (tracked, not scheduled)
+- FR-04.13 — Failed transfers: one-click retry with error reason shown ✅ (BL-30 — a failed transfer shows its error and a Retry button; a request the backend refuses also fails visibly)
 - FR-04.14 — Toggle hidden files (dotfiles) ✅
-- FR-04.15 — Breadcrumb path bar in both panes with click-to-navigate ⚠️ — the breadcrumbs work, but remote paths stay relative to the login directory, so directories above it (`/etc`, `/var/www`) cannot be reached; the local pane is limited to the home directory (tracked, not scheduled)
+- FR-04.15 — Breadcrumb path bar in both panes with click-to-navigate ⚠️ — the remote pane now starts at the absolute home path and reaches `/` (BL-30); the local pane is still limited to the home directory (tracked, not scheduled)
 - FR-04.16 — Cancel an in-progress transfer — only that transfer's channel is closed ✅ (BL-01, BL-14)
 
 ---
@@ -1118,6 +1119,7 @@ Each WebSocket opens its own shell channel on the session's SSH connection. "Rec
 
 ```
 GET    /api/sftp/:sessionId/list      ?path=.&showHidden=false               → { files[] }
+GET    /api/sftp/:sessionId/realpath  ?path=.                                → { path } — the absolute path (BL-30)
 POST   /api/sftp/:sessionId/upload    { localPath, remotePath, transferId }  → { success, transferId } (progress via SSE)
 POST   /api/sftp/:sessionId/download  { remotePath, localPath, transferId }  → { success, transferId } (progress via SSE)
 POST   /api/sftp/:sessionId/delete    { remotePath }                         → Delete file
@@ -2098,11 +2100,11 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-### BL-30 — SFTP Transfers & Paths
+### ~~BL-30 — SFTP Transfers & Paths~~ ✅ Implemented
 
 **Requirements:** FR-04.4, FR-04.7, FR-04.13, FR-04.15
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-18 — regression tests: `tests/backend/sftpTransfers.test.ts`, `tests/renderer/components/sftp/SftpPane.test.tsx`, `tests/renderer/lib/sftpPaths.test.ts`
 
 **Problems:** Dragging files in from the OS reads `File.path`, which Electron removed in v32, so the drop uploads nothing. A failed transfer has no Retry action. Deleting a folder calls `unlink` and fails. An upload over an existing remote file fails at the final rename. Remote paths stay relative to the login directory, so `/etc` or `/var/www` cannot be reached.
 
@@ -2114,11 +2116,11 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 **Acceptance Criteria:**
 
-- [ ] A file dropped from the OS uploads, using the path from `getPathForFile`
-- [ ] A failed transfer shows its error and a Retry that starts a new transfer with the same source and target
-- [ ] Deleting an empty folder succeeds; deleting a non-empty one reports the server's error
-- [ ] Uploading over an existing remote file replaces it; a failure still emits an `error` event
-- [ ] The pane opens at the absolute home path, and the breadcrumb navigates up to `/`
+- [x] A file dropped from the OS uploads, using the path from `getPathForFile`
+- [x] A failed transfer shows its error and a Retry that starts a new transfer with the same source and target
+- [x] Deleting an empty folder succeeds; deleting a non-empty one reports the server's error
+- [x] Uploading over an existing remote file replaces it; a failure still emits an `error` event
+- [x] The pane opens at the absolute home path, and the breadcrumb navigates up to `/`
 
 ---
 

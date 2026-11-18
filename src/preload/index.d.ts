@@ -38,6 +38,8 @@ declare global {
       readLocalDir: (dirPath?: string) => Promise<{ path: string; files: unknown[] }>
       /** SEC-07 / BL-20: this connection window's one-time token, or null. */
       getConnectionToken: () => Promise<string | null>
+      /** BL-30: absolute path of a file dropped from the OS; '' if it has none. */
+      getPathForFile: (file: File) => string
     }
   }
 }

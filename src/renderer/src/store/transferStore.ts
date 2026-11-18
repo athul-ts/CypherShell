@@ -23,6 +23,9 @@ export interface Transfer {
   lastBytes?: number
   lastTime?: number
   speed?: number // bytes/sec since last progress event
+  /** BL-30: where the transfer came from and went to, so a failed one can be retried. */
+  localPath?: string
+  remotePath?: string
 }
 
 /**
@@ -37,6 +40,7 @@ interface TransferState {
   updateProgress: (e: TransferEvent) => void
   cancelTransfer: (transferId: string) => void
   clearCompleted: () => void
+  removeTransfer: (transferId: string) => void
 }
 
 export const useTransferStore = create<TransferState>((set) => ({
@@ -84,6 +88,9 @@ export const useTransferStore = create<TransferState>((set) => ({
         t.id === transferId ? { ...t, status: 'cancelled' as const } : t
       )
     })),
+
+  removeTransfer: (transferId) =>
+    set((state) => ({ transfers: state.transfers.filter((t) => t.id !== transferId) })),
 
   // CODE-13: Clear all finished transfers (complete, error, cancelled)
   clearCompleted: () =>

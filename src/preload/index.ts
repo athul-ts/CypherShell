@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 /** BL-22: what a text export or import is for; it only selects the dialog's file filter. */
 type TextFileKind = 'json' | 'cskb' | 'pub' | 'csv' // csv: audit-log export (BL-28)
@@ -41,6 +41,8 @@ const api = {
     ipcRenderer.invoke('window:openSftp', { sessionId, profileId, title, token }),
   // SEC-07 / BL-20: main hands each connection window its own token, once
   getConnectionToken: () => ipcRenderer.invoke('get-connection-token'),
+  // BL-30: the absolute path of a file dropped from the OS (File.path was removed in Electron 32)
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   readLocalDir: (dirPath?: string) => ipcRenderer.invoke('fs:readDir', dirPath),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   // BL-24: the Releases page, for the macOS manual update

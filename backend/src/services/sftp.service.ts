@@ -37,6 +37,33 @@ function openSftpChannel(client: Client): Promise<SFTPWrapper> {
   })
 }
 
+/**
+ * Renames `from` onto `to`, replacing an existing file (BL-30). The SFTP
+ * rename fails if the target exists, so this uses the OpenSSH
+ * `posix-rename@openssh.com` extension, which replaces it atomically, and falls
+ * back to unlink-then-rename on servers without it. ssh2 throws synchronously
+ * when the server lacks the extension.
+ */
+function replaceRemoteFile(
+  stream: SFTPWrapper,
+  from: string,
+  to: string,
+  done: (err?: Error | null) => void
+): void {
+  const fallback = (): void => {
+    stream.unlink(to, () => stream.rename(from, to, done)) // the target may not exist; ignore that
+  }
+  if (typeof stream.ext_openssh_rename !== 'function') return fallback()
+  try {
+    stream.ext_openssh_rename(from, to, (err?: Error | null) => {
+      if (err && /not support/i.test(err.message)) return fallback()
+      done(err)
+    })
+  } catch {
+    fallback()
+  }
+}
+
 export class SftpService {
   static transferEvents = new EventEmitter()
   static {
@@ -273,7 +300,7 @@ export class SftpService {
             return reject(err)
           }
           // Rename temp → target on success
-          stream.rename(tempPath, remotePath, (renameErr?: Error | null) => {
+          replaceRemoteFile(stream, tempPath, remotePath, (renameErr?: Error | null) => {
             if (renameErr) {
               // Without this event the UI would wait on the SSE stream forever.
               stream.unlink(tempPath, () => transfer.finish())
@@ -378,14 +405,27 @@ export class SftpService {
     })
   }
 
+  /** Deletes a file, or an empty directory (BL-30); a non-empty one fails with the server's message. */
   static async deleteFile(sessionId: string, remotePath: string): Promise<void> {
     const sftp = await this.getClient(sessionId)
     const stream = getStream(sftp)
+    const isDirectory = await new Promise<boolean>((resolve, reject) => {
+      // lstat so a symlink to a directory is unlinked, not followed
+      stream.lstat(remotePath, (err, attrs) => (err ? reject(err) : resolve(attrs.isDirectory())))
+    })
     return new Promise<void>((resolve, reject) => {
-      stream.unlink(remotePath, (err?: Error | null) => {
-        if (err) return reject(err)
-        resolve()
-      })
+      const done = (err?: Error | null): void => (err ? reject(err) : resolve())
+      if (isDirectory) stream.rmdir(remotePath, done)
+      else stream.unlink(remotePath, done)
+    })
+  }
+
+  /** The absolute form of a remote path; `.` is the login directory (BL-30). */
+  static async realpath(sessionId: string, remotePath: string): Promise<string> {
+    const sftp = await this.getClient(sessionId)
+    const stream = getStream(sftp)
+    return new Promise<string>((resolve, reject) => {
+      stream.realpath(remotePath, (err, absolute) => (err ? reject(err) : resolve(absolute)))
     })
   }
 

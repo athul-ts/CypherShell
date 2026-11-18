@@ -35,6 +35,7 @@ Object.defineProperty(window, 'api', {
     openTerminalWindow: vi.fn(),
     openSftpWindow: vi.fn(),
     getConnectionToken: vi.fn().mockResolvedValue(null), // BL-20
+    getPathForFile: vi.fn((file: File) => `/dropped/${file.name}`), // BL-30
     readLocalDir: vi.fn().mockResolvedValue({ entries: [] })
   },
   writable: true,

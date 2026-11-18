@@ -71,23 +71,23 @@
 
 ### FR-04 — SFTP File Manager
 
-**SRS §6.4** | Priority: High | Overall: ⚠️ Partially Implemented (FR-04.4, FR-04.7, FR-04.13, FR-04.15 tracked)
+**SRS §6.4** | Priority: High | Overall: ⚠️ Partially Implemented (FR-04.15 local pane tracked)
 
 | ID       | Requirement                                                        | Status |
 | -------- | ------------------------------------------------------------------ | ------ |
 | FR-04.1  | SFTP Explorer opens as standalone window from Profile Details tab  | ✅     |
 | FR-04.2  | Dual-pane: local left, remote right                                | ✅     |
 | FR-04.3  | Double-click to navigate folders                                   | ✅     |
-| FR-04.4  | Upload via button (native file dialog) + drag-and-drop             | ⚠️     |
+| FR-04.4  | Upload via button (native file dialog) + drag-and-drop             | ✅     |
 | FR-04.5  | Download via button (native save dialog)                           | ✅     |
 | FR-04.6  | Rename via right-click; F2 shortcut                                | ✅     |
-| FR-04.7  | Delete with confirmation                                           | ⚠️     |
+| FR-04.7  | Delete with confirmation                                           | ✅     |
 | FR-04.8  | New folder via button; Ctrl+Shift+N shortcut                       | ✅     |
 | FR-04.9  | Show and edit Unix permissions (chmod)                             | ✅     |
 | FR-04.10 | Per-transfer SSE progress: filename, bytes, %, speed, elapsed      | ✅     |
 | FR-04.11 | Multiple simultaneous transfers in queue, each with own SSE stream | ✅     |
 | FR-04.12 | Transfer history: completed, active, failed                        | ✅     |
-| FR-04.13 | Failed transfer one-click retry with error reason                  | ⚠️     |
+| FR-04.13 | Failed transfer one-click retry with error reason                  | ✅     |
 | FR-04.14 | Toggle hidden files (dotfiles)                                     | ✅     |
 | FR-04.15 | Breadcrumb path bar with click-to-navigate in both panes           | ⚠️     |
 | FR-04.16 | Cancel an in-progress transfer                                     | ✅     |
@@ -264,7 +264,7 @@
 | ~~BL-27~~ | ~~E2E tests on a throwaway profile (`--user-data-dir`)~~            | ~~Medium~~   | NFR-06                               | ✅ Done         |
 | ~~BL-28~~ | ~~Audit log CSV export (API client + `saveTextFile`, quoting)~~     | ~~Medium~~   | FR-08.6                              | ✅ Done         |
 | ~~BL-29~~ | ~~Terminal resize and reconnect~~                                   | ~~Medium~~   | FR-02.3, FR-02.6, FR-02.7            | ✅ Done         |
-| BL-30     | SFTP drag-in, retry, folder delete, paths                           | Medium       | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ❌ Open         |
+| ~~BL-30~~ | ~~SFTP drag-in, retry, folder delete, paths~~                       | ~~Medium~~   | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ✅ Done         |
 | BL-31     | Last connected, form validation, port error                         | Medium       | FR-01.2, FR-01.8.7, FR-06.6          | ❌ Open         |
 | BL-32     | Audit reasons, paging, filters, CSV safety                          | Medium       | FR-08.2, FR-08.5, FR-08.6            | ❌ Open         |
 | BL-33     | Key bundle overwrite in place                                       | Low          | FR-10.6                              | ❌ Open         |
