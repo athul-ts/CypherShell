@@ -13,15 +13,12 @@ import Settings from './pages/Settings'
 import { TabBar } from './components/terminal/TabBar'
 import { UpdateBanner } from './components/layout/UpdateBanner'
 import { useTabStore } from './store/tabStore'
+import { useAppTheme } from './hooks/useAppTheme'
 import { TerminalPane } from './components/terminal/TerminalPane'
 import { SftpPane } from './components/sftp/SftpPane'
 import { cn } from './lib/utils'
 
 type AppState = 'loading' | 'setup' | 'locked' | 'unlocked' | 'error'
-
-interface AppConfig {
-  theme?: string
-}
 
 /** Terminal and SFTP windows are opened by main on `#/connection/<type>/<sessionId>`. */
 function isConnectionWindowHash(hash: string): boolean {
@@ -44,30 +41,8 @@ function AppContent(): React.JSX.Element {
   const tabs = useTabStore((s) => s.tabs)
   const activeTabId = useTabStore((s) => s.activeTabId)
   const location = useLocation()
-  const [config, setConfig] = useState<AppConfig | null>(null)
-
-  useEffect(() => {
-    api
-      .get('/config')
-      .then((res) => setConfig(res.data))
-      .catch(console.error)
-  }, [])
-
-  // UX-02: Apply theme class from config
-  useEffect(() => {
-    const theme = config?.theme || 'dark'
-    document.documentElement.classList.toggle('light', theme === 'light')
-    if (theme === 'system') {
-      const mq = window.matchMedia('(prefers-color-scheme: light)')
-      document.documentElement.classList.toggle('light', mq.matches)
-      const handleChange = (e: MediaQueryListEvent): void => {
-        document.documentElement.classList.toggle('light', e.matches)
-      }
-      mq.addEventListener('change', handleChange)
-      return (): void => mq.removeEventListener('change', handleChange)
-    }
-    return undefined
-  }, [config])
+  // UX-02 / BL-35: the theme follows the saved config, including changes made in Settings
+  useAppTheme()
 
   const isConnectionWindow = location.pathname.startsWith('/connection/')
 

@@ -615,7 +615,7 @@ CypherShell/
 - FR-02.7 — Connection status badge: connected / reconnecting / disconnected ✅ (BL-29)
 - FR-02.8 — Closing standalone terminal window closes its shell; the SSH session stays open while other terminals, tunnels, transfers or an open Profile Details tab use it ✅ (BL-11)
 - FR-02.9 — The JWT reaches popup windows through a one-time IPC hand-off, to that window only — no re-auth required, and no token in any window URL ✅ (BL-20)
-- FR-02.10 — Terminal font, font size, and color theme customizable ✅ (changes apply to newly opened terminals)
+- FR-02.10 — Terminal font, font size, and color theme customizable ✅ (BL-35 — changes also update terminals that are already open, in every window)
 - FR-02.11 — Selecting text in the terminal automatically copies it to the system clipboard ✅
 
 ---
@@ -1286,14 +1286,14 @@ Standalone windows (terminal / SFTP) open independently, sized to fill screen.
 ### 11.2 Colour Themes
 
 - **Dark** (default): `#1a1a1a` bg, `#e5e7eb` text, green terminal cursor
-- **Light**: `#ffffff` bg, `#111827` text ⚠️ — no light styles exist yet; choosing Light changes nothing (tracked, not scheduled)
+- **Light**: `#ffffff` bg, `#111827` text ✅ (BL-35 — `.light` overrides in `main.css`; the theme applies as soon as it is saved in Settings, and "System" follows the OS)
 - **System**: follows OS preference (`prefers-color-scheme`)
 - **Terminal schemes** (6 options): Default Dark, Dracula, Nord, Solarized Dark, Monokai, One Dark
 
 ### 11.3 Typography
 
 - UI font: system font stack (SF Pro / Segoe UI / Ubuntu)
-- Terminal font: JetBrains Mono — bundled as a local font asset, not fetched from CDN ⚠️ — not bundled yet; the terminal falls back to Consolas / the system monospace font (tracked, not scheduled)
+- Terminal font: JetBrains Mono — bundled as a local font asset, not fetched from CDN ✅ (BL-35 — `@fontsource/jetbrains-mono`, regular and bold Latin subsets, bundled by the renderer build; OFL-1.1; CSP `font-src 'self'`)
 - Terminal font size: 10–24px, configurable in Settings
 
 ### 11.4 Required UI States
@@ -1400,6 +1400,7 @@ lucide-react              v1.16 Icons
 @xterm/addon-fit               Resize PTY on window resize
 @xterm/addon-web-links         Clickable URLs in terminal
 @xterm/addon-search            Ctrl+F in terminal
+@fontsource/jetbrains-mono     Bundled terminal font (BL-35, OFL-1.1)
 zustand                   v5
 @tanstack/react-query     v5
 axios                     v1.16
@@ -2206,21 +2207,21 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-### BL-35 — Light Theme & Bundled Terminal Font
+### ~~BL-35 — Light Theme & Bundled Terminal Font~~ ✅ Implemented
 
 **Requirements:** §11.2, §11.3, FR-02.10
 **Priority:** Low
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-18 — regression tests: `tests/renderer/lightTheme.test.ts`, `tests/renderer/bundledFont.test.ts`, `tests/renderer/hooks/useAppTheme.test.tsx`, `tests/renderer/store/terminalThemeStore.test.ts`, `tests/renderer/components/terminal/TerminalPane.test.tsx`
 
-**Problems:** Choosing "Light" toggles a class that no CSS styles. JetBrains Mono is named but not shipped, so terminals fall back to system fonts. Theme and font changes reach only terminals opened afterwards.
+**Problems:** Choosing "Light" toggles a class that no CSS styles. JetBrains Mono is named but not shipped, so terminals fall back to system fonts. Theme and font changes reach only terminals opened afterwards, and the app theme was read from the saved config once at start-up, so choosing it in Settings changed nothing until the next launch.
 
-**Frontend work:** Light-mode styles for the app's dark surfaces; JetBrains Mono bundled as a local asset with `@font-face` (CSP `font-src 'self'`). An open terminal updates when its theme or font changes.
+**Frontend work:** Light-mode styles for the app's dark surfaces; JetBrains Mono bundled as a local asset with `@font-face` (CSP `font-src 'self'`). An open terminal updates when its theme or font changes, in every window. The app theme comes from the shared config query, so saving it in Settings applies it at once.
 
 **Acceptance Criteria:**
 
-- [ ] Selecting Light changes the app background and text; System follows `prefers-color-scheme`
-- [ ] The terminal font loads from the bundled asset with no network request
-- [ ] Changing the terminal theme or font in Settings updates an open terminal
+- [x] Selecting Light changes the app background and text; System follows `prefers-color-scheme`
+- [x] The terminal font loads from the bundled asset with no network request
+- [x] Changing the terminal theme or font in Settings updates an open terminal
 
 ---
 

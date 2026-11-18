@@ -269,7 +269,7 @@
 | ~~BL-32~~ | ~~Audit reasons, paging, filters, CSV safety~~                      | ~~Medium~~   | FR-08.2, FR-08.5, FR-08.6            | ✅ Done         |
 | ~~BL-33~~ | ~~Key bundle overwrite in place~~                                   | ~~Low~~      | FR-10.6                              | ✅ Done         |
 | ~~BL-34~~ | ~~Saved tunnel rules~~                                              | ~~Medium~~   | FR-06.4, FR-09.2                     | ✅ Done         |
-| BL-35     | Light theme and bundled font                                        | Low          | §11.2, §11.3                         | ❌ Open         |
+| ~~BL-35~~ | ~~Light theme and bundled font~~                                    | ~~Low~~      | §11.2, §11.3                         | ✅ Done         |
 
 ---
 

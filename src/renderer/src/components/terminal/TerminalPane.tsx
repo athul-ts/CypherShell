@@ -28,6 +28,8 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
   const term = useRef<Terminal | null>(null)
   const ws = useRef<WebSocket | null>(null)
   const fitAddon = useRef<FitAddon | null>(null)
+  /** Refits the terminal and tells the remote PTY its new size; set by the main effect. */
+  const syncSize = useRef<() => void>(() => undefined)
   const reconnectRef = useRef<{ attempt: number; timer?: ReturnType<typeof setTimeout> }>({
     attempt: 0
   })
@@ -182,7 +184,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     })
 
     // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
+    syncSize.current = () => {
       if (fitAddon.current && term.current) {
         fitAddon.current.fit()
         if (ws.current?.readyState === WebSocket.OPEN) {
@@ -191,8 +193,23 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
           )
         }
       }
-    })
+    }
+    const resizeObserver = new ResizeObserver(() => syncSize.current())
     resizeObserver.observe(terminalRef.current)
+
+    // BL-35: xterm measures glyphs once and does not notice a web font finishing loading, so
+    // re-measure when one does (nudging the size makes it measure again), then refit.
+    const fonts = document.fonts as FontFaceSet | undefined
+    const onFontsLoaded = (): void => {
+      const terminal = term.current
+      if (!terminal) return
+      const size = terminal.options.fontSize ?? 14
+      terminal.options.fontSize = size + 1
+      terminal.options.fontSize = size
+      syncSize.current()
+    }
+    fonts?.addEventListener?.('loadingdone', onFontsLoaded)
+    fonts?.load?.(`${fontSize}px "JetBrains Mono"`).catch(() => undefined)
 
     return () => {
       intentionalClose = true
@@ -200,6 +217,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
       if (reconnectRef.current.timer) clearTimeout(reconnectRef.current.timer)
       reconnectRef.current.attempt = 0
       resizeObserver.disconnect()
+      fonts?.removeEventListener?.('loadingdone', onFontsLoaded)
       if (terminalRef.current) {
         terminalRef.current.removeEventListener('contextmenu', contextmenuHandler)
       }
@@ -208,8 +226,21 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     }
   }, [sessionId])
 
+  // BL-35: a theme or font change in Settings reaches terminals that are already open.
+  useEffect(() => {
+    const terminal = term.current
+    if (!terminal) return
+    terminal.options.theme = TERMINAL_THEMES[theme] || TERMINAL_THEMES.dark
+    terminal.options.fontSize = fontSize
+    terminal.options.fontFamily = fontFamily
+    syncSize.current() // glyph size changed: refit, and tell the remote PTY the new grid
+  }, [theme, fontSize, fontFamily])
+
+  const background = (TERMINAL_THEMES[theme] || TERMINAL_THEMES.dark).background
+
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0f] relative">
+    // The surround takes the terminal theme's colour, so it matches in both app themes.
+    <div className="flex flex-col h-full relative" style={{ backgroundColor: background }}>
       <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
         <div
           className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border shadow-lg backdrop-blur-sm ${

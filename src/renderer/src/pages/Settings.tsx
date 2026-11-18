@@ -264,7 +264,7 @@ export default function Settings(): React.JSX.Element {
               </div>
             </div>
             <p className="text-xs text-slate-500">
-              Theme and font changes apply to new terminal sessions.
+              Theme and font changes also update terminals that are already open.
             </p>
           </div>
         </div>

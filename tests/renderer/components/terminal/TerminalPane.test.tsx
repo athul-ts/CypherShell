@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render } from '@testing-library/react'
 
 const xterm = vi.hoisted(() => ({
+  lastOptions: {} as { theme?: unknown; fontSize?: number; fontFamily?: string },
   written: [] as string[],
   linkHandler: null as null | ((event: MouseEvent, uri: string) => void)
 }))
@@ -18,6 +19,7 @@ vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80
     rows = 24
+    options: { theme?: unknown; fontSize?: number; fontFamily?: string } = (xterm.lastOptions = {})
     loadAddon(): void {
       /* no-op fake */
     }
@@ -192,5 +194,53 @@ describe('[BL-21] terminal links', () => {
     xterm.linkHandler?.(new MouseEvent('click'), 'https://example.com/')
     expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener')
     open.mockRestore()
+  })
+})
+
+describe('[BL-35] the bundled terminal font', () => {
+  it('starts loading JetBrains Mono and re-measures the terminal when it has loaded', () => {
+    const fonts = Object.assign(new EventTarget(), {
+      load: vi.fn().mockResolvedValue([])
+    })
+    Object.defineProperty(document, 'fonts', { value: fonts, configurable: true })
+
+    render(<TerminalPane sessionId="session-1" />)
+    expect(fonts.load).toHaveBeenCalledWith('14px "JetBrains Mono"')
+
+    const sizes: number[] = []
+    let current = xterm.lastOptions.fontSize ?? 14
+    Object.defineProperty(xterm.lastOptions, 'fontSize', {
+      get: () => current,
+      set: (value: number) => {
+        sizes.push(value)
+        current = value
+      },
+      configurable: true
+    })
+    act(() => {
+      fonts.dispatchEvent(new Event('loadingdone'))
+    })
+
+    expect(sizes).toEqual([current + 1, current]) // nudged, then restored
+    Reflect.deleteProperty(document, 'fonts')
+  })
+})
+
+describe('[FR-02.10][BL-35] open terminals follow theme and font changes', () => {
+  it('applies a new theme, size and family to the running terminal', async () => {
+    const { useTerminalThemeStore } = await import('@/store/terminalThemeStore')
+    const { TERMINAL_THEMES } = await import('@/lib/terminalThemes')
+    render(<TerminalPane sessionId="session-1" />)
+
+    act(() => {
+      useTerminalThemeStore.setState({ theme: 'dracula', fontSize: 20, fontFamily: 'monospace' })
+    })
+
+    expect(xterm.lastOptions).toMatchObject({
+      theme: TERMINAL_THEMES.dracula,
+      fontSize: 20,
+      fontFamily: 'monospace'
+    })
+    useTerminalThemeStore.setState({ theme: 'dark', fontSize: 14 })
   })
 })
