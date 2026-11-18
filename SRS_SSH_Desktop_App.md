@@ -2,10 +2,17 @@
 
 ## CypherShell — Secure SSH Desktop Client
 
-**Version:** 3.3
+**Version:** 3.4
 **Author:** Athul T S
-**Date:** 2026-11-10
-**Status:** Living Document — v1.0 Feature Complete, v1.1 Backlog Active (BL-10 … BL-16 implemented 2026-11-10)
+**Date:** 2026-11-11
+**Status:** Living Document — v1.0 Feature Complete, v1.1 Backlog Active (BL-10 … BL-16 implemented 2026-11-10; BL-17 … BL-28 implemented 2026-11-11)
+
+> **Changelog from v3.3:**
+>
+> - Phase 2 security hardening (2026-11-11): BL-17 … BL-26 specified (2026-11-10) and implemented, each with regression tests. They close the NFR-02 additions — local-API caller authentication, token revocation on every transport and real locking, in-memory JWT secret, no token in window URLs, window and IPC hardening, dialog-bound file IPC, request validation — plus a macOS update notice (NFR-07), a single app instance (NFR-03) and a 10-character master password (FR-07.1)
+> - FR-02.9 and FR-07.5 are ✅ again; §4.1 / §4.2 IPC surface, §9 API notes and §10 security requirements updated to match
+> - BL-27 (test-only, found while verifying Phase 2): the Playwright e2e suite runs on a throwaway `--user-data-dir` profile instead of the user's real one; NFR-06 states the rule
+> - BL-28: the audit-log CSV export (FR-08.6) works again — the Logs page fetches the CSV with the session token and saves it through `dialog:saveTextFile`, and every CSV text field is quoted
 
 > **Changelog from v3.2:**
 >
@@ -227,7 +234,7 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 │  │       Preload Script        │                         │
 │  │  exposes: backendPort,      │                         │
 │  │  openFileDialog, appVersion │                         │
-│  │  fs:readDir, fs:executeOp   │                         │
+│  │  fs:readDir, saveTextFile   │                         │
 │  └──────────────┬──────────────┘                         │
 │                 │                                         │
 │  ┌──────────────▼──────────────┐                         │
@@ -261,59 +268,71 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 
 ### 4.1 Electron Main Process (`src/main/index.ts`)
 
+- Takes the single-instance lock first; a second launch quits before writing the log or spawning a backend, and the running app brings its main window to the front ✅ (BL-25)
 - Uses `portfinder` to find a free localhost port starting from 4000
 - Sets `process.env.DATABASE_URL = file:{userData}/sshclient.db`
-- Spawns Express.js backend as a child process using Electron's bundled Node.js (`ELECTRON_RUN_AS_NODE=1`)
+- Spawns Express.js backend as a child process using Electron's bundled Node.js (`ELECTRON_RUN_AS_NODE=1`), with a Node IPC channel for lock requests and lock-state reports ✅ (BL-18)
 - Creates `BrowserWindow`, loads Vite renderer
 - Passes backend port to preload via IPC channel (`get-backend-port`)
-- Handles: window lifecycle, native file dialogs, auto-updater (startup + every 4 hours)
+- Handles: window lifecycle, native file dialogs, auto-updater (startup + every 4 hours; notify-only on macOS — BL-24)
 - Writes diagnostic logs to `{userData}/app.log`
-- Generates a per-install JWT secret and a storage key (wrapped with Electron `safeStorage` when available) under `{userData}/secrets/` and passes both to the backend as environment variables
+- Generates a per-launch secret in memory (BL-17) and a per-install storage key (wrapped with Electron `safeStorage` when available; `secrets/` is `0700`, `storage-key` `0600` — BL-19) and passes both to the backend as environment variables. There is no JWT secret on disk: the backend creates its own in memory (BL-19)
+- Runs the app's one idle clock: every window's `input-event` resets it; after `autoLockMinutes` without input (lock on) main asks the backend to lock, then closes the terminal and SFTP windows and sends `app:locked` to the main window ✅ (BL-18, `src/main/idleLock.ts`)
+- Hardens every `webContents`: `window.open` denied (http(s) to `shell.openExternal`), navigation outside the renderer blocked, IPC served only to top-level app frames ✅ (BL-21, `src/main/windowSecurity.ts`)
 - Gracefully terminates the backend child process on app quit
 - Restarts the backend if it exits unexpectedly — same port, backoff 1 s → 2 s → 4 s → 8 s, gives up after 5 crashes within 2 minutes — then sends `backend:restarted` to every window ✅ (BL-16, `src/main/backendSupervisor.ts`)
 - IPC handlers exposed:
-  - `ping` — health check
   - `get-backend-port` — returns the backend port
+  - `get-launch-secret` — returns the per-launch secret (BL-17)
   - `get-app-version` — returns `app.getVersion()`, the app version from the packaged `package.json`
   - `dialog:openFile` — native OS file picker
   - `dialog:openDirectory` — native OS directory picker
-  - `dialog:saveFile` — native OS save dialog
-  - `dialog:openJsonFile` — file picker filtered to `.json` (profile import)
-  - `dialog:openCskbFile` — file picker filtered to `.cskb` (key bundle import)
+  - `dialog:saveFile` — native OS save dialog (SFTP download target)
+  - `dialog:saveTextFile` — main shows the save dialog and writes the given text to the chosen file (BL-22)
+  - `dialog:openTextFile` — main shows the open dialog and returns the chosen file's name and text (BL-22)
   - `window:openTerminal` — spawns standalone terminal window
   - `window:openSftp` — spawns standalone SFTP window
-  - `get-connection-token` — one-time JWT hand-off to a newly opened connection window (SEC-07)
-  - `fs:readDir` — reads local directory listing for SFTP local pane
-  - `fs:executeOp` — local FS operations (`mkdir`, `rename`, `delete`, `writeFile`, `readFile`), restricted to paths inside the user's home directory
-  - `updater:install` — triggers update install and app restart
+  - `get-connection-token` — one-time JWT hand-off, to the connection window it was issued for (SEC-07, BL-20)
+  - `fs:readDir` — reads local directory listing for SFTP local pane (home directory only)
+  - `updater:install` — triggers update install and app restart (no-op on macOS — BL-24)
+  - `updater:openDownloadPage` — opens the GitHub Releases page (BL-24)
   - `backend:restarted` (main → renderer event) — the backend was restarted after a crash; windows re-authenticate (BL-16)
+  - `app:locked` (main → renderer event) — the app locked; the main window shows the lock screen (BL-18)
 
 ### 4.2 Preload Script (`src/preload/index.ts`)
 
 Runs in an isolated context with Node.js access. Exposes a safe `window.api` surface:
 
 ```typescript
+type TextFileKind = 'json' | 'cskb' | 'pub' | 'csv' // the dialog's file filter (BL-22, BL-28)
+
 interface ElectronAPI {
   backendPort: number
+  launchSecret: string // BL-17
   appVersion: string
   openFileDialog: () => Promise<string[]>
   openDirectoryDialog: () => Promise<string | null>
   saveFileDialog: (defaultName: string) => Promise<string | null>
-  openJsonFileDialog: () => Promise<string[]>
-  openCskbFileDialog: () => Promise<string[]>
+  saveTextFile: (req: {
+    kind: TextFileKind
+    defaultName: string
+    content: string
+  }) => Promise<string | null> // BL-22
+  openTextFile: (req: { kind: TextFileKind }) => Promise<{ name: string; content: string } | null> // BL-22
   openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) => void
   openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) => void
-  getConnectionToken: (sessionId: string) => Promise<string | null>
+  getConnectionToken: () => Promise<string | null> // this window's token, once (BL-20)
   readLocalDir: (dirPath?: string) => Promise<{ path: string; files: DirEntry[] }>
-  executeLocalFileOp: (op: LocalFileOp, args: LocalFileOpArgs) => Promise<unknown>
-  onUpdateAvailable: (cb: () => void) => () => void // returns an unsubscribe function
+  onUpdateAvailable: (cb: (info: { version: string; manual: boolean }) => void) => () => void // returns an unsubscribe function
   onUpdateDownloaded: (cb: () => void) => () => void
   onBackendRestarted: (cb: () => void) => () => void // BL-16
+  onAppLocked: (cb: () => void) => () => void // BL-18
   installUpdate: () => Promise<void>
+  openDownloadPage: () => Promise<void> // BL-24
 }
 ```
 
-No raw Node.js or Electron APIs are exposed directly to the renderer.
+No raw Node.js or Electron APIs are exposed to the renderer — no generic `ipcRenderer` passthrough (the `@electron-toolkit/preload` `window.electron` bridge is gone), no call that reads or writes a renderer-supplied path, and subscriptions pass data only, never the `IpcRendererEvent` (BL-22).
 
 ### 4.3 Renderer — React SPA (`src/renderer/`)
 
@@ -321,25 +340,26 @@ No raw Node.js or Electron APIs are exposed directly to the renderer.
 - Uses `HashRouter` from React Router v7 — required for `file://` protocol
 - Reads `window.api.backendPort` to build the base URL for all API calls
 - State machine in `App.tsx`: `loading → setup | locked | unlocked → error`
-- REST via Axios (with JWT interceptor) for all CRUD and SFTP operations
-- WebSocket via native `WebSocket` API for SSH terminal I/O (base64 framing)
+- REST via Axios (with JWT interceptor, and the `X-CypherShell-Launch` header on every request — BL-17) for all CRUD and SFTP operations
+- WebSocket via native `WebSocket` API for SSH terminal I/O (base64 framing); the URL carries the JWT and the launch secret (BL-17)
 - SSE via native `EventSource` API for real-time SFTP transfer progress streaming
 - Zustand manages global in-memory state: open sessions, tab order, transfer queue, terminal theme
 - TanStack Query manages all server-state: profiles, keys, logs (caching + retry)
-- Auto-lock timer enforced in `App.tsx` based on `config.autoLockMinutes`
-- Standalone connection windows (`/connection/terminal/:sessionId`, `/connection/sftp/:sessionId`) obtain the JWT through the one-time `get-connection-token` IPC hand-off (SEC-07). ⚠️ The production build still also appends the token to the window's URL hash
-- `UpdateBanner` component listens for auto-update events and shows install prompt
+- Auto-lock is timed by the main process (BL-18); on `app:locked` the main window drops its token and shows the lock screen
+- Standalone connection windows (`/connection/terminal/:sessionId`, `/connection/sftp/:sessionId`) obtain the JWT through the one-time `get-connection-token` IPC hand-off (SEC-07); a token in the URL is never read (BL-20)
+- `UpdateBanner` component listens for auto-update events and shows the install prompt — or, on macOS, a "Download from GitHub Releases" button (BL-24)
 
 ### 4.4 Express.js Backend (`backend/src/`)
 
 - Bound to `127.0.0.1:{port}` — not `0.0.0.0`
+- Serves only CypherShell's renderer (BL-17, `middleware/caller.middleware.ts`): a `Host` other than the loopback interface or an `Origin` other than `file://` / the dev server gets `403` before any route runs, and `/api/auth/*` and the terminal WebSocket also need the per-launch secret
 - Maintains an in-memory session pool: `Map<sessionId, ssh2.Client>`
 - `ws` WebSocket server shares the same `http.Server` instance
 - SSE endpoints (`text/event-stream`) stream SFTP transfer progress — no polling
 - `requireAuthFlexible` middleware accepts JWT from query param (needed for `EventSource` which cannot set headers)
 - Prisma handles all SQLite reads/writes; WAL mode enabled on startup
 - Rate limiting: 5 unlock attempts/min, 300 API requests/min (configured in `backend/src/index.ts`)
-- JWTs are issued for 1 hour and carry a `jti` held in an in-memory `TokenStore`; locking the app revokes every issued token
+- JWTs are HS256-signed with a secret created in this process's memory (BL-19), issued for 1 hour, and carry a `jti` held in an in-memory `TokenStore`; a token without one is refused. Locking the app (`AppLockService`) revokes every issued token and closes open terminal sockets and SFTP progress streams (BL-18)
 - An SSH session closes only when nothing uses it: no consumers (terminal shells, running tunnels, in-flight transfers) and no heartbeat from an open Profile Details tab or SFTP window for 60 s (BL-11)
 
 ### 4.5 SSH Terminal Data Flow
@@ -382,7 +402,14 @@ CypherShell/
 │   │
 │   ├── main/                             # Electron Main Process
 │   │   ├── index.ts                      # Window creation, backend spawn, IPC, updater, path validation
-│   │   └── backendSupervisor.ts          # Restart-on-crash policy for the backend child (BL-16)
+│   │   ├── backendSupervisor.ts          # Restart-on-crash policy for the backend child (BL-16)
+│   │   ├── idleLock.ts                   # One idle clock for every window + backend messages (BL-18)
+│   │   ├── secretFiles.ts                # Owner-only secrets/ and storage key (BL-19)
+│   │   ├── connectionTokens.ts           # Connection-window route + one-time token hand-off (BL-20)
+│   │   ├── windowSecurity.ts             # App-URL, external-link and IPC-sender rules (BL-21)
+│   │   ├── textFiles.ts                  # Dialog-bound text export/import (BL-22)
+│   │   ├── updatePolicy.ts               # Per-platform updater policy (BL-24)
+│   │   └── singleInstance.ts             # Bring the running app to the front (BL-25)
 │   │
 │   ├── preload/                          # Preload Script
 │   │   ├── index.ts                      # contextBridge → window.api
@@ -404,6 +431,7 @@ CypherShell/
 │           │
 │           ├── components/
 │           │   ├── ImportConflictDialog.tsx      # Skip / Rename / Overwrite per profile (FR-09.7)
+│           │   ├── PasswordStrengthHint.tsx      # Master password strength hint (BL-26)
 │           │   ├── terminal/
 │           │   │   ├── TerminalPane.tsx          # xterm.js wrapper + WS lifecycle
 │           │   │   └── TabBar.tsx                # Multi-session tab strip (DnD)
@@ -436,6 +464,8 @@ CypherShell/
 │           └── lib/
 │               ├── api.ts                        # Axios instance + JWT interceptor
 │               ├── terminalCodec.ts              # UTF-8 ⇄ base64 framing for terminal I/O (BL-15)
+│               ├── terminalSocket.ts             # Terminal WebSocket URL + link handler (BL-17, BL-21)
+│               ├── passwordStrength.ts           # 10-character rule + strength rating (BL-26)
 │               ├── terminalThemes.ts             # The 6 terminal colour schemes
 │               └── utils.ts                      # cn() helper + misc utilities
 │
@@ -474,6 +504,9 @@ CypherShell/
 │       │   ├── tunnel.service.ts         # Port forwarding tunnel lifecycle
 │       │   ├── crypto.service.ts         # AES-256-GCM + PBKDF2
 │       │   ├── secrets.service.ts        # Re-encrypt all secrets on a key change (BL-10)
+│       │   ├── app-lock.service.ts       # Lock: forget key, revoke tokens, close transports (BL-18)
+│       │   ├── host-bridge.service.ts    # IPC channel to the main process (BL-18)
+│       │   ├── local-path.service.ts     # SFTP local-path checks (BL-23)
 │       │   ├── audit.service.ts          # Event logging + CSV export
 │       │   ├── config.service.ts         # App config read/update (singleton row)
 │       │   ├── token-store.service.ts    # Issued JWT ids (revocation on lock)
@@ -481,10 +514,11 @@ CypherShell/
 │       ├── websocket/
 │       │   └── terminal.ws.ts            # WS handler — xterm.js ↔ ssh2 bridge
 │       ├── middleware/
-│       │   └── auth.middleware.ts        # JWT verification (header + query param)
+│       │   ├── auth.middleware.ts        # JWT verification (header + query param), jti required (BL-19)
+│       │   └── caller.middleware.ts      # Host / Origin / launch-secret checks (BL-17)
 │       └── config/
 │           ├── db.ts                     # initDatabase() — migrate + WAL + connect
-│           └── env.ts                    # JWT_SECRET
+│           └── env.ts                    # In-memory JWT signing secret (BL-19)
 │
 ├── tests/
 │   ├── backend/                          # Vitest + Supertest against the real app factory
@@ -575,7 +609,7 @@ CypherShell/
 - FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ — a reconnect opens a fresh shell instead of resuming, a normal `exit` also triggers it, and an SSH-level drop is never re-established (the session is gone). The 15 s deferred cleanup that tore down the whole session is removed by BL-11; reconnect semantics are tracked, not scheduled
 - FR-02.7 — Connection status badge: connected / reconnecting / disconnected ⚠️ — the badge shows Connecting / Connected / Connection Lost; there is no "reconnecting" state (tracked, not scheduled)
 - FR-02.8 — Closing standalone terminal window closes its shell; the SSH session stays open while other terminals, tunnels, transfers or an open Profile Details tab use it ✅ (BL-11)
-- FR-02.9 — The JWT reaches popup windows through a one-time IPC hand-off — no re-auth required ✅ (⚠️ production builds also append it to the URL hash; see NFR-02)
+- FR-02.9 — The JWT reaches popup windows through a one-time IPC hand-off, to that window only — no re-auth required, and no token in any window URL ✅ (BL-20)
 - FR-02.10 — Terminal font, font size, and color theme customizable ✅ (changes apply to newly opened terminals)
 - FR-02.11 — Selecting text in the terminal automatically copies it to the system clipboard ✅
 
@@ -650,13 +684,13 @@ CypherShell/
 
 ### FR-07: Application Lock
 
-**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-07.5 tracked; FR-07.8 not implemented)
+**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-07.8 not implemented)
 
 - FR-07.1 — First-run setup wizard: set master password or skip ✅ (BL-10 — startup jobs no longer create the config row)
 - FR-07.2 — Lock screen shown on app open if lock is enabled ✅
 - FR-07.3 — Master password hashed with bcrypt (cost 12) ✅
 - FR-07.4 — PBKDF2-SHA512 derives AES key from master password at unlock — memory only ✅
-- FR-07.5 — Auto-lock after configurable idle timeout (default 15 minutes) ⚠️ — the timer works, but idle time is tracked per window, and open terminal/SFTP windows stay usable after locking (see NFR-02 additions)
+- FR-07.5 — Auto-lock after configurable idle timeout (default 15 minutes) ✅ (BL-18 — one idle clock in the main process counts input in every window; a lock closes the terminal and SFTP windows and their sockets)
 - FR-07.6 — Lost master password = all encrypted data permanently unrecoverable — shown prominently ✅
 - FR-07.7 — Changing the lock mode never loses data: setting a master password on a skip-lock install, or turning lock off, re-encrypts every stored secret under the new key in a single transaction, and turning lock off requires the current master password ✅ (BL-10 — `SecretsService.rekey`, `POST /api/auth/setup-password`, `POST /api/auth/disable-lock`)
 - FR-07.8 — Change master password (current + new password; all secrets re-encrypted in one transaction) ❌ — not implemented, not scheduled
@@ -665,14 +699,14 @@ CypherShell/
 
 ### FR-08: Audit Logs
 
-**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-08.2, FR-08.5, FR-08.6 tracked)
+**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-08.2, FR-08.5 tracked)
 
 - FR-08.1 — Log: SSH connect (profile, host, timestamp, success/fail, error message) ✅
 - FR-08.2 — Log: SSH disconnect with duration and reason ⚠️ — duration is logged, but the reason is always "Connection closed", and an error after connecting writes a "connection failed" entry plus two disconnect entries (tracked, not scheduled)
 - FR-08.3 — Log: SFTP upload (filename, size, remote path, timestamp, success/fail) ✅
 - FR-08.4 — Log: SFTP download (filename, size, local path, timestamp) ✅
 - FR-08.5 — Paginated log table with search and date range filter ⚠️ — only the newest 100 entries are fetched and filtered in the browser; there is no pagination (tracked, not scheduled)
-- FR-08.6 — Export logs as CSV via native save dialog ⚠️ — the button navigates the window to the export URL without the JWT, so the app is replaced by a 401 page (tracked, not scheduled)
+- FR-08.6 — Export logs as CSV via native save dialog — fetched through the API client with the session token, saved with `dialog:saveTextFile`; every text field is quoted ✅ (BL-28)
 - FR-08.7 — Auto-purge logs older than N days — at startup and every 24 hours ✅ (BL-04, BL-10)
 - FR-08.8 — Clear all logs via UI with confirmation (`DELETE /api/audit`) ✅ (BL-06)
 
@@ -826,12 +860,17 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 - Private key material never sent across IPC bridge to renderer
 - Express bound to `127.0.0.1` only — never `0.0.0.0`
 - JWT expires after 1 hour (`expiresIn: '1h'`), re-issued on unlock; the renderer re-authenticates when a request outside `/api/auth` returns 401 ✅ (BL-16)
-- All API inputs validated with zod before reaching controllers ⚠️ — the profile, auth and key routes validate; SFTP, tunnel and config bodies are unvalidated (tracked, not scheduled)
-- SFTP file paths sanitized server-side — no `..` traversal ⚠️ — not implemented; for a user with shell access, remote `..` is not a security boundary, so this item should be reworded to validate the **local** paths the backend reads and writes (tracked, not scheduled)
+- All API inputs validated with zod before reaching controllers ✅ (BL-23 — SFTP, tunnel and config joined the profile, auth and key routes)
+- The **local** paths the backend reads and writes for SFTP transfers are validated: absolute, normalized, an existing regular file to upload, an existing directory to download into ✅ (BL-23). (This replaces "no `..` traversal in SFTP paths": for a user with shell access, remote `..` is not a security boundary, so remote paths are only checked for well-formedness.)
 - Context isolation enabled in Electron — renderer has no direct Node.js access
 - SSH host keys are verified before authentication (FR-11) ❌
-- The local API accepts requests only from CypherShell's own renderer: a per-launch secret on `/api/auth/*` and the WebSocket upgrade, a strict Origin allowlist (no `null`, no arbitrary localhost origins in production) and a `Host` header check against DNS rebinding ❌ — today CORS allows `null` and any localhost origin, and `/api/auth/unlock` issues a token without a password when lock is off (not scheduled)
-- Token revocation is enforced on every transport (REST, SSE, WebSocket), and locking closes open terminal and SFTP sessions ❌ — the WebSocket checks only the JWT signature (not scheduled)
+- The local API accepts requests only from CypherShell's own renderer: a per-launch secret on `/api/auth/*` and the WebSocket upgrade, a strict Origin allowlist (no `null`, no arbitrary localhost origins in production) and a `Host` header check against DNS rebinding ✅ (BL-17)
+- Token revocation is enforced on every transport (REST, SSE, WebSocket), and locking closes open terminal and SFTP sessions ✅ (BL-18)
+- JWTs are signed with a secret that exists only in the backend's memory, accept only `HS256`, and always carry a revocable `jti`; secret files are readable by the owner only (`0600` in a `0700` directory) ✅ (BL-19)
+- No credential appears in a window URL ✅ (BL-20)
+- Every window denies `window.open` and navigation outside the app, and IPC handlers serve only top-level app frames ✅ (BL-21)
+- The renderer cannot read or write files by path: text import and export go through native dialogs that the main process runs ✅ (BL-22)
+- A new master password has at least 10 characters ✅ (BL-26)
 
 ### NFR-03: Reliability
 
@@ -839,6 +878,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 - Auto-reconnect: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ (see FR-02.6)
 - Electron main auto-restarts Express if it crashes unexpectedly ✅ (BL-16)
 - SQLite WAL mode — prevents corruption on force-quit
+- Only one instance of the app runs at a time; a second launch brings the running app to the front ✅ (BL-25)
 
 ### NFR-04: Usability
 
@@ -861,6 +901,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 - ESLint + Prettier enforced
 - Business logic only in services — controllers are thin ⚠️ — the profile and auth controllers still call Prisma directly (tracked, not scheduled)
 - Prisma schema is the single source of truth for data shapes
+- E2E tests run the built app on a throwaway profile (`--user-data-dir` in a temp directory, deleted afterwards), never on the user's real `userData` (BL-27)
 
 ### NFR-07: Release & Distribution
 
@@ -880,6 +921,7 @@ Installers are produced for all three target platforms:
 - Auto-update metadata (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`) and blockmaps are published alongside the installers, so the in-app `electron-updater` feed resolves.
 - Installer filenames identify their platform and architecture (`CypherShell-<version>-<platform>-<arch>[-setup].<ext>`, platform ∈ `windows` | `macos` | `linux`), so a Release's flat asset list is unambiguous. The `latest*.yml` and `.blockmap` filenames are exempt — `electron-updater` resolves those by exact name, so they must not be renamed.
 - The macOS `.zip` target is required — `electron-updater` cannot install from a `.dmg`.
+- While macOS builds are unsigned, the in-app updater on macOS only announces a new version and links to the GitHub Releases page: Squirrel.Mac refuses to install an unsigned update ✅ (BL-24 — unit-tested; not verified on a Mac).
 - A Release tag is derived from `version` in the root `package.json`; re-running the pipeline without a version bump must warn rather than silently overwrite an existing Release.
 - **v1 ships macOS builds unsigned and not notarized.** Gatekeeper blocks the first launch; users clear it via **System Settings → Privacy & Security → Security → Open Anyway**, or `xattr -dr com.apple.quarantine` (see §15 Known Risks). The Control-click → **Open** override was removed in macOS 15 Sequoia and must not be documented. Signing and notarization remain a later, secrets-only change.
 
@@ -1013,15 +1055,15 @@ api.interceptors.request.use((config) => {
 
 ```
 GET   /api/auth/status          → { configured: boolean, locked: boolean }
-POST  /api/auth/setup           { password }  → First run: set master password → { token }
+POST  /api/auth/setup           { password }  → First run: set master password (≥ 10 characters — BL-26) → { token }
 POST  /api/auth/setup/skip                    → First run: skip lock (storage-key encryption) → { token }
 POST  /api/auth/unlock          { password? } → Verify master password → { token }   (5 attempts/min)
-POST  /api/auth/lock                          → Clear the active AES key, revoke all tokens   (JWT)
-POST  /api/auth/setup-password  { password }  → Skip-lock install → enable lock; re-encrypts all secrets (FR-07.7)   (JWT)
+POST  /api/auth/lock                          → Clear the active AES key, revoke all tokens, close terminals and SFTP progress streams (BL-18)   (JWT)
+POST  /api/auth/setup-password  { password }  → Skip-lock install → enable lock; re-encrypts all secrets (FR-07.7); a new password needs ≥ 10 characters (BL-26)   (JWT)
 POST  /api/auth/disable-lock    { password }  → Verify master password, turn lock off; re-encrypts all secrets (FR-07.7)   (JWT)
 ```
 
-Only `status`, `setup`, `setup/skip` and `unlock` are reachable without a JWT.
+Only `status`, `setup`, `setup/skip` and `unlock` are reachable without a JWT. Every `/api/auth/*` request must carry `X-CypherShell-Launch: <per-launch secret>` or gets `403` (BL-17). For every route, a `Host` other than `127.0.0.1` / `localhost` / `[::1]`, or an `Origin` other than `file://` and the dev server's, gets `403` before any route runs (BL-17).
 
 ### 9.3 Profiles API
 
@@ -1048,7 +1090,11 @@ DELETE /api/sessions/:sessionId       → Disconnect session (closes its shells,
 ### 9.5 WebSocket — Terminal
 
 ```
-WS  ws://127.0.0.1:{port}/ws/terminal/:sessionId?token=<JWT>
+WS  ws://127.0.0.1:{port}/ws/terminal/:sessionId?token=<JWT>&launch=<per-launch secret>
+
+Upgrade refused:  403 — foreign Host or Origin, or missing/wrong launch secret (BL-17)
+                  401 — missing, expired or revoked token (BL-18)
+Close code 4001:  "App locked" — the app was locked; the renderer does not reconnect (BL-18)
 
 Client → Server:
   { type: "input",  data: "<base64 of UTF-8 bytes>" }
@@ -1079,6 +1125,8 @@ DELETE /api/sftp/:sessionId/transfer/:transferId                             →
 ```
 
 Upload and download take paths on the local disk (chosen through native dialogs), not multipart bodies.
+
+Validation (BL-23): `transferId` matches `^(up|dn)-[0-9a-z]{1,32}$` — `up-` for uploads, `dn-` for downloads — on upload, download, progress and cancel (`400` otherwise); starting a transfer whose id is in progress gives `409`. `localPath` must be absolute; an upload source must be an existing regular file and a download target's folder must exist (the target must not be a folder) — `400` otherwise. Remote paths are non-empty, at most 4096 characters, without NUL; `mode` is 3–4 octal digits or an integer up to `0o7777`.
 
 ### 9.6a SFTP Progress — SSE
 
@@ -1119,11 +1167,13 @@ POST   /api/tunnels/:sessionId/start  { type: 'local' | 'remote' | 'dynamic', lo
 POST   /api/tunnels/:sessionId/stop   { type, port }   — port is localPort for local/dynamic, remotePort for remote
 ```
 
+Validation (BL-23): ports are integers 1–65535, as numbers or digit strings (the UI sends strings); `remoteHost` (no whitespace or control characters, at most 255) is required for `local`; `remotePort` for `local` and `remote`. Anything else gets `400`.
+
 ### 9.9 Audit Logs API
 
 ```
 GET    /api/audit     ?limit=100      → Newest entries first (default 100)
-GET    /api/audit/export              → CSV download (Content-Disposition: attachment)
+GET    /api/audit/export              → All entries as CSV (text/csv); the Logs page saves it via dialog:saveTextFile (BL-28)
 DELETE /api/audit                     → Clear all logs (BL-06)
 ```
 
@@ -1137,6 +1187,8 @@ PUT    /api/config    → Update theme, fonts, autoLockMinutes, logRetentionDays
 ```
 
 `masterPasswordHash` and `encryptionKeySalt` are never returned. `lockEnabled` is read-only here — it changes only through `POST /api/auth/setup-password` and `POST /api/auth/disable-lock` (FR-07.7).
+
+Validation (BL-23): `theme` ∈ `dark | light | system`, `defaultFont` 1–200 characters, `defaultFontSize` 8–72, `logRetentionDays` 0–3650, `autoLockMinutes` 1–1440, otherwise `400`. Other keys are ignored. A saved change republishes the auto-lock policy to the main process (BL-18).
 
 ---
 
@@ -1165,11 +1217,13 @@ masterPassword + encryptionKeySalt
 - Raw private key content
 - Decrypted passwords or passphrases
 - The derived AES key
-- The JWT secret
+- The JWT secret — it exists only in the backend process's memory (BL-19)
+
+The renderer does hold the per-launch secret (BL-17): it proves a request comes from CypherShell's own renderer, so a script already running in the renderer gains nothing from it.
 
 ### 10.4 Network Binding
 
-Express bound to `127.0.0.1:{port}` — not `0.0.0.0`. The port is not externally reachable.
+Express bound to `127.0.0.1:{port}` — not `0.0.0.0`. The port is not externally reachable. Local web pages are kept out too: a foreign `Host` (DNS rebinding) or `Origin` gets `403`, and `/api/auth/*` and the terminal WebSocket need the per-launch secret (BL-17).
 
 ### 10.5 Rate Limiting
 
@@ -1180,17 +1234,20 @@ Express bound to `127.0.0.1:{port}` — not `0.0.0.0`. The port is not externall
 
 ### 10.6 Input Validation
 
-- All request bodies validated with `zod` schemas ⚠️ — done in the profile, auth and key-bundle controllers only (see NFR-02)
+- All request bodies validated with `zod` schemas ✅ (BL-23 — SFTP, tunnel and config joined the profile, auth and key controllers)
 - SSH hostnames validated against RFC 1123 ⚠️ — not implemented; any non-empty host is accepted (tracked, not scheduled)
-- Ports validated (1–65535) ✅ for profiles and imported tunnels
-- SFTP remote paths sanitized — `..` traversal rejected ⚠️ — not implemented; see the rewording note in NFR-02
+- Ports validated (1–65535) ✅ for profiles, imported tunnels and tunnel start/stop (BL-23)
+- SFTP local paths validated — absolute, normalized, a regular file to upload, an existing folder to download into ✅ (BL-23). Remote paths are only checked for well-formedness: for a user with shell access, remote `..` is not a security boundary
+- SFTP `transferId` restricted to `up-…` / `dn-…` — it names an `EventEmitter` event ✅ (BL-23)
 
 ### 10.7 Electron Security
 
 - `contextIsolation: true` — renderer has no direct Node.js access
 - `nodeIntegration: false` in renderer
 - All Node.js APIs exposed only via typed `contextBridge` surface
-- Standalone connection windows receive the JWT through a one-time IPC hand-off (`get-connection-token`) — no credential storage in window state ⚠️ — production builds also append the token to the window URL hash (tracked, not scheduled)
+- Standalone connection windows receive the JWT through a one-time IPC hand-off (`get-connection-token`), keyed by the window — no credential in the window URL or window state ✅ (BL-20)
+- Every window denies `window.open` (http(s) links open in the system browser) and navigation outside the app; every IPC handler serves only a top-level frame showing the app's renderer ✅ (BL-21)
+- The renderer has no generic IPC passthrough and no call that reads or writes a path it supplies; text export/import is bound to native dialogs run by main ✅ (BL-22)
 
 ---
 
@@ -1413,45 +1470,45 @@ electron-updater          v6.8
 
 ## 16. Implementation Status
 
-Current build state as of v3.3 of this document (spec audit, 2026-11-10). A row returns to ✅ when its backlog item lands.
+Current build state as of v3.4 of this document (Phase 2 security hardening, 2026-11-11). A row returns to ✅ when its backlog item lands.
 
-| Module                     | Status      | Notes                                                                                     |
-| -------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
-| Electron main process      | ✅ Complete | Backend spawn + crash restart (BL-16), IPC, auto-updater, app.log                         |
-| Preload / contextBridge    | ✅ Complete | Full typed window.api surface                                                             |
-| App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow; re-auth on 401 / backend restart (BL-10, BL-16)     |
-| SetupWizard page           | ✅ Complete | First-run master password setup                                                           |
-| LockScreen page            | ✅ Complete | Unlock with bcrypt verify + JWT                                                           |
-| Home page / Profile grid   | ✅ Complete | Search, filter, CRUD, duplicate, export/import                                            |
-| ProfileDetailPane          | ✅ Complete | Connect/disconnect, tunnel panel, window spawning                                         |
-| ProfileForm                | ✅ Complete | Create/edit with key selector; edits send only changed fields (BL-13)                     |
-| TerminalPane (xterm.js)    | ✅ Complete | WebSocket I/O (UTF-8, BL-15), resize, themes, search                                      |
-| TabBar                     | ✅ Complete | DnD reorder, close, Home anchor tab                                                       |
-| SftpPane (dual-pane)       | ✅ Complete | All file ops via in-app dialogs, progress, transfer queue (BL-14)                         |
-| LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC (home directory only)                                  |
-| Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                        |
-| Logs page                  | ⚠️ Partial  | Filter, search, date range; CSV export button is broken (FR-08.6)                         |
-| Settings page              | ✅ Complete | Theme, font, lock (re-encrypting, BL-10), retention                                       |
-| UpdateBanner               | ✅ Complete | Auto-update notification + install                                                        |
-| SSH service                | ✅ Complete | Session pool, password + key auth, consumer-aware reaper (BL-11)                          |
-| SFTP service               | ✅ Complete | All file ops + SSE progress; one channel per transfer (BL-14)                             |
-| Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                      |
-| Key service                | ✅ Complete | OpenSSH generation (BL-12), import + conversion, fingerprint, .cskb export/import         |
-| Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5; socket errors handled (BL-16)                              |
-| Audit service              | ✅ Complete | Event logging + CSV generation                                                            |
-| Config service             | ✅ Complete | AppConfig singleton read/update; never creates the row (BL-10)                            |
-| Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                            |
-| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O; session-id parsing fixed, consumer counting (BL-11)         |
-| Auth middleware            | ✅ Complete | JWT + query-param fallback for SSE                                                        |
-| Rate limiting              | ✅ Complete | 5/min unlock, 300/min API                                                                 |
-| Database schema            | ✅ Complete | 5 models, Prisma migrations, WAL mode                                                     |
-| Build pipeline             | ✅ Complete | Win/Linux/macOS installers via CI matrix (NFR-07); ~101 MB (esbuild + runtime migrations) |
+| Module                     | Status      | Notes                                                                                                                                         |
+| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Electron main process      | ✅ Complete | Backend spawn + crash restart (BL-16), IPC (sender-checked, BL-21), single instance (BL-25), idle lock (BL-18), auto-updater (BL-24), app.log |
+| Preload / contextBridge    | ✅ Complete | Typed window.api only — no generic IPC passthrough or path-based file calls (BL-22)                                                           |
+| App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow; re-auth on 401 / backend restart (BL-10, BL-16); lock on `app:locked` (BL-18)                           |
+| SetupWizard page           | ✅ Complete | First-run master password setup; 10-character minimum + strength hint (BL-26)                                                                 |
+| LockScreen page            | ✅ Complete | Unlock with bcrypt verify + JWT                                                                                                               |
+| Home page / Profile grid   | ✅ Complete | Search, filter, CRUD, duplicate, export/import                                                                                                |
+| ProfileDetailPane          | ✅ Complete | Connect/disconnect, tunnel panel, window spawning                                                                                             |
+| ProfileForm                | ✅ Complete | Create/edit with key selector; edits send only changed fields (BL-13)                                                                         |
+| TerminalPane (xterm.js)    | ✅ Complete | WebSocket I/O (UTF-8, BL-15), resize, themes, search                                                                                          |
+| TabBar                     | ✅ Complete | DnD reorder, close, Home anchor tab                                                                                                           |
+| SftpPane (dual-pane)       | ✅ Complete | All file ops via in-app dialogs, progress, transfer queue (BL-14)                                                                             |
+| LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC (home directory only)                                                                                      |
+| Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                                                                            |
+| Logs page                  | ⚠️ Partial  | Filter, search, date range; CSV export via save dialog (BL-28); only the newest 100 entries, no pagination (FR-08.5)                          |
+| Settings page              | ✅ Complete | Theme, font, lock (re-encrypting, BL-10; 10-character minimum, BL-26), retention                                                              |
+| UpdateBanner               | ✅ Complete | Auto-update notification + install; Releases link on macOS (BL-24)                                                                            |
+| SSH service                | ✅ Complete | Session pool, password + key auth, consumer-aware reaper (BL-11)                                                                              |
+| SFTP service               | ✅ Complete | All file ops + SSE progress; one channel per transfer (BL-14)                                                                                 |
+| Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                                                                          |
+| Key service                | ✅ Complete | OpenSSH generation (BL-12), import + conversion, fingerprint, .cskb export/import                                                             |
+| Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5; socket errors handled (BL-16)                                                                                  |
+| Audit service              | ✅ Complete | Event logging + CSV generation; every text field quoted (BL-28)                                                                               |
+| Config service             | ✅ Complete | AppConfig singleton read/update; never creates the row (BL-10)                                                                                |
+| Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                                                                                |
+| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O; consumer counting (BL-11); caller + revocation checks, closes on lock (BL-17, BL-18)                            |
+| Auth middleware            | ✅ Complete | JWT (HS256, `jti` required — BL-19) + query-param fallback for SSE; caller checks (BL-17)                                                     |
+| Rate limiting              | ✅ Complete | 5/min unlock, 300/min API                                                                                                                     |
+| Database schema            | ✅ Complete | 5 models, Prisma migrations, WAL mode                                                                                                         |
+| Build pipeline             | ✅ Complete | Win/Linux/macOS installers via CI matrix (NFR-07); ~101 MB (esbuild + runtime migrations)                                                     |
 
 ---
 
 ## 17. v1.1 Backlog — Unimplemented Requirements
 
-BL-01 … BL-09 are the v1.0 gaps scheduled for v1.1. BL-10 … BL-16 come from the spec audit of 2026-11-10, which found requirements marked ✅ whose implementation does not work. All seven were implemented the same day, each with regression tests. Smaller gaps found by the same audit are recorded as ⚠️ notes on their requirement in §6/§7 ("tracked, not scheduled").
+BL-01 … BL-09 are the v1.0 gaps scheduled for v1.1. BL-10 … BL-16 come from the spec audit of 2026-11-10, which found requirements marked ✅ whose implementation does not work. All seven were implemented the same day, each with regression tests. BL-17 … BL-26 are the audit's second phase, security hardening: they implement the NFR-02 additions in §7. BL-27 is a test-only fix found while verifying them: the Playwright e2e suite runs on a throwaway profile instead of the user's real one. BL-28 repairs the audit-log CSV export (FR-08.6), which sent no token and, once BL-21 blocked navigation, did nothing. Smaller gaps found by the same audit are recorded as ⚠️ notes on their requirement in §6/§7 ("tracked, not scheduled").
 
 ---
 
@@ -1713,4 +1770,301 @@ Selecting text in the terminal copies it to the system clipboard, the standard U
 
 ---
 
-_End of SRS Document — v3.3_
+### Phase 2 — Security Hardening (BL-17 … BL-26)
+
+The second phase of the 2026-11-10 audit. Each item closes one of the NFR-02 additions in §7 (or the NFR-03 / NFR-07 gap it names). Two facts measured on Electron 39 (Windows) shape BL-17 and BL-21: a `file://` renderer sends **no** `Origin` header (and no CORS preflight) on `fetch`, XHR or `EventSource`, but sends `Origin: file://` on a WebSocket upgrade; and `event.senderFrame.url` is the page URL even for a `sendSync` made while the preload runs.
+
+All ten were implemented on 2026-11-11. Besides the unit and integration tests named on each item, the built app (`out/main/index.js`, unpackaged, separate `--user-data-dir`) was driven end to end on Windows with Playwright: setup refused a 9-character password, `/api/auth/status` without the launch secret got 403, a terminal window connected with its token handed over by IPC (none in its URL), a second launch exited with code 0, a lock closed the terminal window and showed the lock screen, a 1-minute auto-lock fired after 63 s without input, and navigation and `window.open` were blocked. Not verified: the packaged build (backend under `ELECTRON_RUN_AS_NODE`) and anything on macOS or Linux desktops.
+
+---
+
+### ~~BL-17 — Local API Caller Authentication~~ ✅ Implemented
+
+**Requirement:** NFR-02 (local API accepts only CypherShell's renderer), §10.4
+**Priority:** Critical
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/callerAuth.test.ts`, `tests/renderer/lib/launchSecret.test.ts`, `tests/renderer/components/terminal/TerminalPane.test.tsx`
+
+**Problem:** Any web page the user opens can drive the local API. CORS accepts `Origin: null` (a sandboxed iframe) and every `localhost` / `127.0.0.1` origin, and with lock off `POST /api/auth/unlock` returns a JWT without a password. A page can therefore read a token and use the whole API, including `POST /api/profiles/:id/connect` and the terminal WebSocket, whose upgrade checks no `Origin` at all. Nothing checks the `Host` header either, so a page on an attacker's domain that re-binds its DNS to `127.0.0.1` is same-origin and needs no CORS (DNS rebinding).
+
+**Main-process work:**
+
+- Generate a per-launch secret (`crypto.randomBytes(32)`, memory only). Pass it to the backend as `LAUNCH_SECRET` (the same value across BL-16 restarts) and to the renderer through the preload as `window.api.launchSecret` (`get-launch-secret` — in `src/preload/index.ts` **and** `src/preload/index.d.ts`).
+- Set `ALLOWED_CORS_ORIGINS` to the origin of `ELECTRON_RENDERER_URL` only when the renderer is loaded from the electron-vite dev server; in every other case it is cleared, so a value inherited from the user's environment never reaches a packaged backend.
+
+**Backend work:**
+
+- Every `/api/auth/*` request must carry `X-CypherShell-Launch: <secret>` (constant-time comparison), otherwise `403`. Without a configured `LAUNCH_SECRET` every auth request is refused.
+- Origin allowlist: `file://` (the packaged renderer's WebSocket origin) plus the exact entries of `ALLOWED_CORS_ORIGINS` — no wildcard. A request whose `Origin` is anything else, `null` included, gets `403` before any route runs. Requests without `Origin` (the packaged renderer, same-origin `GET`s, non-browser clients) go on to the other checks.
+- `Host` check against DNS rebinding: a request whose `Host` is not `127.0.0.1`, `localhost` or `[::1]` (any port) gets `403`.
+- The terminal WebSocket upgrade applies the same Host and Origin checks and requires the secret as the `launch` query parameter.
+
+**Frontend work:** `lib/api.ts` sends the header on every request; `TerminalPane` adds `launch` to the WebSocket URL.
+
+**Acceptance Criteria:**
+
+- [x] `/api/auth/*` without the launch secret, or with a wrong one, returns 403 — a lock-off unlock no longer hands out a token
+- [x] `Origin: null`, `Origin: http://localhost:8080` and any other origin outside the allowlist get 403 and no `Access-Control-Allow-Origin`; `file://` and `ALLOWED_CORS_ORIGINS` entries are accepted
+- [x] A request with `Host: attacker.example:4000` gets 403
+- [x] A WebSocket upgrade with a foreign Origin or Host, or without the launch secret, is refused before a shell opens
+
+---
+
+### ~~BL-18 — Lock Enforcement~~ ✅ Implemented
+
+**Requirements:** FR-07.5, NFR-02 (token revocation on every transport)
+**Priority:** Critical
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/lockEnforcement.test.ts`, `tests/backend/idleLock.test.ts`, `tests/renderer/App.test.tsx`, `tests/renderer/components/terminal/TerminalPane.test.tsx`
+
+**Problems:**
+
+1. The terminal WebSocket upgrade only calls `jwt.verify`, so a token revoked by locking still opens terminals.
+2. `POST /api/auth/lock` leaves open terminal sockets and SFTP progress streams running, and the terminal and SFTP windows stay open: a locked app keeps live shells.
+3. Each window runs its own idle timer (`App.tsx`). Typing in a terminal window is not activity for the main window, so the app locks while it is in use, and an idle connection window locks it too.
+
+**Backend work:**
+
+- The upgrade verifies the token with the same `verifyToken` as REST and SSE (signature, expiry, `jti` in `TokenStore`).
+- New `AppLockService.lock()` clears the active key, revokes every token, closes every terminal socket (close code `4001`, "App locked") and ends every SFTP progress stream. `POST /api/auth/lock` goes through it. Running tunnels and in-flight transfers are left running.
+- The backend is spawned with a Node IPC channel to main (and `CYPHERSHELL_HOST_IPC=1`; without it the bridge is off). It reports the auto-lock policy `{ type: 'lock-policy', enabled, autoLockMinutes }` at startup and after every change (setup, skip, setting or removing the master password, `PUT /api/config`), reports `{ type: 'locked' }` after each lock, and locks when main sends `{ type: 'lock' }`. When the channel closes — main is gone — the backend exits instead of lingering with the key in memory.
+
+**Main-process work:**
+
+- New `src/main/idleLock.ts` (no Electron imports, unit-tested): one idle clock for the whole app. Every window's `input-event` (keys, mouse, wheel) resets it; when lock is enabled and no input arrives for `autoLockMinutes`, main asks the backend to lock.
+- On `locked`, main closes every terminal and SFTP window and sends `app:locked` to the main window (`onAppLocked(cb)` in both preload files).
+
+**Frontend work:** Remove the per-window idle timer from `App.tsx`. On `app:locked` the main window drops its token and shows the lock screen. A terminal socket closed with code 4001 is not reconnected.
+
+**Acceptance Criteria:**
+
+- [x] A token revoked by locking cannot open a terminal WebSocket
+- [x] Locking closes every open terminal socket and SFTP progress stream
+- [x] Input in any window postpones auto-lock; with no input anywhere the app locks once after `autoLockMinutes`, and never while lock is off
+- [x] After a lock, main closes the connection windows and the main window shows the lock screen
+
+---
+
+### ~~BL-19 — Token & Secret Hygiene~~ ✅ Implemented
+
+**Requirements:** NFR-02, §10.3
+**Priority:** High
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/tokenHygiene.test.ts`, `tests/backend/secretFiles.test.ts` (the POSIX permission cases run on Linux CI; Windows skips them)
+
+**Problems:**
+
+1. `verifyToken` skips the revocation check for a token without `jti`, so such a token can never be revoked.
+2. The JWT signing secret lives in `{userData}/secrets/jwt-secret` and is reused across launches. That file and the storage-key fallback (plaintext when `safeStorage` is unavailable) are written with the default `0644` permissions in a `0755` directory, so other local users can read them on Linux and macOS.
+
+**Backend work:** The backend creates its JWT signing secret in memory at startup (`crypto.randomBytes(48)`); it is never read from disk or from the environment. `verifyToken` accepts only `HS256` and requires a `jti` that is in `TokenStore`.
+
+**Main-process work:** Main no longer creates or passes a JWT secret, and deletes a `jwt-secret` file left by an older version. `secrets/` is created with mode `0700` and `storage-key` written with mode `0600`; on POSIX, existing ones are re-permissioned at startup. New `src/main/secretFiles.ts` (no Electron imports, unit-tested).
+
+**Acceptance Criteria:**
+
+- [x] A correctly signed token without `jti` is rejected on REST, SSE and the WebSocket
+- [x] A token signed with another secret — including the old `JWT_SECRET` environment value — or another algorithm is rejected
+- [x] On POSIX, `secrets/` is `0700` and `storage-key` `0600`, also when they existed with wider permissions; a legacy `jwt-secret` file is removed
+
+---
+
+### ~~BL-20 — Connection Window Token Hand-off~~ ✅ Implemented
+
+**Requirements:** FR-02.9, §10.7
+**Priority:** High
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/connectionTokens.test.ts`, `tests/renderer/App.test.tsx`
+
+**Problem:** Production builds append `&token=<JWT>` to every terminal and SFTP window URL, and `App.tsx` still reads a token from the URL as a fallback. The one-time hand-off is keyed by session id, so two windows opened for one session within 30 s compete for a single token.
+
+**Main-process work:** Connection window URLs carry only the route and `profileId`. The pending token is keyed by the new window's `webContents.id`; `get-connection-token` hands it out once, only to that window, within 30 s. New `src/main/connectionTokens.ts` (no Electron imports, unit-tested).
+
+**Frontend work:** `App.tsx` drops the URL-token fallback; `getConnectionToken()` takes no argument.
+
+**Acceptance Criteria:**
+
+- [x] No connection window URL contains a token
+- [x] A token reaches only the window it was issued for, once; another window, a second claim or a claim after 30 s gets `null`
+- [x] `App.tsx` ignores a token in the URL hash
+
+---
+
+### ~~BL-21 — Electron Window Hardening~~ ✅ Implemented
+
+**Requirements:** §10.7, NFR-02
+**Priority:** High
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/windowSecurity.test.ts`, `tests/renderer/lib/launchSecret.test.ts`, `tests/renderer/components/terminal/TerminalPane.test.tsx`
+
+**Problems:** Only the main window has a `setWindowOpenHandler`. In terminal windows xterm's `WebLinksAddon` calls `window.open`, which opens the link in a new Electron window that inherits the preload — any page linked from terminal output would get `window.api`. No window blocks navigation, and no IPC handler checks which frame sent the message.
+
+**Main-process work:**
+
+- `app.on('web-contents-created')` gives every `webContents` a window-open handler that always denies — `http:` and `https:` URLs go to `shell.openExternal`, other schemes are dropped — and a `will-navigate` handler that blocks every URL outside the app's renderer (the dev-server origin, or the packaged `index.html`).
+- Every IPC handler first checks `event.senderFrame`: only a top-level frame showing the app's renderer is served.
+- New `src/main/windowSecurity.ts` (no Electron imports, unit-tested) holds these URL decisions.
+
+**Frontend work:** `TerminalPane` gives xterm's `WebLinksAddon` a handler that passes the link URL to `window.open` (new `lib/terminalSocket.ts`). The addon's default opens a blank window first and navigates it afterwards, which the window-open handler now refuses — terminal links would otherwise stop working.
+
+**Acceptance Criteria:**
+
+- [x] Every window denies `window.open`; http(s) links open in the system browser and other schemes are dropped
+- [x] Navigation away from the app's renderer is blocked in every window
+- [x] IPC from a subframe or from a page outside the app is refused
+
+---
+
+### ~~BL-22 — Dialog-Bound File IPC~~ ✅ Implemented
+
+**Requirements:** FR-05.9, FR-09.1, FR-09.4, FR-10.1, FR-10.4
+**Priority:** High
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/textFiles.test.ts`, `tests/renderer/dialogBoundFiles.test.tsx`
+
+**Problem:** `fs:executeOp` gives the renderer generic `readFile` and `writeFile` for any path under the home directory, so any script in a renderer can read `~/.ssh/id_rsa` or rewrite a shell profile. Its `mkdir`, `rename` and `delete` operations have no callers. The preload also exposes `window.electron` (the `@electron-toolkit/preload` bridge), a generic `ipcRenderer` passthrough to every channel; its only user is the unused `Versions.tsx` scaffold. Two event subscriptions (`onUpdateDownloaded`, `onBackendRestarted`) hand the page the raw `IpcRendererEvent`, whose `sender` is `ipcRenderer` itself. Exports and imports outside the home directory fail with "Access denied".
+
+**Main-process work:**
+
+- Remove `fs:executeOp`, `dialog:openJsonFile`, `dialog:openCskbFile`, the `window.electron` bridge and the unused `Versions.tsx`. Every preload subscription calls the page's callback with data only, never the event.
+- New `dialog:saveTextFile({ kind, defaultName, content })`: main shows the save dialog — the suggested name is reduced to a bare file name, so the page cannot point the dialog at a folder — and writes the content (at most 5 MB) to the chosen file. Returns the path, or `null` when cancelled.
+- New `dialog:openTextFile({ kind })`: main shows the open dialog and returns `{ name, content }` (UTF-8, at most 5 MB, so anything saved can be opened again), or `null`.
+- `kind` (`json`, `cskb`, `pub`) only selects the dialog's file-type filter; the renderer never supplies a path. New `src/main/textFiles.ts` (dialogs injected, unit-tested).
+
+**Frontend work:** Profile export and import (`Home.tsx`), public-key export (`Keys.tsx`) and `.cskb` export and import (`ExportKeyBundleDialog.tsx`, `ImportKeyBundleDialog.tsx`) use the new calls.
+
+**Acceptance Criteria:**
+
+- [x] The preload exposes no call that reads or writes a renderer-supplied path, and no generic IPC passthrough
+- [x] Saving writes exactly the content to the chosen file, including outside the home directory; cancelling writes nothing
+- [x] Opening returns the chosen file's name and content; a file over 5 MB is refused
+- [x] The five callers export and import through the new calls
+
+---
+
+### ~~BL-23 — Request Validation for SFTP, Tunnels and Config~~ ✅ Implemented
+
+**Requirements:** NFR-02 (zod validation; local paths), §10.6, FR-04.10, FR-04.16, FR-06.1–FR-06.3
+**Priority:** High
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/requestValidation.test.ts`, `tests/renderer/components/profiles/ProfileDetailPane.test.tsx`
+
+**Problems:**
+
+1. SFTP, tunnel and config request bodies reach the services unvalidated.
+2. `transferId` is used raw as an `EventEmitter` event name. With `"error"`, the first progress event throws inside an ssh2 callback and the backend exits; `"newListener"` and similar names corrupt the emitter.
+3. The SFTP `localPath` goes straight to `fastPut` / `fastGet`: a relative path resolves against the backend's working directory, and a directory, device or pipe is opened as if it were a file.
+4. The Profile Details tab stops a dynamic tunnel by sending its (empty) remote port, so the tunnel keeps running.
+
+**Backend work:** zod schemas in the SFTP, tunnel and config controllers; a failure returns `400 { error }`.
+
+- `transferId` must match `^(up|dn)-[0-9a-z]{1,32}$` — `up-` for uploads, `dn-` for downloads — on upload, download, progress and cancel. Starting a transfer whose id is already in progress returns `409`.
+- Local paths (new `LocalPathService`): absolute, without NUL bytes, normalized. An upload source must be an existing regular file; a download target's directory must exist and the target must not be a directory. Any folder the native dialogs can pick stays allowed, so there is no base-directory restriction.
+- Remote paths: non-empty, at most 4096 characters, no NUL. The `chmod` mode: 3–4 octal digits, or an integer up to `0o7777`.
+- Tunnels: `type` ∈ `local | remote | dynamic`; ports are integers 1–65535 (digit strings accepted — the UI sends strings); `remoteHost` is required for local forwards. Stop takes `{ type, port }`.
+- Config: `theme` ∈ `dark | light | system`, `defaultFont` 1–200 characters, `defaultFontSize` 8–72, `logRetentionDays` 0–3650, `autoLockMinutes` 1–1440. Other keys (such as `lockEnabled`) are still ignored.
+
+**Frontend work:** Stopping a dynamic tunnel sends its local port (§9.8).
+
+**Acceptance Criteria:**
+
+- [x] `transferId: "error"` and every other id outside the format get 400 on all four endpoints, and the backend keeps running
+- [x] An upload from a relative path, a missing file or a directory gets 400, as does a download into a missing directory
+- [x] Invalid tunnel and config bodies get 400, while the payloads the UI sends still succeed
+- [x] A dynamic tunnel stopped from the UI stops
+
+---
+
+### ~~BL-24 — macOS Update Notice~~ ✅ Implemented
+
+**Requirements:** NFR-07, ADR-004
+**Priority:** Medium
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/updatePolicy.test.ts`, `tests/renderer/components/layout/UpdateBanner.test.tsx`
+
+**Problem:** macOS builds are unsigned (ADR-004), and Squirrel.Mac only installs an update signed like the running app. electron-updater still downloads every new version on macOS, and the download never installs.
+
+**Main-process work:** On `darwin`, `autoDownload` and `autoInstallOnAppQuit` are off and `updater:install` does nothing. `update:available` carries `{ version, manual }`, with `manual: true` on darwin. New `updater:openDownloadPage` opens the GitHub Releases page (`https://github.com/athul-ts/CypherShell/releases/latest`, fixed in main). New `src/main/updatePolicy.ts` (pure, unit-tested).
+
+**Frontend work:** `UpdateBanner` shows "CypherShell <version> is available" with a "Download from GitHub Releases" button when the update is manual.
+
+**Acceptance Criteria:**
+
+- [x] On darwin the updater never downloads or installs; Windows and Linux keep downloading and installing
+- [x] The banner offers the Releases download for a manual update and "Restart & Install" otherwise
+- [x] The policy and the banner are covered by unit tests that run in CI on any platform
+- ⚠️ Not verified on a real Mac (none available): that `checkForUpdates()` on an unsigned build announces the update without attempting a Squirrel.Mac install
+
+---
+
+### ~~BL-25 — Single App Instance~~ ✅ Implemented
+
+**Requirement:** NFR-03
+**Priority:** Medium
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/singleInstance.test.ts`
+
+**Problem:** Starting CypherShell while it runs launches a second app with a second backend on the same database and secrets. The two have separate lock states, token stores and SSH sessions, and the second truncates the first's `app.log`.
+
+**Main-process work:** `app.requestSingleInstanceLock()` runs before anything else; a second instance quits at once, before writing the log or spawning a backend. On `second-instance` the running app restores (if minimized) and focuses its main window, recreating it if it was closed.
+
+**Acceptance Criteria:**
+
+- [x] A second launch exits without starting a backend, and the running app's main window comes to the front (unit test of the focus logic; the exit verified by a two-launch run of the built app on Windows)
+
+---
+
+### ~~BL-26 — Master Password Policy~~ ✅ Implemented
+
+**Requirements:** FR-07.1, FR-07.7, NFR-02
+**Priority:** Medium
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/backend/masterPassword.test.ts`, `tests/renderer/masterPasswordPolicy.test.tsx`
+
+**Problem:** A master password needs only 6 characters, though it is the only protection of every stored secret against offline guessing on a copied database, and the user gets no feedback on its strength.
+
+**Backend work:** `POST /api/auth/setup` and a new password set through `POST /api/auth/setup-password` require at least 10 characters. Unlocking, `disable-lock` and re-enabling lock with an existing master password accept any length, so older, shorter passwords keep working.
+
+**Frontend work:** New `lib/passwordStrength.ts`. `SetupWizard` and the Settings set-password dialog require 10 characters and show a strength hint (weak / fair / strong, from length and character variety) as the user types.
+
+**Acceptance Criteria:**
+
+- [x] A 9-character password is rejected by setup and when setting a new master password; 10 characters are accepted
+- [x] An existing shorter master password still unlocks and re-enables lock
+- [x] The wizard and the Settings dialog block passwords under 10 characters and show the hint
+
+---
+
+### ~~BL-27 — E2E Tests Use a Throwaway Profile~~ ✅ Implemented
+
+**Requirement:** NFR-06
+**Priority:** Medium
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/e2e/app.spec.ts`
+
+**Problem:** `tests/e2e/app.spec.ts` launches `out/main/index.js` with `DATABASE_URL` and `JWT_SECRET` set, but main ignores both: it points the backend at `{userData}/sshclient.db` and passes its own JWT secret. The suite therefore runs on the user's real profile, `%APPDATA%\cyphershell` (on Windows, case-insensitively the installed app's `%APPDATA%\CypherShell`). Each run truncates its `app.log`, applies the build's migrations to its database, creates missing secrets and writes Chromium state there. A run while the app is open shares the profile with it; since BL-25 it exits at once and the suite fails.
+
+**Test work:** Each test creates a temp profile (`fs.mkdtempSync(path.join(os.tmpdir(), 'cs-e2e-'))`) and launches the app with `--user-data-dir=<dir>`, which Electron uses as `app.getPath('userData')`. It asserts that the app's `userData` is that directory and that `app.log` and `sshclient.db` are created in it, and deletes the directory after the app has closed. The ignored `DATABASE_URL` / `JWT_SECRET` entries are removed. No app code changes.
+
+**Acceptance Criteria:**
+
+- [x] `npm run build:e2e && npm run test:e2e` passes on Windows and creates or changes nothing in `%APPDATA%\cyphershell` (names, sizes and timestamps of every entry compared before and after the run)
+- [x] Each test's `userData`, `app.log` and database are in its own temp profile, which is deleted afterwards (asserted by the tests; a launch on a different directory fails them)
+- ⚠️ Not run on macOS or Linux: the e2e suite is not part of CI
+
+---
+
+### ~~BL-28 — Audit Log CSV Export~~ ✅ Implemented
+
+**Requirement:** FR-08.6
+**Priority:** Medium
+**Status:** ✅ Implemented 2026-11-11 — regression tests: `tests/renderer/pages/Logs.test.tsx`, `tests/backend/textFiles.test.ts`, `tests/backend/auditExport.test.ts`
+
+**Problem:** The Logs page's Export CSV button sets `window.location.href` to `http://127.0.0.1:<port>/api/audit/export`. A navigation carries neither the JWT nor the launch secret, so the backend would answer `401`; since BL-21 the main process blocks that navigation, so the button does nothing. The CSV is also malformed for some entries: `AuditService.exportCSV` wraps Profile, Host and Error in quotes without doubling the quotes inside them (only Detail is escaped), so a `"` in any of them breaks its row.
+
+**Main-process work:** `TEXT_FILE_FILTERS` (`src/main/textFiles.ts`) gains a `csv` kind (filter "CSV Files", `.csv`). The kind check is derived from that table, so a kind cannot be added to the filters without being accepted. The preload types (`src/preload/index.ts`, `src/preload/index.d.ts`) gain `'csv'`.
+
+**Backend work:** `exportCSV` quotes every text field (Profile, Host, Detail, Error) and doubles the `"` inside it (RFC 4180). The route, its JWT requirement and the columns are unchanged.
+
+**Frontend work:** `Logs.tsx` fetches the CSV through the Axios client, `api.get('/audit/export', { responseType: 'text' })`, so the JWT and launch secret are sent. It saves the text with `window.api.saveTextFile({ kind: 'csv', defaultName: 'cyphershell-audit-<YYYY-MM-DD>.csv', content })`, using the local date. A save shows a success toast and a cancel shows nothing; a failed request or save shows an error toast with the reason. The button is disabled while an export runs. An export over 5 MB (the BL-22 limit) is refused with that reason; larger exports are tracked, not scheduled.
+
+**Acceptance Criteria:**
+
+- [x] Export CSV fetches `/audit/export` through the API client and passes the CSV text unchanged to `saveTextFile`, with kind `csv` and the dated name; the window never navigates
+- [x] A save shows a success toast, a cancel shows none, and a failed request or save shows an error toast
+- [x] `saveTextFile` accepts the `csv` kind, offers the CSV filter and writes the content
+- [x] `GET /api/audit/export` still requires the session token, and a `"`, `,` or line break in a profile name, host, detail or error survives a CSV parser
+- [x] In the built app on Windows (throwaway profile, only the native dialog stubbed), Export CSV saved the CSV to the chosen file, with a profile name containing `"` and `,` intact
+
+---
+
+_End of SRS Document — v3.4_
