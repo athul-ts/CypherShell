@@ -82,6 +82,7 @@ tests/backend/test.db
 tests/backend/test.db-shm
 tests/backend/test.db-wal
 tests/e2e/screenshots/
+test-results/
 tests/e2e/report/
 playwright-report/
 

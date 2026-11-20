@@ -2268,11 +2268,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-37 — CI on Every Branch
+### ~~BL-37 — CI on Every Branch~~ ✅ Implemented
 
 **Requirements:** NFR-06, NFR-07
 **Priority:** High
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-20 — regression tests: tests/backend/macUpdateFeed.test.ts, tests/e2e/app.spec.ts. The workflows are validated by parsing and the e2e test locally; their first run on GitHub (and the NFR-07 macOS feed answer) happens after the next push.
 
 **Problem:** CI runs only on pull requests to `features`, on Node 20 (end of life); releases and PRs to `main` run no tests; the Electron suite (e2e) never runs in CI; there is no dependency scanning. The second e2e test passes without checking anything because it looks for a "Skip" button that the wizard does not have. Whether one `electron-builder --mac` run lists both macOS architectures in `latest-mac.yml` has never been verified (open question from NFR-07).
 
@@ -2286,11 +2286,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] A pull request to `ats`, `features`, `dev`, `qa` or `main`, and a push to `ats`, runs check, test and e2e
-- [ ] A Release cannot start unless CI passed
-- [ ] The macOS feed check fails on a `latest-mac.yml` that lists only one architecture (unit-tested)
-- [ ] Dependabot and CodeQL are configured; every workflow file parses
-- [ ] The wizard e2e test fails if the wizard or the dashboard does not appear
+- [x] A pull request to `ats`, `features`, `dev`, `qa` or `main`, and a push to `ats`, runs check, test and e2e
+- [x] A Release cannot start unless CI passed
+- [x] The macOS feed check fails on a `latest-mac.yml` that lists only one architecture (unit-tested)
+- [x] Dependabot and CodeQL are configured; every workflow file parses
+- [x] The wizard e2e test fails if the wizard or the dashboard does not appear
 
 ---
 

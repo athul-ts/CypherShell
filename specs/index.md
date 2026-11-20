@@ -272,7 +272,7 @@
 | ~~BL-34~~ | ~~Saved tunnel rules~~                                              | ~~Medium~~   | FR-06.4, FR-09.2                     | ✅ Done         |
 | ~~BL-35~~ | ~~Light theme and bundled font~~                                    | ~~Low~~      | §11.2, §11.3                         | ✅ Done         |
 | ~~BL-36~~ | ~~Dependency security update (Electron 45)~~                        | ~~High~~     | NFR-02, NFR-07                       | ✅ Done         |
-| BL-37     | CI on every branch                                                  | High         | NFR-06, NFR-07                       | ❌ Open         |
+| ~~BL-37~~ | ~~CI on every branch~~ | ~~High~~ | NFR-06, NFR-07 | ✅ Done |
 | BL-38     | SSH host-key verification                                           | High         | FR-11.1 … FR-11.5                    | ❌ Open         |
 | BL-39     | Change master password                                              | High         | FR-07.8                              | ❌ Open         |
 | BL-40     | Keyboard-interactive login                                          | Medium       | FR-01.9                              | ❌ Open         |

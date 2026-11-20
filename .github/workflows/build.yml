@@ -26,13 +26,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # windows-2022, not windows-latest: the latest image now ships Visual
-          # Studio 2026 (v18), which the node-gyp used here cannot identify — it
-          # reads the version as "undefined", overflows the child-process buffer
-          # probing it, and aborts. better-sqlite3 has no prebuilt win32 binary
-          # for this Node version, so it falls back to a source build and needs a
-          # compiler node-gyp can actually find. windows-2022 still has VS 2022.
-          # Revisit once node-gyp 11+ is in play across electron-builder/@electron.
+          # windows-2022, not windows-latest: the latest image ships Visual Studio
+          # 2026 (v18), which the node-gyp used for the optional ssh2 crypto and
+          # cpu-features builds cannot identify. better-sqlite3 no longer compiles
+          # (BL-36: N-API prebuilds), but those builds still try. windows-2022 still
+          # has VS 2022. Revisit once node-gyp supports VS 2026.
           - name: Windows
             os: windows-2022
             platform: win
@@ -62,11 +60,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
-      # better-sqlite3 and cpu-features compile from source when no prebuilt
-      # binary matches (Linux in particular).
+      # The optional ssh2 crypto addon and cpu-features still compile from source
+      # on Linux. better-sqlite3 does not: it ships prebuilds (BL-36).
       - name: Install native build tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y python3 make g++
@@ -97,13 +95,18 @@ jobs:
       # stops the unsigned macOS build from probing for a signing identity,
       # keeping the output deterministic.
       #
-      # after-pack.cjs rebuilds better-sqlite3 for the target arch + Electron
-      # ABI and asserts the result, so a mismatch fails the build here rather
-      # than crashing the installed app.
+      # after-pack.cjs keeps only the target's better-sqlite3 prebuild and asserts
+      # its architecture, so a mismatch fails the build here rather than
+      # crashing the installed app.
       - name: Package ${{ matrix.name }}
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # NFR-07 / BL-37: one `--mac` run must list both architectures in the feed.
+      - name: Check macOS update feed
+        if: matrix.platform == 'mac'
+        run: node scripts/check-mac-update-feed.cjs dist/latest-mac.yml
 
       # if-no-files-found: error is deliberate. A platform that silently
       # produces nothing is exactly the failure that lost the macOS build

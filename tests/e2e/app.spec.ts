@@ -107,13 +107,10 @@ test('setup wizard — skip lock renders dashboard', async () => {
     await win.waitForLoadState('domcontentloaded')
     await expectThrowawayProfile(launched)
 
-    // If the setup wizard is shown, click "Skip" to bypass the master password
-    const skipBtn = win.getByRole('button', { name: /skip/i })
-    if (await skipBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await skipBtn.click()
-      // After skip, the dashboard or terminal page should appear
-      await win.waitForSelector('[data-testid="sidebar"], nav, aside', { timeout: 10000 })
-    }
+    // BL-37: a throwaway profile always starts on the setup wizard, so every step must happen.
+    await win.getByRole('button', { name: /continue without a password/i }).click()
+    await win.locator('#setup-skip-btn').click()
+    await expect(win.getByRole('heading', { name: 'Profiles' })).toBeVisible({ timeout: 15000 })
 
     await win.screenshot({ path: 'tests/e2e/screenshots/after-setup.png' })
   } finally {

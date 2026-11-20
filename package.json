@@ -21,7 +21,7 @@
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "build:backend": "npm run build --prefix backend",
-    "postinstall": "install-electron && electron-builder install-app-deps",
+    "postinstall": "install-electron",
     "build:unpack": "npm run build:backend && npm run build && electron-builder --dir",
     "build:win": "npm run build:backend && npm run build && electron-builder --win",
     "build:mac": "npm run build:backend && electron-vite build && electron-builder --mac",

@@ -37,10 +37,17 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # ── Tests: a Release cannot start unless CI passed (BL-37) ─────────────────
+  ci:
+    name: CI
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    uses: ./.github/workflows/ci.yml
+
   # ── Build all platforms (Windows, Linux, macOS) ────────────────────────────
   build:
     name: Build installers
-    needs: version
+    needs: [version, ci]
     if: needs.version.outputs.exists == 'false'
     uses: ./.github/workflows/build.yml
 
