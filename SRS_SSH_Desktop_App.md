@@ -155,16 +155,16 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 
 ### 2.3 Operating Environment
 
-| Item         | Detail                                                                                    |
-| ------------ | ----------------------------------------------------------------------------------------- |
-| OS           | Windows 10+, macOS 12+ (macOS 13+ from BL-36), Ubuntu 20.04+                              |
-| Architecture | x64, ARM64 (Apple Silicon)                                                                |
-| Runtime      | Node.js bundled inside Electron — user installs nothing (Node 24 with Electron 45, BL-36) |
-| Electron     | v39 (upgrade to v45 — BL-36)                                                              |
-| Minimum RAM  | 512MB                                                                                     |
-| Disk space   | ~200MB installed                                                                          |
-| Network      | Active connection to target SSH servers                                                   |
-| Local DB     | SQLite — single `.db` file in OS user data directory, auto-created                        |
+| Item         | Detail                                                                                                                                 |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| OS           | Windows 10+, macOS 12+, Ubuntu 20.04+ — from BL-36: macOS 13+ (Electron 45) and Ubuntu 22.04+ / glibc 2.34 (`better-sqlite3` prebuild) |
+| Architecture | x64, ARM64 (Apple Silicon)                                                                                                             |
+| Runtime      | Node.js bundled inside Electron — user installs nothing (Node 24 with Electron 45, BL-36)                                              |
+| Electron     | v39 (upgrade to v45 — BL-36)                                                                                                           |
+| Minimum RAM  | 512MB                                                                                                                                  |
+| Disk space   | ~200MB installed                                                                                                                       |
+| Network      | Active connection to target SSH servers                                                                                                |
+| Local DB     | SQLite — single `.db` file in OS user data directory, auto-created                                                                     |
 
 ### 2.4 Assumptions
 
@@ -904,6 +904,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 
 - Identical behaviour on Windows, macOS, and Linux
 - macOS 13 or later (required by Electron 44 and later — BL-36)
+- Linux with glibc 2.34 or later (Ubuntu 22.04+), required by the `better-sqlite3` prebuild — BL-36
 - Native file dialogs via Electron IPC for all file/directory selection
 - `path.posix` for remote paths, `path` (OS-aware) for local paths
 - Keyboard shortcuts adapted per OS via Electron accelerators ⚠️ — no application accelerators are defined; shortcuts are handled in the renderer (tracked, not scheduled)
@@ -930,7 +931,7 @@ Installers are produced for all three target platforms:
 - A single reusable matrix workflow builds all three platforms, so adding or changing a platform is a one-line matrix edit rather than a new hand-written job.
 - Merging to `main` publishes a GitHub Release carrying every platform's installers.
 - Pull requests targeting `main` build the same three platforms as downloadable workflow artifacts, so packaging regressions are caught before merge. PR builds never publish a Release.
-- Native modules (`better-sqlite3`) are rebuilt for the **target architecture and Electron ABI** during packaging, and the resulting binary is verified to match the target architecture before the installer is created.
+- Native modules (`better-sqlite3`) are rebuilt for the **target architecture and Electron ABI** during packaging, and the resulting binary is verified to match the target architecture before the installer is created. From BL-36 (ADR-003): `better-sqlite3` 13 ships N-API prebuilt binaries, so nothing is rebuilt — packaging keeps only the target platform's prebuild and verifies its architecture from the binary header.
 - Auto-update metadata (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`) and blockmaps are published alongside the installers, so the in-app `electron-updater` feed resolves.
 - Installer filenames identify their platform and architecture (`CypherShell-<version>-<platform>-<arch>[-setup].<ext>`, platform ∈ `windows` | `macos` | `linux`), so a Release's flat asset list is unambiguous. The `latest*.yml` and `.blockmap` filenames are exempt — `electron-updater` resolves those by exact name, so they must not be renamed.
 - The macOS `.zip` target is required — `electron-updater` cannot install from a `.dmg`.
@@ -2241,7 +2242,7 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ### BL-36 — Dependency Security Update (Electron 45)
 
-**Requirements:** NFR-02, NFR-07
+**Requirements:** NFR-02, NFR-07, ADR-003
 **Priority:** High
 **Status:** ❌ Open
 
@@ -2249,9 +2250,10 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Work:**
 
-- Root: `electron` ^45.4.1, `electron-builder` latest 26.x, `@electron/rebuild` ^4 (ESM — `scripts/rebuild-native.cjs` uses a dynamic `import()`), `@playwright/test` ^1.65, `@types/node` ^24; `npm audit fix` (never `--force`) for `axios`, `electron-updater`, `react-router-dom`, `zod`, `vite`, `postcss`; remove the unused `react-dropzone`. Keep `electron-vite` 5.
+- Root: `electron` ^45.4.1, `electron-builder` latest 26.x, `@playwright/test` ^1.65, `@types/node` ^24; `npm audit fix` (never `--force`) for `axios`, `electron-updater`, `react-router-dom`, `zod`, `vite`, `postcss`; remove the unused `react-dropzone`, and `@electron/rebuild` (nothing is rebuilt any more — see below). Keep `electron-vite` 5.
 - Backend: latest `express` 5.x, `ws` 8.x, `zod` 4.x and `prisma` / `@prisma/*` 7.x (`npx prisma generate` afterwards); remove the unused `multer`, `@types/multer`, `node-forge`, `portfinder`, `nodemon`, `ts-node` and the unused `dev` script; `@types/node` ^24 and `typescript` ~5.9.3 so the repository has one TypeScript version; `build.cjs` targets `node24`.
-- Electron 45: `postinstall` becomes `install-electron && electron-builder install-app-deps` (Electron 42 stopped downloading the binary on `npm install`). `safeStorage` moves to `isAsyncEncryptionAvailable` / `encryptStringAsync` / `decryptStringAsync` (the synchronous API is removed in Electron 46); the `secretFiles.ts` codec becomes asynchronous and its caller awaits it before the backend starts. Key files written by the old API must still load. The built preload must not use `Buffer`, `setImmediate` or `require('events')` (removed from sandboxed preloads in Electron 45).
+- Native module (ADR-003): `better-sqlite3` ^13.2.0. Version 12 does not compile against Electron 45's V8; 13 is built on N-API and ships prebuilt binaries for Windows, macOS and Linux (x64 and arm64) inside the npm package, so one binary runs under system Node (tests, development) and under Electron. The Prisma adapter's `^12.6.0` range is overridden (`"overrides": { "better-sqlite3": "$better-sqlite3" }`). The Electron-ABI rebuild is removed: no `rebuild:native` or `predev` script and no `scripts/rebuild-native.cjs`. `scripts/after-pack.cjs` keeps only the target's prebuild, deletes any locally compiled `build/` directory (the loader prefers it over the prebuild, and it would be built for the packaging machine), and checks the kept binary's architecture from its PE, ELF or Mach-O header. The SQLite sources (`deps/`, `src/`, `binding.gyp`) and the now unused `bindings` / `file-uri-to-path` copies are no longer packaged. The Linux prebuild needs glibc 2.34, so the Linux minimum becomes Ubuntu 22.04.
+- Electron 45: `postinstall` becomes `install-electron` (Electron 42 stopped downloading the binary on `npm install`; the root has no native dependencies, so `electron-builder install-app-deps` is dropped). `safeStorage` moves to `isAsyncEncryptionAvailable` / `encryptStringAsync` / `decryptStringAsync` (the synchronous API is removed in Electron 46); the `secretFiles.ts` codec becomes asynchronous and its caller awaits it before the backend starts. Key files written by the old API must still load. The built preload must not use `Buffer`, `setImmediate` or `require('events')` (removed from sandboxed preloads in Electron 45).
 - `CLAUDE.md`, §2.3 and the technology table name Electron 45, the Node 24 runtime and TypeScript 5.9.
 
 **Acceptance Criteria:**
@@ -2261,6 +2263,8 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 - [ ] Typecheck, lint, all backend and renderer tests and the e2e suite pass
 - [ ] `npm run build:win` succeeds and the unpacked app starts on a throwaway profile; terminal, SFTP and the light theme work
 - [ ] An existing storage-key file written with the synchronous `safeStorage` API is still read
+- [ ] Backend tests, development and the packaged app use the same `better-sqlite3` binary with no rebuild step; the packaged app contains only the target platform's prebuild and no `build/` directory
+- [ ] Packaging fails when the kept prebuild's header names another architecture (unit-tested on the real prebuilds)
 
 ---
 

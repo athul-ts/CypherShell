@@ -53,15 +53,31 @@ Prisma's default SQLite driver uses a WASM build that has compatibility issues w
 - **Positive:** Zero-install — the `.db` file is created automatically on first run in `app.getPath('userData')`
 - **Positive:** Fully type-safe queries — schema changes that break existing queries are caught at build time
 - **Positive:** Portable — user backup is simply copying the `.db` file
-- **Negative:** `better-sqlite3` is a native module — rebuilt for Electron's Node ABI by `scripts/after-pack.cjs` during `electron-builder` packaging; `bindings` + `file-uri-to-path` must ship as `extraResources`
+- **Negative:** `better-sqlite3` is a native module. Until BL-36 it was rebuilt for Electron's Node ABI by `scripts/after-pack.cjs` during packaging; from BL-36 it ships N-API prebuilds (see the update below)
 - **Negative:** Prisma client must be regenerated (`npx prisma generate`) after every schema change
 - **Negative:** No multi-process write concurrency — only the Express backend writes to the DB; the renderer never has direct DB access (this is by design)
 - **Negative:** `binaryTargets = ["native"]` in `schema.prisma` means cross-compiling (e.g. building on macOS for Windows) requires regenerating the client on the target platform
+
+## Update — 2026-11-20: N-API prebuilds instead of an Electron rebuild (BL-36)
+
+**Context.** Electron 45 (needed because Electron 39 is out of support) changes V8 APIs that `better-sqlite3` 12 uses (`Object::GetPrototypeV2`, `External::Value()`), so the Electron-ABI rebuild no longer compiles. `better-sqlite3` 13 moved to N-API (`NAPI_VERSION=10`) and publishes prebuilt binaries inside the npm package for `win32`, `darwin` and `linux` (glibc and musl) on x64 and arm64; it has no install script (`gypfile: false`).
+
+**Decision.** Use `better-sqlite3` ^13.2.0 and drop the Electron-ABI rebuild entirely. Packaging keeps only the target platform's prebuild, removes any locally compiled `build/` directory, and checks the binary's architecture from its header.
+
+**Verified on 2026-11-20 (Windows):** the same binary passes the whole backend suite on Node 24 and loads and queries under Electron 45.4.1 (Node 24.22.3, ABI 150; SQLite 3.54.1). The Linux prebuilds require glibc 2.34 (`GLIBCXX_3.4.29`); the macOS prebuilds target macOS 10.7 (x64) and 11.0 (arm64).
+
+**Consequences.**
+
+- **Positive:** one binary for tests, development and the packaged app — the `NODE_MODULE_VERSION` mismatch between system Node and Electron disappears, and no compiler is needed to build or package.
+- **Positive:** an Electron upgrade no longer needs a native rebuild, as long as its Node supports N-API 10.
+- **Negative:** `@prisma/adapter-better-sqlite3` 7.10 declares `better-sqlite3 ^12.6.0`; the app forces 13 with an npm `overrides` entry. The backend suite covers the queries the app makes; the override is removed when Prisma widens its range.
+- **Negative:** Linux now needs glibc 2.34 (Ubuntu 22.04 or later); Ubuntu 20.04 is no longer supported.
+- **Negative:** the loader prefers a locally compiled `build/Release/better_sqlite3.node` over the prebuild, so a stray build directory must never be packaged — `after-pack.cjs` deletes it.
 
 ## Related
 
 - `backend/prisma/schema.prisma` — the single source of truth for the data model
 - `backend/src/config/db.ts` — `initDatabase()`: applies pending migrations via `better-sqlite3`, then opens Prisma client
 - `backend/src/services/` — all DB access is through service files, never in controllers
-- `scripts/after-pack.cjs` — rebuilds `better-sqlite3` for Electron ABI during packaging
+- `scripts/after-pack.cjs` — keeps only the target's `better-sqlite3` prebuild and checks its architecture (BL-36; earlier versions rebuilt it for the Electron ABI)
 - `SRS_SSH_Desktop_App.md §8` — full database schema documentation
