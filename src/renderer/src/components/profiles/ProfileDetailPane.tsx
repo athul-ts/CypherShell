@@ -21,6 +21,7 @@ import {
 import { cn } from '../../lib/utils'
 import { ProfileForm } from './ProfileForm'
 import { useSessionHeartbeat } from '../../hooks/useSessionHeartbeat'
+import { HostKeyDialog, type HostKeyInfo } from './HostKeyDialog'
 
 interface ProfileDetailPaneProps {
   profileId: string
@@ -92,6 +93,8 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
 
+  const [hostKey, setHostKey] = useState<HostKeyInfo | null>(null)
+
   // Tunnels state
   const [activeForwards, setActiveForwards] = useState<ActiveForward[]>([])
   const [tunnelForm, setTunnelForm] = useState<TunnelForm>({
@@ -115,17 +118,26 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
   const status: ConnectionStatus =
     localStatus === 'connected' && sessionEnded ? 'disconnected' : localStatus
 
-  const handleConnect = async (): Promise<void> => {
+  /** BL-38: `acceptHostKey` is the fingerprint the user confirmed in the host-key dialog. */
+  const handleConnect = async (acceptHostKey?: string): Promise<void> => {
     setActiveForwards([])
     setStatus('connecting')
+    setHostKey(null)
     try {
-      const res = await api.post(`/profiles/${profileId}/connect`)
+      const res = acceptHostKey
+        ? await api.post(`/profiles/${profileId}/connect`, { acceptHostKey })
+        : await api.post(`/profiles/${profileId}/connect`)
       setSessionId(res.data.sessionId)
       setStatus('connected')
     } catch (error) {
+      setStatus('disconnected')
+      const data = (error as { response?: { status?: number; data?: HostKeyInfo } }).response
+      if (data?.status === 409 && data.data?.code?.startsWith('HOST_KEY_')) {
+        setHostKey(data.data)
+        return
+      }
       console.error('Failed to connect:', error)
       toast.error('Connection failed. Please check the profile settings and try again.')
-      setStatus('disconnected')
     }
   }
 
@@ -257,6 +269,11 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0a0a0f] overflow-auto">
+      <HostKeyDialog
+        info={hostKey}
+        onTrust={() => hostKey && handleConnect(hostKey.fingerprint)}
+        onClose={() => setHostKey(null)}
+      />
       {/* Header and Connection Status */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-8 border-b border-slate-800/60 bg-gradient-to-b from-[#151821] to-[#0a0a0f]">
         <div className="flex items-center gap-5">
@@ -312,7 +329,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
           </button>
           {status === 'disconnected' && (
             <button
-              onClick={handleConnect}
+              onClick={() => handleConnect()}
               className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
             >
               <Power className="w-4 h-4" />

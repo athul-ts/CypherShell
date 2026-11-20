@@ -9,6 +9,7 @@ import keyRoutes from './routes/key.routes'
 import tunnelRoutes from './routes/tunnel.routes'
 import auditRoutes from './routes/audit.routes'
 import configRoutes from './routes/config.routes'
+import knownHostRoutes from './routes/known-host.routes'
 import { requireAuth, requireAuthFlexible } from './middleware/auth.middleware'
 import {
   callerPolicyFromEnv,
@@ -87,6 +88,7 @@ export function createApp({
   app.use('/api/tunnels', requireAuth, tunnelRoutes)
   app.use('/api/audit', requireAuth, auditRoutes)
   app.use('/api/config', requireAuth, configRoutes)
+  app.use('/api/known-hosts', requireAuth, knownHostRoutes)
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() })

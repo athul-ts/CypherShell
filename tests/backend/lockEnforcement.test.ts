@@ -15,6 +15,7 @@ import type { AddressInfo } from 'net'
 import type { Express } from 'express'
 import { createApp, launch, TEST_LAUNCH_SECRET } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
+import { trustTestServer } from './helpers/knownHosts'
 import { setupTerminalWebSocket } from '../../backend/src/websocket/terminal.ws'
 import { SSHService } from '../../backend/src/services/ssh.service'
 import { AppLockService, type LockPolicy } from '../../backend/src/services/app-lock.service'
@@ -63,6 +64,8 @@ beforeAll(async () => {
   token = setup.body.token
 
   sshServer = await startTestSshServer()
+
+  await trustTestServer(sshServer)
   const profile = await request(app)
     .post('/api/profiles')
     .set(...auth())

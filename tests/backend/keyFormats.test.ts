@@ -14,6 +14,7 @@ import sshpk from 'sshpk'
 import { utils } from 'ssh2'
 import { createApp, launch } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
+import { trustTestServer } from './helpers/knownHosts'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
 
@@ -35,6 +36,7 @@ beforeAll(async () => {
       .set(...launch())
   ).body.token
   server = await startTestSshServer()
+  await trustTestServer(server)
 })
 
 afterAll(async () => {

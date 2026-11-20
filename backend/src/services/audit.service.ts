@@ -32,7 +32,8 @@ export const AUDIT_TYPES = [
   'disconnection',
   'sftp_upload',
   'sftp_download',
-  'key_used'
+  'key_used',
+  'host_key'
 ] as const
 
 export interface AuditQuery {
@@ -91,6 +92,27 @@ export class AuditService {
         success: reason !== 'error',
         errorMessage,
         durationMs
+      }
+    })
+  }
+
+  /** BL-38 / FR-11.5: a host-key decision (prompted, trusted, blocked, removed). */
+  static async logHostKey(
+    profile: { id: string; name: string; host: string } | null,
+    detail: string,
+    success: boolean,
+    errorMessage?: string,
+    host?: string
+  ): Promise<AuditLog> {
+    return prisma.auditLog.create({
+      data: {
+        type: 'host_key',
+        profileId: profile?.id ?? null,
+        profileName: profile?.name ?? null,
+        host: profile?.host ?? host ?? null,
+        detail,
+        success,
+        errorMessage
       }
     })
   }

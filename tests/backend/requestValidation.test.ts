@@ -20,6 +20,7 @@ import net, { type AddressInfo } from 'net'
 import type { Express } from 'express'
 import { createApp, launch } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
+import { trustTestServer } from './helpers/knownHosts'
 import { SSHService } from '../../backend/src/services/ssh.service'
 import { TunnelService } from '../../backend/src/services/tunnel.service'
 import { LocalPathError, LocalPathService } from '../../backend/src/services/local-path.service'
@@ -46,6 +47,7 @@ beforeAll(async () => {
       .set(...launch())
   ).body.token
   sshServer = await startTestSshServer()
+  await trustTestServer(sshServer)
   const profile = await request(app)
     .post('/api/profiles')
     .set(...auth())

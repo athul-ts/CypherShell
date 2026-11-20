@@ -169,6 +169,7 @@ export default function Logs(): React.JSX.Element {
             <option value="sftp_upload">SFTP Upload</option>
             <option value="sftp_download">SFTP Download</option>
             <option value="key_used">Key Used</option>
+            <option value="host_key">Host Key</option>
           </select>
           <select
             value={filterDate}

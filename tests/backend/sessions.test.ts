@@ -18,6 +18,7 @@ import type { Server } from 'http'
 import type { Express } from 'express'
 import { createApp, launch, TEST_LAUNCH_SECRET } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
+import { trustTestServer } from './helpers/knownHosts'
 import { setupTerminalWebSocket } from '../../backend/src/websocket/terminal.ws'
 import { SSHService } from '../../backend/src/services/ssh.service'
 import { TunnelService } from '../../backend/src/services/tunnel.service'
@@ -47,6 +48,8 @@ beforeAll(async () => {
   ).body.token
 
   sshServer = await startTestSshServer()
+
+  await trustTestServer(sshServer)
   const profile = await request(app)
     .post('/api/profiles')
     .set(...auth())

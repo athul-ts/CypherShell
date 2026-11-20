@@ -496,7 +496,8 @@ CypherShell/
 │       │   ├── key.routes.ts             # /api/keys/*
 │       │   ├── tunnel.routes.ts          # /api/tunnels/:sessionId/start|stop
 │       │   ├── audit.routes.ts           # /api/audit/*
-│       │   └── config.routes.ts          # /api/config
+│       │   ├── config.routes.ts          # /api/config
+│       │   └── known-host.routes.ts      # /api/known-hosts
 │       ├── controllers/
 │       │   ├── auth.controller.ts
 │       │   ├── profile.controller.ts
@@ -819,11 +820,11 @@ Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup a
 
 CypherShell currently accepts whatever host key a server presents (no `hostVerifier` in the ssh2 connect config), so anyone on the network path can impersonate a server and capture passwords. This requirement adds trust-on-first-use (TOFU) verification, the model OpenSSH uses with `known_hosts`.
 
-- FR-11.1 — On the first connection to a `host:port`, the server's key type and SHA-256 fingerprint are shown, and the user must accept them before any authentication is attempted ❌
-- FR-11.2 — Accepted host keys are stored per `host:port` in a new `KnownHost` table (key type, SHA-256 fingerprint, first-seen and last-seen timestamps) ❌
-- FR-11.3 — If a later connection presents a different key for the same `host:port`, the connection is aborted before any credential is sent, and a prominent warning shows the stored and presented fingerprints ❌
-- FR-11.4 — Known hosts can be listed and removed in Settings, so a legitimately re-keyed server can be trusted again ❌
-- FR-11.5 — Host-key decisions the backend can observe (confirmation requested, trusted, changed key blocked, known host removed) are written to the audit log ❌ (a user declining the dialog is not visible to the backend)
+- FR-11.1 — On the first connection to a `host:port`, the server's key type and SHA-256 fingerprint are shown, and the user must accept them before any authentication is attempted ✅ (BL-38)
+- FR-11.2 — Accepted host keys are stored per `host:port` in a new `KnownHost` table (key type, SHA-256 fingerprint, first-seen and last-seen timestamps) ✅ (BL-38)
+- FR-11.3 — If a later connection presents a different key for the same `host:port`, the connection is aborted before any credential is sent, and a prominent warning shows the stored and presented fingerprints ✅ (BL-38)
+- FR-11.4 — Known hosts can be listed and removed in Settings, so a legitimately re-keyed server can be trusted again ✅ (BL-38)
+- FR-11.5 — Host-key decisions the backend can observe (confirmation requested, trusted, changed key blocked, known host removed) are written to the audit log ✅ (BL-38; a user declining the dialog is not visible to the backend)
 
 **Acceptance Criteria:**
 
@@ -875,7 +876,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 - All API inputs validated with zod before reaching controllers ✅ (BL-23 — SFTP, tunnel and config joined the profile, auth and key routes)
 - The **local** paths the backend reads and writes for SFTP transfers are validated: absolute, normalized, an existing regular file to upload, an existing directory to download into ✅ (BL-23). (This replaces "no `..` traversal in SFTP paths": for a user with shell access, remote `..` is not a security boundary, so remote paths are only checked for well-formedness.)
 - Context isolation enabled in Electron — renderer has no direct Node.js access
-- SSH host keys are verified before authentication (FR-11) ❌ (BL-38)
+- SSH host keys are verified before authentication (FR-11) ✅ (BL-38)
 - The local API accepts requests only from CypherShell's own renderer: a per-launch secret on `/api/auth/*` and the WebSocket upgrade, a strict Origin allowlist (no `null`, no arbitrary localhost origins in production) and a `Host` header check against DNS rebinding ✅ (BL-17)
 - Token revocation is enforced on every transport (REST, SSE, WebSocket), and locking closes open terminal and SFTP sessions ✅ (BL-18)
 - JWTs are signed with a secret that exists only in the backend's memory, accept only `HS256`, and always carry a revocable `jti`; secret files are readable by the owner only (`0600` in a `0700` directory) ✅ (BL-19)
@@ -1195,11 +1196,14 @@ GET    /api/audit/export              → All entries as CSV (text/csv); the Log
 DELETE /api/audit                     → Clear all logs (BL-06)
 ```
 
-> `type` is one of `connection`, `disconnection`, `sftp_upload`, `sftp_download`, `key_used`; `from`/`to` are ISO dates; `q` searches detail, type, profile, host and error. `pageSize` is at most 200; invalid parameters answer 400.
+> `type` is one of `connection`, `disconnection`, `sftp_upload`, `sftp_download`, `key_used`, `host_key`; `from`/`to` are ISO dates; `q` searches detail, type, profile, host and error. `pageSize` is at most 200; invalid parameters answer 400.
 
 ### 9.10 App Config API
 
 ```
+POST   /api/profiles/:id/connect → { sessionId }; body { acceptHostKey? } (a "SHA256:…" fingerprint the user confirmed). 409 { code: 'HOST_KEY_UNKNOWN' | 'HOST_KEY_MISMATCH', host, port, keyType, fingerprint, knownKeyType?, knownFingerprint?, error } when the host key is new or changed (BL-38)
+GET    /api/known-hosts        → Trusted SSH host keys, newest lastSeenAt first (BL-38)
+DELETE /api/known-hosts/:id    → Forget a host key; 404 for an unknown id (BL-38)
 GET    /api/config    → { theme, defaultFont, defaultFontSize, logRetentionDays, lockEnabled, hasMasterPassword, autoLockMinutes, … }
 PUT    /api/config    → Update theme, fonts, autoLockMinutes, logRetentionDays
 ```
@@ -2294,11 +2298,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-38 — SSH Host-Key Verification
+### ~~BL-38 — SSH Host-Key Verification~~ ✅ Implemented
 
 **Requirements:** FR-11.1 … FR-11.5, NFR-02
 **Priority:** High
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-20 — regression tests: tests/backend/hostKeys.test.ts, tests/renderer/components/profiles/HostKeyDialog.test.tsx, tests/renderer/components/profiles/ProfileHostKey.test.tsx, tests/renderer/components/settings/KnownHostsCard.test.tsx
 
 **Problem:** the SSH client accepts any host key (no `hostVerifier`), so anyone on the network path can impersonate a server and capture its password.
 
@@ -2317,13 +2321,13 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] The first connect to a host returns 409 `HOST_KEY_UNKNOWN` with the key type and fingerprint, and the server sees no authentication attempt
-- [ ] Repeating the connect with the matching `acceptHostKey` connects and stores the key; a non-matching `acceptHostKey` stores nothing and is refused
-- [ ] A trusted host connects without a prompt and its `lastSeenAt` advances
-- [ ] A changed key returns 409 `HOST_KEY_MISMATCH` with both fingerprints, the server sees no authentication attempt, and `acceptHostKey` does not override it
-- [ ] Removing a known host makes the next connect prompt again; every decision is in the audit log
-- [ ] `fingerprintOf` matches the SHA-256 fingerprint `sshpk` computes for the same key
-- [ ] Integration tests against the in-process `ssh2.Server` cover accept, reconnect and mismatch
+- [x] The first connect to a host returns 409 `HOST_KEY_UNKNOWN` with the key type and fingerprint, and the server sees no authentication attempt
+- [x] Repeating the connect with the matching `acceptHostKey` connects and stores the key; a non-matching `acceptHostKey` stores nothing and is refused
+- [x] A trusted host connects without a prompt and its `lastSeenAt` advances
+- [x] A changed key returns 409 `HOST_KEY_MISMATCH` with both fingerprints, the server sees no authentication attempt, and `acceptHostKey` does not override it
+- [x] Removing a known host makes the next connect prompt again; every decision is in the audit log
+- [x] `fingerprintOf` matches the SHA-256 fingerprint `sshpk` computes for the same key
+- [x] Integration tests against the in-process `ssh2.Server` cover accept, reconnect and mismatch
 
 ---
 

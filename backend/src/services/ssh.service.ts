@@ -7,6 +7,13 @@ import { AuditService, type DisconnectReason } from './audit.service'
 import { SftpService } from './sftp.service'
 import { TunnelService } from './tunnel.service'
 import { KeyService } from './key.service'
+import { HostKeyError, KnownHostService } from './known-host.service'
+import { logger } from './logger.service'
+
+export interface CreateSessionOptions {
+  /** Fingerprint the user confirmed for a host key that was not trusted yet (BL-38). */
+  acceptHostKey?: string
+}
 
 export interface SSHSession {
   id: string
@@ -111,9 +118,14 @@ export class SSHService {
     }
   }
 
-  static async createSession(profile: Profile): Promise<SSHSession> {
+  static async createSession(
+    profile: Profile,
+    options: CreateSessionOptions = {}
+  ): Promise<SSHSession> {
     const client = new Client()
     const sessionId = `session-${randomUUID()}`
+    // Set by the host-key verifier when it stops the handshake (BL-38).
+    let hostKeyError = null as HostKeyError | null
 
     const connectConfig: ConnectConfig = {
       host: profile.host,
@@ -121,7 +133,51 @@ export class SSHService {
       username: profile.username,
       readyTimeout: 10000, // FUN-09: timeout after 10s instead of ~20s default
       keepaliveInterval: 10000,
-      keepaliveCountMax: 3
+      keepaliveCountMax: 3,
+      // BL-38 / FR-11: runs during key exchange, before any credential is sent.
+      hostVerifier: (key: Buffer, verify: (valid: boolean) => void): void => {
+        KnownHostService.check(profile.host, profile.port, key, options.acceptHostKey)
+          .then(async (result) => {
+            const { keyType, fingerprint } = result.presented
+            const details = {
+              host: profile.host,
+              port: profile.port,
+              keyType,
+              fingerprint,
+              knownKeyType: result.known?.keyType,
+              knownFingerprint: result.known?.fingerprint
+            }
+            if (result.outcome === 'accepted') {
+              await AuditService.logHostKey(
+                profile,
+                'Host key trusted',
+                true,
+                `${keyType} ${fingerprint}`
+              )
+            } else if (result.outcome === 'unknown') {
+              hostKeyError = new HostKeyError('HOST_KEY_UNKNOWN', details)
+              await AuditService.logHostKey(
+                profile,
+                'Unknown host key — confirmation requested',
+                true,
+                `${keyType} ${fingerprint}`
+              )
+            } else if (result.outcome === 'mismatch') {
+              hostKeyError = new HostKeyError('HOST_KEY_MISMATCH', details)
+              await AuditService.logHostKey(
+                profile,
+                'Host key changed — connection blocked',
+                false,
+                `presented ${fingerprint}, trusted ${result.known?.fingerprint}`
+              )
+            }
+            verify(result.outcome === 'trusted' || result.outcome === 'accepted')
+          })
+          .catch((err: unknown) => {
+            logger.error('Host key check failed: ' + String(err))
+            verify(false)
+          })
+      }
     }
 
     if (profile.authMethod === 'password') {
@@ -155,6 +211,11 @@ export class SSHService {
       // Only for the handshake: after `ready` an error is part of the session's end (below),
       // not a second "connection failed" entry (BL-32).
       const onConnectError = (err: Error): void => {
+        // A refused host key is logged by the verifier, not as a failed connection.
+        if (hostKeyError) {
+          reject(hostKeyError)
+          return
+        }
         AuditService.logConnection(
           profile.id,
           profile.name,

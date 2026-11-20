@@ -9,6 +9,7 @@
  *  - direct-tcpip channels (the server side of `forwardOut`) that echo
  */
 import { Server, utils, type Connection, type ParsedKey } from 'ssh2'
+import { createHash } from 'crypto'
 import type { AddressInfo } from 'net'
 
 export interface TestSshServerOptions {
@@ -23,6 +24,10 @@ export interface TestSshServer {
   port: number
   username: string
   password: string
+  /** The server's host key as a client sees it (BL-38). */
+  hostKey: { type: string; fingerprint: string; publicKey: string }
+  /** Authentication requests received so far; stays 0 if the client stopped at the host key. */
+  authAttempts(): number
   /** Number of client connections currently open. */
   connectionCount(): number
   /** Hangs up on every connected client, like a server dropping the link (BL-32). */
@@ -45,7 +50,10 @@ export async function startTestSshServer(
   const authorized: ParsedKey[] = (options.authorizedKeys ?? []).map(parsePublicKey)
 
   const hostKey = utils.generateKeyPairSync('ed25519').private
+  const parsedHostKey = parsePublicKey(hostKey)
+  const blob = parsedHostKey.getPublicSSH()
   const connections = new Set<Connection>()
+  let authAttempts = 0
 
   const server = new Server({ hostKeys: [hostKey] }, (client) => {
     connections.add(client)
@@ -55,6 +63,7 @@ export async function startTestSshServer(
     })
 
     client.on('authentication', (ctx) => {
+      authAttempts++
       if (ctx.username !== username) return ctx.reject()
 
       if (ctx.method === 'password') {
@@ -115,6 +124,13 @@ export async function startTestSshServer(
     port,
     username,
     password,
+    hostKey: {
+      type: parsedHostKey.type,
+      fingerprint:
+        'SHA256:' + createHash('sha256').update(blob).digest('base64').replace(/=+$/, ''),
+      publicKey: blob.toString('base64')
+    },
+    authAttempts: () => authAttempts,
     connectionCount: () => connections.size,
     authorize: (publicKey) => {
       authorized.push(parsePublicKey(publicKey))

@@ -8,6 +8,7 @@ import request from 'supertest'
 import type { Express } from 'express'
 import { createApp, launch } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
+import { trustTestServer } from './helpers/knownHosts'
 import { SSHService } from '../../backend/src/services/ssh.service'
 import { csvField } from '../../backend/src/services/audit.service'
 import { prisma } from '../../backend/src/config/db'
@@ -32,6 +33,7 @@ beforeAll(async () => {
       .set(...launch())
   ).body.token
   sshServer = await startTestSshServer()
+  await trustTestServer(sshServer)
   const profile = await request(app)
     .post('/api/profiles')
     .set(...auth())

@@ -15,6 +15,7 @@ import { useTerminalThemeStore } from '../store/terminalThemeStore'
 import { TERMINAL_THEMES, THEME_LABELS } from '../lib/terminalThemes'
 import { MIN_MASTER_PASSWORD_LENGTH } from '../lib/passwordStrength'
 import { PasswordStrengthHint } from '../components/PasswordStrengthHint'
+import { KnownHostsCard } from '../components/settings/KnownHostsCard'
 
 interface AppConfig {
   theme: string
@@ -319,6 +320,9 @@ export default function Settings(): React.JSX.Element {
             )}
           </div>
         </div>
+
+        {/* BL-38: trusted SSH host keys */}
+        <KnownHostsCard />
 
         {/* Data Management */}
         <div className="bg-[#151821] border border-slate-800 rounded-xl overflow-hidden">

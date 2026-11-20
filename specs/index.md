@@ -206,11 +206,11 @@
 
 | ID      | Requirement                                                          | Status |
 | ------- | -------------------------------------------------------------------- | ------ |
-| FR-11.1 | First connect shows key type + SHA-256 fingerprint; user must accept | ❌     |
-| FR-11.2 | Accepted host keys stored per host:port in a `KnownHost` table       | ❌     |
-| FR-11.3 | Changed host key aborts before credentials are sent, with a warning  | ❌     |
-| FR-11.4 | Known hosts can be listed and removed in Settings                    | ❌     |
-| FR-11.5 | Host-key decisions the backend observes written to the audit log     | ❌     |
+| FR-11.1 | First connect shows key type + SHA-256 fingerprint; user must accept | ✅     |
+| FR-11.2 | Accepted host keys stored per host:port in a `KnownHost` table       | ✅     |
+| FR-11.3 | Changed host key aborts before credentials are sent, with a warning  | ✅     |
+| FR-11.4 | Known hosts can be listed and removed in Settings                    | ✅     |
+| FR-11.5 | Host-key decisions the backend observes written to the audit log     | ✅     |
 
 ---
 
@@ -273,7 +273,7 @@
 | ~~BL-35~~ | ~~Light theme and bundled font~~                                    | ~~Low~~      | §11.2, §11.3                         | ✅ Done         |
 | ~~BL-36~~ | ~~Dependency security update (Electron 45)~~                        | ~~High~~     | NFR-02, NFR-07                       | ✅ Done         |
 | ~~BL-37~~ | ~~CI on every branch~~ | ~~High~~ | NFR-06, NFR-07 | ✅ Done |
-| BL-38     | SSH host-key verification                                           | High         | FR-11.1 … FR-11.5                    | ❌ Open         |
+| ~~BL-38~~ | ~~SSH host-key verification~~ | ~~High~~ | FR-11.1 … FR-11.5 | ✅ Done |
 | BL-39     | Change master password                                              | High         | FR-07.8                              | ❌ Open         |
 | BL-40     | Keyboard-interactive login                                          | Medium       | FR-01.9                              | ❌ Open         |
 | BL-41     | Automatic SSH reconnect                                             | Medium       | FR-02.6, NFR-03                      | ❌ Open         |

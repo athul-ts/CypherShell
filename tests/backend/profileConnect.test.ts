@@ -7,6 +7,7 @@ import request from 'supertest'
 import type { Express } from 'express'
 import { createApp, launch } from './helpers/createApp'
 import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
+import { trustTestServer } from './helpers/knownHosts'
 import { SSHService } from '../../backend/src/services/ssh.service'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
@@ -29,6 +30,7 @@ beforeAll(async () => {
       .set(...launch())
   ).body.token
   sshServer = await startTestSshServer()
+  await trustTestServer(sshServer)
 })
 
 afterEach(() => {

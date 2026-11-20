@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../config/db'
 import { CryptoService } from '../services/crypto.service'
 import { SSHService } from '../services/ssh.service'
+import { HostKeyError } from '../services/known-host.service'
 import { ProfileService } from '../services/profile.service'
 import { logger } from '../services/logger.service'
 import type { ExportedProfile, ConflictResolution } from '../services/profile.service'
@@ -159,19 +160,36 @@ export async function duplicateProfile(req: Request, res: Response): Promise<voi
   res.status(201).json(sanitizeProfile(duplicate))
 }
 
+/** BL-38: the fingerprint the user confirmed for a host key that was not trusted yet. */
+const ConnectBodySchema = z.object({
+  acceptHostKey: z
+    .string()
+    .regex(/^SHA256:[A-Za-z0-9+/]{43}$/, 'acceptHostKey must be a SHA256 fingerprint')
+    .optional()
+})
+
 export async function connectProfile(req: Request, res: Response): Promise<void | Response> {
   const id = req.params.id as string
+  const body = ConnectBodySchema.safeParse(req.body ?? {})
+  if (!body.success) {
+    return res.status(400).json({ error: body.error.issues[0]?.message ?? 'Invalid request' })
+  }
   const profile = await prisma.profile.findUnique({ where: { id } })
   if (!profile) return res.status(404).json({ error: 'Profile not found' })
 
   try {
-    const session = await SSHService.createSession(profile)
+    const session = await SSHService.createSession(profile, {
+      acceptHostKey: body.data.acceptHostKey
+    })
     // A failure to record the time must not fail a connection that succeeded.
     await ProfileService.markConnected(profile.id).catch((err) =>
       logger.error('Could not record lastConnectedAt: ' + String(err))
     )
     res.json({ sessionId: session.id })
   } catch (error: unknown) {
+    if (error instanceof HostKeyError) {
+      return res.status(409).json({ code: error.code, ...error.details, error: error.message })
+    }
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to connect'
     })
