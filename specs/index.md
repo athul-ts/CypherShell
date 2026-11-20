@@ -1,6 +1,6 @@
 # CypherShell — Spec Index
 
-**SRS Version:** 3.5 | **Last Updated:** 2026-11-18
+**SRS Version:** 3.6 | **Last Updated:** 2026-11-20
 **Source of Truth:** `SRS_SSH_Desktop_App.md`
 
 > This file is the fast-lookup reference for all requirement IDs. For full text, acceptance criteria, and implementation notes, read the corresponding section in `SRS_SSH_Desktop_App.md`.
@@ -20,7 +20,7 @@
 
 ### FR-01 — Saved Connection Profiles
 
-**SRS §6.1** | Priority: High | Overall: ✅ Implemented
+**SRS §6.1** | Priority: High | Overall: ⚠️ Partially Implemented (FR-01.9 — BL-40)
 
 | ID      | Requirement                                                                  | Status |
 | ------- | ---------------------------------------------------------------------------- | ------ |
@@ -32,12 +32,13 @@
 | FR-01.6 | Profile tagging/grouping                                                     | ✅     |
 | FR-01.7 | Real-time search and filter                                                  | ✅     |
 | FR-01.8 | Edit existing profile fields from Profile Detail tab and Home page card menu | ✅     |
+| FR-01.9 | Keyboard-interactive login for password profiles                             | ❌     |
 
 ---
 
 ### FR-02 — SSH Terminal
 
-**SRS §6.2** | Priority: High | Overall: ⚠️ Partially Implemented (FR-02.6 tracked)
+**SRS §6.2** | Priority: High | Overall: ⚠️ Partially Implemented (FR-02.6 — BL-41)
 
 | ID       | Requirement                                                    | Status |
 | -------- | -------------------------------------------------------------- | ------ |
@@ -132,7 +133,7 @@
 
 ### FR-07 — Application Lock
 
-**SRS §6.7** | Priority: Medium | Overall: ⚠️ Partially Implemented (FR-07.8 not implemented)
+**SRS §6.7** | Priority: Medium | Overall: ⚠️ Partially Implemented (FR-07.8 — BL-39)
 
 | ID      | Requirement                                                                 | Status |
 | ------- | --------------------------------------------------------------------------- | ------ |
@@ -201,7 +202,7 @@
 
 ### FR-11 — SSH Host-Key Verification
 
-**SRS §6.11** | Priority: High | Overall: ❌ Not Implemented (not scheduled)
+**SRS §6.11** | Priority: High | Overall: ❌ Not Implemented (BL-38)
 
 | ID      | Requirement                                                          | Status |
 | ------- | -------------------------------------------------------------------- | ------ |
@@ -209,7 +210,7 @@
 | FR-11.2 | Accepted host keys stored per host:port in a `KnownHost` table       | ❌     |
 | FR-11.3 | Changed host key aborts before credentials are sent, with a warning  | ❌     |
 | FR-11.4 | Known hosts can be listed and removed in Settings                    | ❌     |
-| FR-11.5 | Host-key decisions written to the audit log                          | ❌     |
+| FR-11.5 | Host-key decisions the backend observes written to the audit log     | ❌     |
 
 ---
 
@@ -270,17 +271,29 @@
 | ~~BL-33~~ | ~~Key bundle overwrite in place~~                                   | ~~Low~~      | FR-10.6                              | ✅ Done         |
 | ~~BL-34~~ | ~~Saved tunnel rules~~                                              | ~~Medium~~   | FR-06.4, FR-09.2                     | ✅ Done         |
 | ~~BL-35~~ | ~~Light theme and bundled font~~                                    | ~~Low~~      | §11.2, §11.3                         | ✅ Done         |
+| BL-36     | Dependency security update (Electron 45)                            | High         | NFR-02, NFR-07                       | ❌ Open         |
+| BL-37     | CI on every branch                                                  | High         | NFR-06, NFR-07                       | ❌ Open         |
+| BL-38     | SSH host-key verification                                           | High         | FR-11.1 … FR-11.5                    | ❌ Open         |
+| BL-39     | Change master password                                              | High         | FR-07.8                              | ❌ Open         |
+| BL-40     | Keyboard-interactive login                                          | Medium       | FR-01.9                              | ❌ Open         |
+| BL-41     | Automatic SSH reconnect                                             | Medium       | FR-02.6, NFR-03                      | ❌ Open         |
+| BL-42     | Thin controllers                                                    | Medium       | NFR-06                               | ❌ Open         |
+| BL-43     | Logging                                                             | Medium       | NFR-06                               | ❌ Open         |
+| BL-44     | Cleanup and documentation                                           | Low          | NFR-06                               | ❌ Open         |
+| BL-45     | Performance checks                                                  | Medium       | NFR-01                               | ❌ Open         |
+| BL-46     | Backend in utilityProcess + fuses (needs ADR-005)                   | Medium       | NFR-02                               | ❌ Open         |
 
 ---
 
 ## Architecture Decisions
 
-| ID      | Decision                                                | Record                                                                               |
-| ------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| ADR-001 | Use electron-vite over Next.js/CRA                      | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)       |
-| ADR-002 | Spawn Express as child process over direct Electron IPC | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)   |
-| ADR-003 | SQLite + Prisma over cloud/external database            | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)       |
-| ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1  | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md) |
+| ID      | Decision                                                 | Record                                                                                             |
+| ------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| ADR-001 | Use electron-vite over Next.js/CRA                       | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)                     |
+| ADR-002 | Spawn Express as child process over direct Electron IPC  | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)                 |
+| ADR-003 | SQLite + Prisma over cloud/external database             | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)                     |
+| ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1   | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md)               |
+| ADR-005 | Backend in a utility process + Electron fuses (proposed) | [specs/decisions/ADR-005-backend-utility-process.md](decisions/ADR-005-backend-utility-process.md) |
 
 ---
 

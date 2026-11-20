@@ -2,10 +2,15 @@
 
 ## CypherShell — Secure SSH Desktop Client
 
-**Version:** 3.5
+**Version:** 3.6
 **Author:** Athul T S
-**Date:** 2026-11-18
+**Date:** 2026-11-20
 **Status:** Living Document — v1.0 Feature Complete, v1.1 Backlog Active (BL-10 … BL-16 implemented 2026-11-10; BL-17 … BL-28 implemented 2026-11-11)
+
+> **Changelog from v3.5:**
+>
+> - Phases 4–5 (2026-11-20): BL-36 … BL-46 specified — dependency security and the Electron 45 upgrade, CI on every branch, SSH host-key verification (FR-11), change master password (FR-07.8), keyboard-interactive login (new FR-01.9), automatic SSH reconnect (FR-02.6), thin controllers, logging, cleanup, performance checks (NFR-01) and the utility-process/fuses hardening (ADR-005, proposed)
+> - FR-11.5 reworded to what the backend can observe (prompted, trusted, blocked, removed); the stale BL-02 "not built" note is corrected
 
 > **Changelog from v3.4:**
 >
@@ -150,16 +155,16 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 
 ### 2.3 Operating Environment
 
-| Item         | Detail                                                             |
-| ------------ | ------------------------------------------------------------------ |
-| OS           | Windows 10+, macOS 12+, Ubuntu 20.04+                              |
-| Architecture | x64, ARM64 (Apple Silicon)                                         |
-| Runtime      | Node.js 20+ bundled inside Electron — user installs nothing        |
-| Electron     | v39                                                                |
-| Minimum RAM  | 512MB                                                              |
-| Disk space   | ~200MB installed                                                   |
-| Network      | Active connection to target SSH servers                            |
-| Local DB     | SQLite — single `.db` file in OS user data directory, auto-created |
+| Item         | Detail                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| OS           | Windows 10+, macOS 12+ (macOS 13+ from BL-36), Ubuntu 20.04+                              |
+| Architecture | x64, ARM64 (Apple Silicon)                                                                |
+| Runtime      | Node.js bundled inside Electron — user installs nothing (Node 24 with Electron 45, BL-36) |
+| Electron     | v39 (upgrade to v45 — BL-36)                                                              |
+| Minimum RAM  | 512MB                                                                                     |
+| Disk space   | ~200MB installed                                                                          |
+| Network      | Active connection to target SSH servers                                                   |
+| Local DB     | SQLite — single `.db` file in OS user data directory, auto-created                        |
 
 ### 2.4 Assumptions
 
@@ -548,7 +553,7 @@ CypherShell/
 
 ### FR-01: Saved Connection Profiles
 
-**Priority:** High | **Status:** ✅ Implemented
+**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-01.9 — BL-40)
 
 - FR-01.1 — Profile fields: Name, Host, Port (default 22), Username, Auth method (Password / SSH Key / Key + Passphrase) ✅ (BL-13)
 - FR-01.2 — Home page shows profile cards: name, host, group tag, last connected time ✅ (BL-31 — a successful connection records `lastConnectedAt`; cards show "Last connected <time ago>" or "Never connected")
@@ -572,6 +577,8 @@ CypherShell/
 - FR-01.8.5 — On successful save, TanStack Query caches for `['profiles']` and `['profile', profileId]` are invalidated so all views reflect the update immediately ✅
 - FR-01.8.6 — If the profile's `authMethod` changes (e.g. from Password to SSH Key), the form clears the irrelevant credential fields before submitting ✅
 - FR-01.8.7 — Form validation mirrors the create flow: Name, Host, Port, and Username are required; Port must be 1–65535 ✅ (BL-31 — the form shows an error under each invalid field and sends nothing until it is valid; a key method also needs a key, and a new password or passphrase where one is required)
+
+- FR-01.9 — Password profiles also log in to servers that offer only keyboard-interactive authentication: a single hidden prompt is answered with the stored password; any other challenge (one-time codes, several prompts) fails with a clear message ❌ (BL-40)
 
 #### Acceptance Criteria
 
@@ -604,14 +611,14 @@ CypherShell/
 
 ### FR-02: SSH Terminal
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-02.6 tracked)
+**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-02.6 — BL-41)
 
 - FR-02.1 — Connecting opens a Profile Details tab; users spawn standalone terminal console windows from it ✅
 - FR-02.2 — xterm.js renders with full ANSI colour and escape sequence support, including UTF-8 text ✅ (BL-15 — output is written as bytes and input is encoded as UTF-8)
 - FR-02.3 — PTY resizes dynamically when the standalone window resizes (`@xterm/addon-fit`) ✅ (BL-29 — a resize sent before the remote shell is ready is applied once it starts)
 - FR-02.4 — Copy (Ctrl+Shift+C) supported; right-click pastes the clipboard ✅ (BL-08)
 - FR-02.5 — Full keyboard support: Ctrl+C, Ctrl+Z, Tab, arrow keys, function keys ✅
-- FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ — a socket drop reconnects with that backoff to a new shell on the same SSH session; `exit` (close 1000), a vanished session (1008) and a lock (4001) are not retried (BL-29). An SSH-level drop is not re-established from the profile (tracked, not scheduled)
+- FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ — a socket drop reconnects with that backoff to a new shell on the same SSH session; `exit` (close 1000), a vanished session (1008) and a lock (4001) are not retried (BL-29). An SSH-level drop is not re-established from the profile (BL-41)
 - FR-02.7 — Connection status badge: connected / reconnecting / disconnected ✅ (BL-29)
 - FR-02.8 — Closing standalone terminal window closes its shell; the SSH session stays open while other terminals, tunnels, transfers or an open Profile Details tab use it ✅ (BL-11)
 - FR-02.9 — The JWT reaches popup windows through a one-time IPC hand-off, to that window only — no re-auth required, and no token in any window URL ✅ (BL-20)
@@ -689,7 +696,7 @@ CypherShell/
 
 ### FR-07: Application Lock
 
-**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-07.8 not implemented)
+**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-07.8 — BL-39)
 
 - FR-07.1 — First-run setup wizard: set master password or skip ✅ (BL-10 — startup jobs no longer create the config row)
 - FR-07.2 — Lock screen shown on app open if lock is enabled ✅
@@ -698,7 +705,7 @@ CypherShell/
 - FR-07.5 — Auto-lock after configurable idle timeout (default 15 minutes) ✅ (BL-18 — one idle clock in the main process counts input in every window; a lock closes the terminal and SFTP windows and their sockets)
 - FR-07.6 — Lost master password = all encrypted data permanently unrecoverable — shown prominently ✅
 - FR-07.7 — Changing the lock mode never loses data: setting a master password on a skip-lock install, or turning lock off, re-encrypts every stored secret under the new key in a single transaction, and turning lock off requires the current master password ✅ (BL-10 — `SecretsService.rekey`, `POST /api/auth/setup-password`, `POST /api/auth/disable-lock`)
-- FR-07.8 — Change master password (current + new password; all secrets re-encrypted in one transaction) ❌ — not implemented, not scheduled
+- FR-07.8 — Change master password (current + new password; all secrets re-encrypted in one transaction) ❌ — not implemented (BL-39)
 
 ---
 
@@ -808,7 +815,7 @@ Export SSH keys as encrypted `.cskb` (CypherShell Key Bundle) files for backup a
 
 ### FR-11: SSH Host-Key Verification
 
-**Priority:** High | **Status:** ❌ Not Implemented (not scheduled)
+**Priority:** High | **Status:** ❌ Not Implemented (BL-38)
 
 CypherShell currently accepts whatever host key a server presents (no `hostVerifier` in the ssh2 connect config), so anyone on the network path can impersonate a server and capture passwords. This requirement adds trust-on-first-use (TOFU) verification, the model OpenSSH uses with `known_hosts`.
 
@@ -816,7 +823,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 - FR-11.2 — Accepted host keys are stored per `host:port` in a new `KnownHost` table (key type, SHA-256 fingerprint, first-seen and last-seen timestamps) ❌
 - FR-11.3 — If a later connection presents a different key for the same `host:port`, the connection is aborted before any credential is sent, and a prominent warning shows the stored and presented fingerprints ❌
 - FR-11.4 — Known hosts can be listed and removed in Settings, so a legitimately re-keyed server can be trusted again ❌
-- FR-11.5 — Host-key decisions (accepted, declined, mismatch) are written to the audit log ❌
+- FR-11.5 — Host-key decisions the backend can observe (confirmation requested, trusted, changed key blocked, known host removed) are written to the audit log ❌ (a user declining the dialog is not visible to the backend)
 
 **Acceptance Criteria:**
 
@@ -856,7 +863,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 | Maximum concurrent SSH sessions         | 20 without memory issues |
 | SQLite query time (all typical queries) | < 50ms                   |
 
-⚠️ These targets have not been measured — no benchmark or timing test exists (tracked, not scheduled).
+⚠️ These targets have not been measured — no benchmark or timing test exists (BL-45).
 
 ### NFR-02: Security
 
@@ -868,7 +875,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 - All API inputs validated with zod before reaching controllers ✅ (BL-23 — SFTP, tunnel and config joined the profile, auth and key routes)
 - The **local** paths the backend reads and writes for SFTP transfers are validated: absolute, normalized, an existing regular file to upload, an existing directory to download into ✅ (BL-23). (This replaces "no `..` traversal in SFTP paths": for a user with shell access, remote `..` is not a security boundary, so remote paths are only checked for well-formedness.)
 - Context isolation enabled in Electron — renderer has no direct Node.js access
-- SSH host keys are verified before authentication (FR-11) ❌
+- SSH host keys are verified before authentication (FR-11) ❌ (BL-38)
 - The local API accepts requests only from CypherShell's own renderer: a per-launch secret on `/api/auth/*` and the WebSocket upgrade, a strict Origin allowlist (no `null`, no arbitrary localhost origins in production) and a `Host` header check against DNS rebinding ✅ (BL-17)
 - Token revocation is enforced on every transport (REST, SSE, WebSocket), and locking closes open terminal and SFTP sessions ✅ (BL-18)
 - JWTs are signed with a secret that exists only in the backend's memory, accept only `HS256`, and always carry a revocable `jti`; secret files are readable by the owner only (`0600` in a `0700` directory) ✅ (BL-19)
@@ -880,7 +887,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 ### NFR-03: Reliability
 
 - SSH session errors are isolated per tab — one failure does not affect others ✅ (BL-16 — every forwarded socket has an error handler)
-- Auto-reconnect: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ (see FR-02.6)
+- Auto-reconnect: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ (see FR-02.6, BL-41)
 - Electron main auto-restarts Express if it crashes unexpectedly ✅ (BL-16)
 - SQLite WAL mode — prevents corruption on force-quit
 - Only one instance of the app runs at a time; a second launch brings the running app to the front ✅ (BL-25)
@@ -896,6 +903,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 ### NFR-05: Cross-Platform
 
 - Identical behaviour on Windows, macOS, and Linux
+- macOS 13 or later (required by Electron 44 and later — BL-36)
 - Native file dialogs via Electron IPC for all file/directory selection
 - `path.posix` for remote paths, `path` (OS-aware) for local paths
 - Keyboard shortcuts adapted per OS via Electron accelerators ⚠️ — no application accelerators are defined; shortcuts are handled in the renderer (tracked, not scheduled)
@@ -904,7 +912,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 
 - 100% TypeScript — renderer, backend, main, preload; all three are type-checked by `npm run typecheck`
 - ESLint + Prettier enforced
-- Business logic only in services — controllers are thin ⚠️ — the profile and auth controllers still call Prisma directly (tracked, not scheduled)
+- Business logic only in services — controllers are thin ⚠️ — the profile and auth controllers still call Prisma directly (BL-42)
 - Prisma schema is the single source of truth for data shapes
 - E2E tests run the built app on a throwaway profile (`--user-data-dir` in a temp directory, deleted afterwards), never on the user's real `userData` (BL-27)
 
@@ -1540,7 +1548,7 @@ The destroyed stream was the session's shared SFTP channel, so cancelling one tr
 
 Implemented: `TunnelService.checkPort()` probes `127.0.0.1:localPort` before local and dynamic forwards and rejects with "Port N is already in use".
 
-⚠️ Not built: the structured `{ code: 'PORT_IN_USE', port }` error and the frontend warning; `ProfileDetailPane` shows a generic "Failed to start tunnel" toast (tracked, not scheduled).
+Completed by BL-31: the API answers `409 { code: 'PORT_IN_USE', port }` and `ProfileDetailPane` names the busy port.
 
 ---
 
@@ -2225,4 +2233,263 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 ---
 
-_End of SRS Document — v3.5_
+### Phases 4–5 — Security, Reliability and Quality (BL-36 … BL-46)
+
+Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, keyboard-interactive login, SSH reconnect); Phase 5 covers dependencies, CI, code structure, logging and measurement. BL-36 and BL-37 come first so every later change is tested on the shipped runtime and enforced by CI. Each item is implemented with regression tests, and its badges are updated when it lands. BL-46 does not start until ADR-005 is accepted.
+
+---
+
+### BL-36 — Dependency Security Update (Electron 45)
+
+**Requirements:** NFR-02, NFR-07
+**Priority:** High
+**Status:** ❌ Open
+
+**Problem:** `npm audit` (2026-11-20) reports 18 vulnerabilities in the backend's production dependencies (critical: `proxy-addr` via express; high: `ws`, `zod`, `body-parser`, the Prisma tooling chain, and the unused `multer` and `node-forge`) and 48 at the root (critical: `tar` via `@electron/rebuild` 3; high: `electron`, `axios`, `electron-updater`, `react-router`, `zod`, `vite`, `postcss`). Electron 39 is out of support, and fixes exist only in Electron 42.11.16 and later.
+
+**Work:**
+
+- Root: `electron` ^45.4.1, `electron-builder` latest 26.x, `@electron/rebuild` ^4 (ESM — `scripts/rebuild-native.cjs` uses a dynamic `import()`), `@playwright/test` ^1.65, `@types/node` ^24; `npm audit fix` (never `--force`) for `axios`, `electron-updater`, `react-router-dom`, `zod`, `vite`, `postcss`; remove the unused `react-dropzone`. Keep `electron-vite` 5.
+- Backend: latest `express` 5.x, `ws` 8.x, `zod` 4.x and `prisma` / `@prisma/*` 7.x (`npx prisma generate` afterwards); remove the unused `multer`, `@types/multer`, `node-forge`, `portfinder`, `nodemon`, `ts-node` and the unused `dev` script; `@types/node` ^24 and `typescript` ~5.9.3 so the repository has one TypeScript version; `build.cjs` targets `node24`.
+- Electron 45: `postinstall` becomes `install-electron && electron-builder install-app-deps` (Electron 42 stopped downloading the binary on `npm install`). `safeStorage` moves to `isAsyncEncryptionAvailable` / `encryptStringAsync` / `decryptStringAsync` (the synchronous API is removed in Electron 46); the `secretFiles.ts` codec becomes asynchronous and its caller awaits it before the backend starts. Key files written by the old API must still load. The built preload must not use `Buffer`, `setImmediate` or `require('events')` (removed from sandboxed preloads in Electron 45).
+- `CLAUDE.md`, §2.3 and the technology table name Electron 45, the Node 24 runtime and TypeScript 5.9.
+
+**Acceptance Criteria:**
+
+- [ ] Backend `npm audit --omit=dev` reports no high or critical advisory
+- [ ] Root `npm audit` reports no critical advisory, and none in `electron`, `axios`, `electron-updater`, `react-router` or `zod`
+- [ ] Typecheck, lint, all backend and renderer tests and the e2e suite pass
+- [ ] `npm run build:win` succeeds and the unpacked app starts on a throwaway profile; terminal, SFTP and the light theme work
+- [ ] An existing storage-key file written with the synchronous `safeStorage` API is still read
+
+---
+
+### BL-37 — CI on Every Branch
+
+**Requirements:** NFR-06, NFR-07
+**Priority:** High
+**Status:** ❌ Open
+
+**Problem:** CI runs only on pull requests to `features`, on Node 20 (end of life); releases and PRs to `main` run no tests; the Electron suite (e2e) never runs in CI; there is no dependency scanning. The second e2e test passes without checking anything because it looks for a "Skip" button that the wizard does not have. Whether one `electron-builder --mac` run lists both macOS architectures in `latest-mac.yml` has never been verified (open question from NFR-07).
+
+**Work:**
+
+- `ci.yml`: runs on `push` to `ats`, on pull requests to `ats`, `features`, `dev`, `qa` and `main`, and as a reusable workflow; Node from a new `.nvmrc` (`24`). Jobs: **check** (typecheck, lint, `npm audit --omit=dev --audit-level=high` for the backend, `npm audit --audit-level=critical` at the root); **test** (backend and renderer tests on `ubuntu-latest` and `windows-2022`); **e2e** (`build:e2e` then `xvfb-run -a npm run test:e2e`, report uploaded on failure).
+- `release.yml` calls `ci.yml` and the installer build waits for it; `build.yml` takes its Node version from `.nvmrc`.
+- `scripts/check-mac-update-feed.cjs` fails the macOS build unless `latest-mac.yml` lists both `-macos-x64.zip` and `-macos-arm64.zip` with `sha512` and `size`. The first `package.yml` run answers the NFR-07 open question.
+- `.github/dependabot.yml` (npm for `/` and `/backend`, `github-actions`; weekly, minor and patch updates grouped, target `ats`, Electron majors ignored) and `.github/workflows/codeql.yml` (`javascript-typescript`).
+- `tests/e2e/app.spec.ts` test 2 always starts on a fresh profile, clicks "Continue without a password" and `#setup-skip-btn`, and asserts the Profiles page. `test-results/` is git-ignored.
+
+**Acceptance Criteria:**
+
+- [ ] A pull request to `ats`, `features`, `dev`, `qa` or `main`, and a push to `ats`, runs check, test and e2e
+- [ ] A Release cannot start unless CI passed
+- [ ] The macOS feed check fails on a `latest-mac.yml` that lists only one architecture (unit-tested)
+- [ ] Dependabot and CodeQL are configured; every workflow file parses
+- [ ] The wizard e2e test fails if the wizard or the dashboard does not appear
+
+---
+
+### BL-38 — SSH Host-Key Verification
+
+**Requirements:** FR-11.1 … FR-11.5, NFR-02
+**Priority:** High
+**Status:** ❌ Open
+
+**Problem:** the SSH client accepts any host key (no `hostVerifier`), so anyone on the network path can impersonate a server and capture its password.
+
+**Decisions:** trust is bound to a live handshake — there is no endpoint that adds a key. After the user confirms a fingerprint the renderer repeats the connect with `acceptHostKey`; the backend stores the key only if the server presents exactly that fingerprint. A changed key is a hard stop that the dialog cannot override: the user removes the old entry in Settings and connects again (like `ssh-keygen -R`). One key is trusted per `host:port`; a key of another type is also a mismatch. Hosts are compared trimmed and lower-case. Existing installs are asked once per host.
+
+**Backend work:**
+
+- `KnownHost { id, host, port, keyType, fingerprint, publicKey, firstSeenAt, lastSeenAt }`, unique on `(host, port)`, new migration.
+- `known-host.service.ts`: `fingerprintOf` (`SHA256:` + base64 without padding, as OpenSSH prints it), `keyTypeOf`, `check(host, port, blob, acceptFingerprint?)` → `trusted` (updates `lastSeenAt`) / `accepted` (stores the key) / `unknown` / `mismatch`, `list`, `remove`, and `HostKeyError`.
+- `SSHService.createSession(profile, { acceptHostKey }?)` passes an asynchronous `hostVerifier` that calls `check`. A refused handshake rejects with `HostKeyError` (and no "connection failed" audit entry).
+- `POST /api/profiles/:id/connect` accepts `{ acceptHostKey? }` (zod: `^SHA256:[A-Za-z0-9+/]{43}$`) and answers `409 { code: 'HOST_KEY_UNKNOWN' | 'HOST_KEY_MISMATCH', host, port, keyType, fingerprint, knownKeyType?, knownFingerprint?, error }`.
+- `GET /api/known-hosts` (newest `lastSeenAt` first) and `DELETE /api/known-hosts/:id` (404 for an unknown id), behind `requireAuth`.
+- Audit type `host_key`: "Unknown host key — confirmation requested", "Host key trusted", "Host key changed — connection blocked", "Known host removed". (The backend cannot observe a user declining, so FR-11.5 records what it can see.)
+
+**Frontend work:** `HostKeyDialog.tsx` — for an unknown key it shows host:port, key type and fingerprint with a hint to compare it on the server (`ssh-keygen -lf /etc/ssh/ssh_host_<type>_key.pub`) and the buttons "Trust and connect" / "Cancel"; for a changed key it shows a red warning with both fingerprints, says that no password or key was sent, explains how to remove the old entry, and offers only "Close". `ProfileDetailPane` opens it on a 409 `HOST_KEY_*` instead of a generic toast. Settings gets a "Known Hosts" card (host:port, type, fingerprint, last seen, Remove with confirmation). Logs gets a "Host Key" filter.
+
+**Acceptance Criteria:**
+
+- [ ] The first connect to a host returns 409 `HOST_KEY_UNKNOWN` with the key type and fingerprint, and the server sees no authentication attempt
+- [ ] Repeating the connect with the matching `acceptHostKey` connects and stores the key; a non-matching `acceptHostKey` stores nothing and is refused
+- [ ] A trusted host connects without a prompt and its `lastSeenAt` advances
+- [ ] A changed key returns 409 `HOST_KEY_MISMATCH` with both fingerprints, the server sees no authentication attempt, and `acceptHostKey` does not override it
+- [ ] Removing a known host makes the next connect prompt again; every decision is in the audit log
+- [ ] `fingerprintOf` matches the SHA-256 fingerprint `sshpk` computes for the same key
+- [ ] Integration tests against the in-process `ssh2.Server` cover accept, reconnect and mismatch
+
+---
+
+### BL-39 — Change Master Password
+
+**Requirements:** FR-07.8
+**Priority:** High
+**Status:** ❌ Open
+
+**Problem:** with app lock on there is no way to change the master password; the user would have to turn lock off and on again.
+
+**Backend work:** `POST /api/auth/change-password` (`requireAuth`, rate-limited with the other password endpoints) takes `{ currentPassword, newPassword }` (new password at least 10 characters, different from the current one). It answers 400 when lock is off, 401 when the current password is wrong, then derives the new key from a new salt and calls `SecretsService.rekey` so every secret and the new hash and salt are stored in one transaction. The active key is replaced only after the transaction succeeds. It stays in `auth.controller.ts` (the master password is never used elsewhere) and reads the config through `ConfigService`.
+
+**Frontend work:** Settings → Security shows "Change master password" while lock is on: a dialog with current, new and confirm fields, client-side checks (length, match, differs from current), the server's message shown inline, and the existing warning when secrets could not be re-encrypted.
+
+**Acceptance Criteria:**
+
+- [ ] A wrong current password returns 401 and the old password still unlocks
+- [ ] After a change the old password no longer unlocks, the new one does, and profile passwords and private keys still decrypt
+- [ ] A failure while re-encrypting changes nothing (old password and key still work)
+- [ ] Too-short or unchanged new passwords return 400; the endpoint is rate-limited and requires a token
+
+---
+
+### BL-40 — Keyboard-Interactive Login
+
+**Requirements:** FR-01.9
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problem:** many servers (PAM setups, FreeBSD's default `sshd`) offer only `keyboard-interactive` authentication, so password profiles cannot log in to them.
+
+**Backend work:** password profiles also set `tryKeyboard: true` and answer the server's challenge: no prompts → empty answer; exactly one hidden prompt → the stored password; anything else (one-time codes, several prompts) → no answer, and the failed connect is reported as "This server asked for an additional verification step (such as a one-time code), which CypherShell does not support yet." Key profiles never use it.
+
+**Acceptance Criteria:**
+
+- [ ] A server that offers only keyboard-interactive accepts the stored password; a wrong password fails
+- [ ] A server that asks two prompts or a visible prompt fails with the message above
+- [ ] Key and key+passphrase profiles never attempt keyboard-interactive
+
+---
+
+### BL-41 — Automatic SSH Reconnect
+
+**Requirements:** FR-02.6, NFR-03
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problem:** when the SSH connection drops (server restart, network change) the session is removed, every terminal ends, and the user must reconnect and reopen everything by hand, although the profile has an `autoReconnect` setting.
+
+**Backend work:**
+
+- The backend re-creates the connection and keeps the **session id**. `SSHSession` gains `state: 'connected' | 'reconnecting'` and events `reconnecting`, `reconnected`, `lost`. The connect-config builder is shared with `createSession`.
+- Trigger: the client closes for a reason other than `user` or `timeout`, and the profile's `autoReconnect` is on (read fresh). Attempts use the delays `[1000, 2000, 4000]` ms (`SSHService.RECONNECT_DELAYS_MS`, overridable in tests). Every attempt requires a trusted host key (BL-38): an unknown or changed key stops the attempts. Success swaps the client, re-attaches handlers, writes "Reconnected after connection loss" to the audit log. After three failures the session is removed with a "Reconnect failed" entry and `lost` is emitted. `removeSession` and a lock cancel pending attempts.
+- Terminals keep their WebSocket while the session reconnects: `status: reconnecting`, input is dropped, then a new shell (last known size) is opened with `[Connection lost — reconnected]`. When the session is lost, or `autoReconnect` is off, terminals close with the new code **4002** (SSH connection lost).
+- Tunnels: dynamic forwards read the current client for each connection; remote forwards are re-registered after a reconnect; connections that arrive while reconnecting are closed. SFTP channels reopen on demand; interrupted transfers fail and can be retried (BL-30).
+- `GET /api/sessions/:id` returns `{ alive, state }`.
+
+**Frontend work:** `shouldReconnect(4002)` is false and `TerminalPane` shows "Connection lost. Reconnect from the profile."; the badge shows "Reconnecting" for the new status; Profile Details shows "Reconnecting…"; `ProfileForm` gets a "Reconnect automatically" checkbox bound to `autoReconnect`.
+
+**Acceptance Criteria:**
+
+- [ ] After the server drops the connection, an open terminal reports reconnecting, then works again on a new shell with the same session id
+- [ ] The audit log shows one disconnect entry and one "Reconnected" entry for it
+- [ ] With `autoReconnect` off, or after three failed attempts, terminals close with 4002 and the session is gone
+- [ ] A changed host key stops the reconnect without sending credentials
+- [ ] Local and dynamic tunnels work again after a reconnect; remote forwards are re-registered
+- [ ] A session closed during a reconnect makes no further attempts
+
+---
+
+### BL-42 — Thin Controllers
+
+**Requirements:** NFR-06
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problem:** `profile.controller.ts` and `auth.controller.ts` call Prisma directly (8 calls each), against "business logic only in services".
+
+**Work:** profile queries move to `ProfileService` (`list`, `get`, `create`, `update`, `remove`, `duplicate`, `findForConnect`); app-config reads and the first-run creation move to `ConfigService`. Password verification, key derivation and the `rekey` calls stay in `auth.controller.ts` (security rule). A test fails if any file in `backend/src/controllers` imports the database module or calls `prisma.`.
+
+**Acceptance Criteria:**
+
+- [ ] No controller touches Prisma; behaviour and the existing tests are unchanged
+- [ ] The layering test passes and fails when a controller imports the database
+
+---
+
+### BL-43 — Logging
+
+**Requirements:** NFR-06
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problem:** `app.log` is overwritten at every start, so the log of a crashed run is lost; the log has no size limit; 26 `console.*` calls bypass the structured loggers; renderer errors never reach the log; stack traces point into bundled code.
+
+**Work:**
+
+- `src/main/log.ts` (no Electron imports): rotates `app.log` to `app.log.1` and `app.log.2` at start instead of truncating it, and again when it exceeds 5 MB. A second instance leaves the log alone.
+- `console.*` is replaced by `log.ts` (main), `logger` (backend) and a renderer `reportError(context, err)` that sends errors over a new IPC channel `log:rendererError` (declared in both `src/preload/index.ts` and `index.d.ts`; main accepts only top-level app frames, caps a message at 2 KB and 20 per minute). ESLint `no-console` is an error, with exceptions for the logger files.
+- Source maps: backend `sourcemap: 'linked'` and `--enable-source-maps`; main and preload built with source maps.
+
+**Acceptance Criteria:**
+
+- [ ] Two consecutive starts keep the first run's log as `app.log.1`; a log over 5 MB rotates
+- [ ] `no-console` is enforced; the renderer's errors appear in `app.log`
+- [ ] The log IPC rejects other senders, oversized messages and floods (unit-tested)
+
+---
+
+### BL-44 — Cleanup and Documentation
+
+**Requirements:** NFR-06
+**Priority:** Low
+**Status:** ❌ Open
+
+**Work:** delete the unused `pages/Terminal.tsx`; remove the three `window.api as unknown as …` casts by typing the preload API (`index.d.ts`) for the window-opening calls and local directory entries; refresh `CLAUDE.md` (backlog status, drop the "unimplemented" sentence) and the §16 status table.
+
+**Acceptance Criteria:**
+
+- [ ] No `as unknown as` casts of `window.api` remain; typecheck passes
+- [ ] `CLAUDE.md` and §16 describe the current state
+
+---
+
+### BL-45 — Performance Checks
+
+**Requirements:** NFR-01
+**Priority:** Medium
+**Status:** ❌ Open
+
+**Problem:** the NFR-01 targets have never been measured.
+
+**Work:** the test SSH server gains an SFTP subsystem (`sftpEntries: N`). `npm run test:perf` (`tests/perf/`) measures and records each metric as JSON in `perf-results/`; a CI job uploads it and prints a table:
+
+| Metric              | Measured as                                 | Target   | Gate                              |
+| ------------------- | ------------------------------------------- | -------- | --------------------------------- |
+| Terminal round trip | p95 of 200 WebSocket echoes                 | < 50 ms  | hard                              |
+| Profile list        | `GET /api/profiles`, 100 profiles, median   | < 200 ms | hard                              |
+| SFTP listing        | 1000 entries                                | < 2 s    | hard                              |
+| Concurrent sessions | 20 sessions each with a working shell       | 20       | hard (echo); heap growth reported |
+| SQLite queries      | audit page over 10 000 rows, profiles, keys | < 50 ms  | hard                              |
+| Cold start          | launch → first window (e2e)                 | < 4 s    | soft: fails above 2× the target   |
+| Renderer ready      | window → wizard visible (e2e)               | < 1 s    | soft: fails above 2× the target   |
+
+**Acceptance Criteria:**
+
+- [ ] Each metric above is measured by a test and written to `perf-results/`
+- [ ] Hard gates fail the run when exceeded; the CI summary lists every value
+- [ ] The NFR-01 rows are marked ✅ individually as their check passes
+
+---
+
+### BL-46 — Backend in `utilityProcess` and Electron Fuses
+
+**Requirements:** NFR-02
+**Priority:** Medium
+**Status:** ❌ Open — **blocked until ADR-005 is accepted**
+
+**Problem:** the backend is started as `ELECTRON_RUN_AS_NODE`, which keeps the signed app binary usable as a general Node.js runtime (it also honours `NODE_OPTIONS` and `--inspect`), and the storage key and launch secret travel in environment variables.
+
+**Work (after ADR-005):** the main process starts the backend with `utilityProcess.fork`, passes the storage key and launch secret in the first message instead of the environment, and the host bridge uses `process.parentPort` (the `process.send` path remains for tests); `electron-builder.yml` sets the fuses `runAsNode: false`, `enableNodeOptionsEnvironmentVariable: false`, `enableNodeCliInspectArguments: false`, `enableEmbeddedAsarIntegrityValidation: true`, `onlyLoadAppFromAsar: true`, `enableCookieEncryption: true` (`grantFileProtocolExtraPrivileges` is decided in the ADR after testing the `file://` load).
+
+**Acceptance Criteria:**
+
+- [ ] The backend runs in a utility process; the e2e suite and the supervisor tests pass
+- [ ] `@electron/fuses read` on the packaged app shows the fuses above
+- [ ] The storage key and launch secret are not present in the backend's environment
+- [ ] The packaged Windows app starts on a throwaway profile; macOS and Linux are verified in CI
+
+---
+
+_End of SRS Document — v3.6_
