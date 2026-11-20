@@ -43,11 +43,15 @@ export function removeLegacyJwtSecret(dir: string): boolean {
   return true
 }
 
-/** How the storage key is protected at rest — Electron `safeStorage` when available. */
+/**
+ * How the storage key is protected at rest — Electron `safeStorage` when available.
+ * The methods are asynchronous because Electron 46 removes the synchronous API (BL-36).
+ */
 export interface StorageKeyCodec {
   available: boolean
-  encrypt: (plain: string) => Buffer
-  decrypt: (encrypted: Buffer) => string
+  encrypt: (plain: string) => Promise<Buffer>
+  /** `reEncrypt`: the keychain asks for the value to be written again (`shouldReEncrypt`). */
+  decrypt: (encrypted: Buffer) => Promise<{ plain: string; reEncrypt?: boolean }>
 }
 
 /**
@@ -55,22 +59,29 @@ export interface StorageKeyCodec {
  * With an OS keychain the file holds the key encrypted, otherwise in
  * plaintext — owner-only either way.
  */
-export function loadOrCreateStorageKey(
+export async function loadOrCreateStorageKey(
   dir: string,
   codec: StorageKeyCodec,
   generate: () => string,
   platform: NodeJS.Platform = process.platform
-): { key: string; created: boolean } {
+): Promise<{ key: string; created: boolean }> {
   ensureSecretsDir(dir, platform)
   const filePath = join(dir, 'storage-key')
   try {
     const stored = readFileSync(filePath)
-    const key = codec.available ? codec.decrypt(stored) : stored.toString('utf8').trim()
+    let key: string
+    if (codec.available) {
+      const decrypted = await codec.decrypt(stored)
+      key = decrypted.plain
+      if (decrypted.reEncrypt) writeSecretFile(filePath, await codec.encrypt(key), platform)
+    } else {
+      key = stored.toString('utf8').trim()
+    }
     if (platform !== 'win32') chmodSync(filePath, FILE_MODE)
     return { key, created: false }
   } catch {
     const key = generate()
-    writeSecretFile(filePath, codec.available ? codec.encrypt(key) : key, platform)
+    writeSecretFile(filePath, codec.available ? await codec.encrypt(key) : key, platform)
     return { key, created: true }
   }
 }

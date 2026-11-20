@@ -42,7 +42,7 @@ Every commit message must include the spec ID (e.g. `feat(sftp): cancel transfer
 
 ## Project Overview
 
-CypherShell is a cross-platform SSH desktop client built with Electron 39, React 19, TypeScript, and an Express 5 backend. It supports SSH terminal sessions, SFTP file management, SSH key management, port forwarding, and a master-password-based app lock.
+CypherShell is a cross-platform SSH desktop client built with Electron 45, React 19, TypeScript, and an Express 5 backend. It supports SSH terminal sessions, SFTP file management, SSH key management, port forwarding, and a master-password-based app lock.
 
 ## Architecture — Three Processes
 
@@ -77,7 +77,7 @@ Electron Main (src/main/index.ts)
 
 ## Tech Stack (exact versions)
 
-- Electron 39, electron-vite 5, electron-builder 26, electron-updater 6.8
+- Electron 45 (Node 24), electron-vite 5, electron-builder 26, electron-updater 6.8
 - React 19, React Router v7 (HashRouter — required for `file://`)
 - Tailwind CSS 3.4, shadcn/ui (Radix primitives, copy-owned in `components/ui/`)
 - Zustand 5, TanStack Query v5, xterm.js v6
@@ -146,9 +146,10 @@ BL-01 … BL-16 are done, except BL-05 (disconnect reasons, partial) — see `sp
 
 ## Common Pitfalls
 
-- **Native module rebuild**: If you get `NODE_MODULE_VERSION` errors, run `npm run rebuild:native` from the project root.
+- **Native modules**: `better-sqlite3` 13 is N-API with prebuilt binaries inside the package. The same binary runs under system Node (tests, dev) and Electron — there is no rebuild step. Never run `@electron/rebuild` or `node-gyp` on it: a compiled `build/` directory takes precedence over the prebuild (ADR-003).
+- **Electron binary**: since Electron 42 `npm install` does not download it; `postinstall` runs `install-electron`. After `npm ci --ignore-scripts`, run `npx install-electron` before `npm run dev` or the e2e tests.
+- **Linux**: Ubuntu 22.04+ (glibc 2.34) is required by the `better-sqlite3` prebuild.
 - **Prisma client out of sync**: Run `npx prisma generate` inside `backend/` after any schema change.
 - **Port already in use**: The backend port is auto-selected by `portfinder` starting at 4000 — kill any stale process if needed.
-- **Backend tests need a Node build of better-sqlite3**: `npm run test:backend` runs on system Node, so a binary built for Electron fails with `NODE_MODULE_VERSION`. Run `npm rebuild better-sqlite3 --prefix backend` before the tests (and `npm run rebuild:native` again before running the packaged app).
 - **HashRouter is intentional**: React Router uses `HashRouter` (not `BrowserRouter`) because the renderer loads via `file://`. Never change this.
 - **electron-vite aliases**: Path alias `@renderer` maps to `src/renderer/src/` — use it in renderer imports.

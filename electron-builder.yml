@@ -21,25 +21,18 @@ extraResources:
     filter:
       - 'schema.prisma'
       - 'migrations/**'
-  # Native modules — cannot be bundled by esbuild
+  # Native modules — cannot be bundled by esbuild. better-sqlite3 ships prebuilt
+  # binaries; scripts/after-pack.cjs keeps only the target platform's.
   - from: backend/node_modules/better-sqlite3
     to: backend/node_modules/better-sqlite3
     filter:
       - '**/*'
       - '!**/test/**'
       - '!**/*.md'
-  # better-sqlite3 loads its .node via require('bindings') at runtime;
-  # bindings in turn requires file-uri-to-path
-  - from: backend/node_modules/bindings
-    to: backend/node_modules/bindings
-    filter:
-      - '**/*'
-      - '!**/*.md'
-  - from: backend/node_modules/file-uri-to-path
-    to: backend/node_modules/file-uri-to-path
-    filter:
-      - '**/*'
-      - '!**/*.md'
+      # N-API prebuilds are used as they are (ADR-003): no sources to compile
+      - '!deps/**'
+      - '!src/**'
+      - '!binding.gyp'
   - from: backend/node_modules/ssh2
     to: backend/node_modules/ssh2
     filter:

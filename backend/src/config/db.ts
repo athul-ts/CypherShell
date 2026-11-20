@@ -100,10 +100,8 @@ export async function initDatabase(): Promise<void> {
     // Apply any pending migrations before opening the Prisma client.
     applyMigrations(dbFilePath)
 
-    // `as never`: PrismaClient's generic adapter type doesn't match
-    // PrismaBetterSqlite3's interface exactly, but it works at runtime.
     const adapter = new PrismaBetterSqlite3({ url: dbUrl })
-    prisma = new PrismaClient({ adapter } as never)
+    prisma = new PrismaClient({ adapter })
 
     await prisma.$connect()
     logger.info(`DB ready: ${dbUrl}`)

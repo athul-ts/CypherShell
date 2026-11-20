@@ -164,7 +164,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 
 | Layer                       | Technology                                               |
 | --------------------------- | -------------------------------------------------------- |
-| **Shell / Packaging**       | Electron 39, electron-builder 26                         |
+| **Shell / Packaging**       | Electron 45, electron-builder 26                         |
 | **Frontend Framework**      | React 19, React Router 7                                 |
 | **Language**                | TypeScript 5.9 (all layers)                              |
 | **Build Tool**              | electron-vite 5 (Vite 6 under the hood)                  |
@@ -277,18 +277,17 @@ The Electron app launches with **hot-reload** for the renderer. The Express back
 
 ### Available Scripts
 
-| Command                  | Description                                 |
-| ------------------------ | ------------------------------------------- |
-| `npm run dev`            | Start Electron with hot-reload (HMR)        |
-| `npm run build`          | Compile TypeScript + Vite bundles           |
-| `npm run typecheck`      | Full TypeScript check across all targets    |
-| `npm run lint`           | Run ESLint                                  |
-| `npm run format`         | Auto-format with Prettier                   |
-| `npm run build:backend`  | Compile backend TypeScript only             |
-| `npm run rebuild:native` | Rebuild native modules against Electron ABI |
-| `npm run build:win`      | Package Windows installer                   |
-| `npm run build:mac`      | Package macOS DMG + zip                     |
-| `npm run build:linux`    | Package Linux AppImage + deb                |
+| Command                 | Description                              |
+| ----------------------- | ---------------------------------------- |
+| `npm run dev`           | Start Electron with hot-reload (HMR)     |
+| `npm run build`         | Compile TypeScript + Vite bundles        |
+| `npm run typecheck`     | Full TypeScript check across all targets |
+| `npm run lint`          | Run ESLint                               |
+| `npm run format`        | Auto-format with Prettier                |
+| `npm run build:backend` | Compile backend TypeScript only          |
+| `npm run build:win`     | Package Windows installer                |
+| `npm run build:mac`     | Package macOS DMG + zip                  |
+| `npm run build:linux`   | Package Linux AppImage + deb             |
 
 ---
 
@@ -374,7 +373,7 @@ CypherShell/
 │
 ├── build/                         # electron-builder resources (icons, installer scripts)
 ├── resources/                     # App icon assets (icns, ico, png)
-├── scripts/                       # Build helpers (rebuild-native, after-pack)
+├── scripts/                       # Build helpers (after-pack, native-prebuild)
 ├── docs/                          # Documentation and screenshots
 ├── electron-builder.yml           # Packaging config for Win / Mac / Linux
 ├── electron.vite.config.ts        # Vite config (main + preload + renderer targets)
@@ -484,11 +483,9 @@ Have an idea not listed here? [Open a feature request](https://github.com/athul-
 
 ### `better-sqlite3` fails to load after cloning
 
-Native modules must be compiled against the Electron ABI, not the system Node.js ABI.
+The module ships prebuilt binaries and needs no rebuild. Reinstall dependencies (`npm ci` and `npm ci --prefix backend`); never compile it with `node-gyp` or `@electron/rebuild`, because a local `build/` directory takes precedence over the prebuild. Linux needs glibc 2.34 or later (Ubuntu 22.04+).
 
-```bash
-npm run rebuild:native
-```
+If Electron itself is missing, run `npx install-electron`.
 
 ### Backend port conflict on startup
 

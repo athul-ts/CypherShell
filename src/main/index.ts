@@ -151,13 +151,18 @@ async function startBackend(): Promise<number> {
   // "skip lock" mode. Stored via Electron safeStorage (OS keychain:
   // DPAPI on Windows, Keychain on macOS, libsecret on Linux) when it is
   // available, otherwise as plaintext — owner-only (0600 in 0700) either way.
-  const keychain = safeStorage.isEncryptionAvailable()
-  const { key: storageKey, created } = loadOrCreateStorageKey(
+  // BL-36: the asynchronous safeStorage API (the synchronous one is removed in Electron 46).
+  // It reads what the old API wrote, so an existing storage-key file keeps working.
+  const keychain = await safeStorage.isAsyncEncryptionAvailable()
+  const { key: storageKey, created } = await loadOrCreateStorageKey(
     secretsDir,
     {
       available: keychain,
-      encrypt: (plain) => safeStorage.encryptString(plain),
-      decrypt: (encrypted) => safeStorage.decryptString(encrypted)
+      encrypt: (plain) => safeStorage.encryptStringAsync(plain),
+      decrypt: async (encrypted) => {
+        const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(encrypted)
+        return { plain: result, reEncrypt: shouldReEncrypt }
+      }
     },
     () => crypto.randomBytes(32).toString('hex')
   )

@@ -155,16 +155,16 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 
 ### 2.3 Operating Environment
 
-| Item         | Detail                                                                                                                                 |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| OS           | Windows 10+, macOS 12+, Ubuntu 20.04+ — from BL-36: macOS 13+ (Electron 45) and Ubuntu 22.04+ / glibc 2.34 (`better-sqlite3` prebuild) |
-| Architecture | x64, ARM64 (Apple Silicon)                                                                                                             |
-| Runtime      | Node.js bundled inside Electron — user installs nothing (Node 24 with Electron 45, BL-36)                                              |
-| Electron     | v39 (upgrade to v45 — BL-36)                                                                                                           |
-| Minimum RAM  | 512MB                                                                                                                                  |
-| Disk space   | ~200MB installed                                                                                                                       |
-| Network      | Active connection to target SSH servers                                                                                                |
-| Local DB     | SQLite — single `.db` file in OS user data directory, auto-created                                                                     |
+| Item         | Detail                                                             |
+| ------------ | ------------------------------------------------------------------ |
+| OS           | Windows 10+, macOS 13+, Ubuntu 22.04+ (glibc 2.34)                 |
+| Architecture | x64, ARM64 (Apple Silicon)                                         |
+| Runtime      | Node.js 24 bundled inside Electron — user installs nothing         |
+| Electron     | v45                                                                |
+| Minimum RAM  | 512MB                                                              |
+| Disk space   | ~200MB installed                                                   |
+| Network      | Active connection to target SSH servers                            |
+| Local DB     | SQLite — single `.db` file in OS user data directory, auto-created |
 
 ### 2.4 Assumptions
 
@@ -539,7 +539,7 @@ CypherShell/
 ├── build/                                # electron-builder resources (icon.ico, icon.icns, installer.nsh)
 ├── specs/                                # Spec index, ADRs, templates
 ├── docs/                                 # Documentation assets
-├── scripts/                              # Build helpers (rebuild-native, after-pack)
+├── scripts/                              # Build helpers (after-pack, native-prebuild)
 ├── electron.vite.config.ts
 ├── electron-builder.yml
 ├── package.json
@@ -2240,11 +2240,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-36 — Dependency Security Update (Electron 45)
+### ~~BL-36 — Dependency Security Update (Electron 45)~~ ✅ Implemented
 
 **Requirements:** NFR-02, NFR-07, ADR-003
 **Priority:** High
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-20 — regression tests: `tests/backend/nativePrebuild.test.ts`, `tests/backend/secretFiles.test.ts`; verified by the Windows package, a packaged-app smoke run on a throwaway profile, and `npm audit`
 
 **Problem:** `npm audit` (2026-11-20) reports 18 vulnerabilities in the backend's production dependencies (critical: `proxy-addr` via express; high: `ws`, `zod`, `body-parser`, the Prisma tooling chain, and the unused `multer` and `node-forge`) and 48 at the root (critical: `tar` via `@electron/rebuild` 3; high: `electron`, `axios`, `electron-updater`, `react-router`, `zod`, `vite`, `postcss`). Electron 39 is out of support, and fixes exist only in Electron 42.11.16 and later.
 
@@ -2258,13 +2258,13 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] Backend `npm audit --omit=dev` reports no high or critical advisory
-- [ ] Root `npm audit` reports no critical advisory, and none in `electron`, `axios`, `electron-updater`, `react-router` or `zod`
-- [ ] Typecheck, lint, all backend and renderer tests and the e2e suite pass
-- [ ] `npm run build:win` succeeds and the unpacked app starts on a throwaway profile; terminal, SFTP and the light theme work
-- [ ] An existing storage-key file written with the synchronous `safeStorage` API is still read
-- [ ] Backend tests, development and the packaged app use the same `better-sqlite3` binary with no rebuild step; the packaged app contains only the target platform's prebuild and no `build/` directory
-- [ ] Packaging fails when the kept prebuild's header names another architecture (unit-tested on the real prebuilds)
+- [x] Backend `npm audit --omit=dev` reports no high or critical advisory
+- [x] Root `npm audit` reports no critical advisory, and none in `electron`, `axios`, `electron-updater`, `react-router` or `zod`
+- [x] Typecheck, lint, all backend and renderer tests and the e2e suite pass
+- [x] `npm run build:win` succeeds and the unpacked app starts on a throwaway profile; terminal, SFTP and the light theme work
+- [x] An existing storage-key file written with the synchronous `safeStorage` API is still read
+- [x] Backend tests, development and the packaged app use the same `better-sqlite3` binary with no rebuild step; the packaged app contains only the target platform's prebuild and no `build/` directory
+- [x] Packaging fails when the kept prebuild's header names another architecture (unit-tested on the real prebuilds)
 
 ---
 
