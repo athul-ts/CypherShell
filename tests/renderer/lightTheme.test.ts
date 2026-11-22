@@ -45,7 +45,7 @@ function usedDarkTokens(): string[] {
   return [...found].filter((token) => !STAYS_THE_SAME.has(token)).sort()
 }
 
-const escape = (token: string): string => token.replace(/([:[\]#/.])/g, '\\$1')
+const escape = (token: string): string => token.replace(/([\\:[\]#/.])/g, '\\$1')
 
 describe('[BL-35] light theme coverage', () => {
   it('finds the utilities the app uses (the scan itself works)', () => {

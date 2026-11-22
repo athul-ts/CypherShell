@@ -152,12 +152,13 @@ test('[BL-46] the backend runs in a utility process and gets its secrets in a me
     await expectThrowawayProfile(launched)
 
     const log = path.join(launched.userDataDir, 'app.log')
+    // The backend logs these in order; wait for the last one so a slow runner does not race it.
     await expect
-      .poll(() => fs.readFileSync(log, 'utf8'), { timeout: 15000 })
-      .toContain('Start-up secrets received from the main process')
+      .poll(() => fs.readFileSync(log, 'utf8'), { timeout: 30000 })
+      .toContain('Backend listening on 127.0.0.1')
     const text = fs.readFileSync(log, 'utf8')
     expect(text).toContain('Starting the backend utility process')
-    expect(text).toContain('Backend listening on 127.0.0.1')
+    expect(text).toContain('Start-up secrets received from the main process')
     // The window can talk to the backend: it asks for the status without a token.
     const status = await win.evaluate(async () => {
       const api = (window as unknown as { api: { backendPort: number; launchSecret: string } }).api
