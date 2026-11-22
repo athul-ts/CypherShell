@@ -1,4 +1,4 @@
-import type { Profile, Prisma } from '@prisma/client'
+import type { Prisma, Profile, Tunnel } from '@prisma/client'
 import { prisma } from '../config/db'
 
 /** FUN-13: Resolve an SSH key by name, return its id or null. */
@@ -46,7 +46,7 @@ export class ProfileService {
   }
 
   /** One profile with its tunnels, or `null`. */
-  static get(id: string) {
+  static get(id: string): Promise<(Profile & { tunnels: Tunnel[] }) | null> {
     return prisma.profile.findUnique({ where: { id }, include: { tunnels: true } })
   }
 
