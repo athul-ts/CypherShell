@@ -29,6 +29,18 @@ export class ConfigService {
     return prisma.appConfig.findUnique({ where: { id: 'singleton' } })
   }
 
+  /**
+   * Creates the singleton config row during first-run setup (BL-42). Only the setup
+   * endpoints call this: the row's existence is what "configured" means.
+   */
+  static async createConfig(data: {
+    lockEnabled: boolean
+    masterPasswordHash?: string
+    encryptionKeySalt: string
+  }): Promise<AppConfig> {
+    return prisma.appConfig.create({ data: { id: 'singleton', ...data } })
+  }
+
   /** Reads the config row; throws `AppNotConfiguredError` before first-run setup. */
   static async getConfig(): Promise<AppConfig> {
     const config = await this.findConfig()

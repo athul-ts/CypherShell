@@ -277,7 +277,7 @@
 | ~~BL-39~~ | ~~Change master password~~ | ~~High~~ | FR-07.8 | ✅ Done |
 | ~~BL-40~~ | ~~Keyboard-interactive login~~ | ~~Medium~~ | FR-01.9 | ✅ Done |
 | ~~BL-41~~ | ~~Automatic SSH reconnect~~ | ~~Medium~~ | FR-02.6, NFR-03 | ✅ Done |
-| BL-42     | Thin controllers                                                    | Medium       | NFR-06                               | ❌ Open         |
+| ~~BL-42~~ | ~~Thin controllers~~ | ~~Medium~~ | NFR-06 | ✅ Done |
 | BL-43     | Logging                                                             | Medium       | NFR-06                               | ❌ Open         |
 | BL-44     | Cleanup and documentation                                           | Low          | NFR-06                               | ❌ Open         |
 | BL-45     | Performance checks                                                  | Medium       | NFR-01                               | ❌ Open         |

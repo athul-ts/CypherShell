@@ -1,6 +1,5 @@
 import { Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
-import { prisma } from '../config/db'
 import { CryptoService } from '../services/crypto.service'
 import { SecretsService, type RekeyResult } from '../services/secrets.service'
 import { TokenStore } from '../services/token-store.service'
@@ -48,7 +47,7 @@ async function keysReadableWithoutLock(salt: string): Promise<Buffer[]> {
 }
 
 export async function getStatus(_req: Request, res: Response): Promise<void> {
-  const config = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+  const config = await ConfigService.findConfig()
   if (!config) {
     res.json({ configured: false, locked: false })
     return
@@ -63,7 +62,7 @@ export async function setup(req: Request, res: Response): Promise<void> {
     return
   }
 
-  const existing = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+  const existing = await ConfigService.findConfig()
   if (existing) {
     res.status(409).json({ error: 'App already configured.' })
     return
@@ -72,13 +71,10 @@ export async function setup(req: Request, res: Response): Promise<void> {
   const salt = CryptoService.generateSalt()
   const hash = await CryptoService.hashPassword(result.data.password)
 
-  await prisma.appConfig.create({
-    data: {
-      id: 'singleton',
-      lockEnabled: true,
-      masterPasswordHash: hash,
-      encryptionKeySalt: salt
-    }
+  await ConfigService.createConfig({
+    lockEnabled: true,
+    masterPasswordHash: hash,
+    encryptionKeySalt: salt
   })
 
   const key = await CryptoService.deriveKey(result.data.password, salt)
@@ -90,20 +86,14 @@ export async function setup(req: Request, res: Response): Promise<void> {
 }
 
 export async function setupSkip(_req: Request, res: Response): Promise<void> {
-  const existing = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+  const existing = await ConfigService.findConfig()
   if (existing) {
     res.status(409).json({ error: 'App already configured.' })
     return
   }
 
   const salt = CryptoService.generateSalt()
-  await prisma.appConfig.create({
-    data: {
-      id: 'singleton',
-      lockEnabled: false,
-      encryptionKeySalt: salt
-    }
-  })
+  await ConfigService.createConfig({ lockEnabled: false, encryptionKeySalt: salt })
 
   // Use the OS-managed storage key (SEC-05 — never a public constant)
   const key = await CryptoService.deriveKey(storageSecret(), salt)
@@ -121,7 +111,7 @@ export async function unlock(req: Request, res: Response): Promise<void> {
     return
   }
 
-  const config = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+  const config = await ConfigService.findConfig()
   if (!config) {
     res.status(400).json({ error: 'App not configured.' })
     return
@@ -184,7 +174,7 @@ export async function setupMasterPassword(req: Request, res: Response): Promise<
   }
   const { password } = result.data
 
-  const config = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+  const config = await ConfigService.findConfig()
   if (!config) {
     res.status(400).json({ error: 'App not configured.' })
     return
@@ -244,7 +234,7 @@ export async function disableLock(req: Request, res: Response): Promise<void> {
   }
   const { password } = result.data
 
-  const config = await prisma.appConfig.findUnique({ where: { id: 'singleton' } })
+  const config = await ConfigService.findConfig()
   if (!config) {
     res.status(400).json({ error: 'App not configured.' })
     return

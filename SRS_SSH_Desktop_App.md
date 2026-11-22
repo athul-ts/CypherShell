@@ -914,7 +914,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 
 - 100% TypeScript — renderer, backend, main, preload; all three are type-checked by `npm run typecheck`
 - ESLint + Prettier enforced
-- Business logic only in services — controllers are thin ⚠️ — the profile and auth controllers still call Prisma directly (BL-42)
+- Business logic only in services — controllers are thin ✅ (BL-42 — no controller imports the database or calls Prisma; `tests/backend/layering.test.ts` enforces it)
 - Prisma schema is the single source of truth for data shapes
 - E2E tests run the built app on a throwaway profile (`--user-data-dir` in a temp directory, deleted afterwards), never on the user's real `userData` (BL-27)
 
@@ -2402,11 +2402,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-42 — Thin Controllers
+### ~~BL-42 — Thin Controllers~~ ✅ Implemented
 
 **Requirements:** NFR-06
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/layering.test.ts, the existing profile and auth suites
 
 **Problem:** `profile.controller.ts` and `auth.controller.ts` call Prisma directly (8 calls each), against "business logic only in services".
 
@@ -2414,8 +2414,8 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] No controller touches Prisma; behaviour and the existing tests are unchanged
-- [ ] The layering test passes and fails when a controller imports the database
+- [x] No controller touches Prisma; behaviour and the existing tests are unchanged
+- [x] The layering test passes and fails when a controller imports the database
 
 ---
 

@@ -1,7 +1,5 @@
 import { Request, Response } from 'express'
-import type { Profile, Tunnel } from '@prisma/client'
-import { Prisma } from '@prisma/client'
-import { prisma } from '../config/db'
+import type { Prisma, Profile, Tunnel } from '@prisma/client'
 import { CryptoService } from '../services/crypto.service'
 import { SSHService } from '../services/ssh.service'
 import { HostKeyError } from '../services/known-host.service'
@@ -55,18 +53,13 @@ function sanitizeProfile(profile: ProfileWithRelations): SanitizedProfile {
 }
 
 export async function listProfiles(_req: Request, res: Response): Promise<void> {
-  const profiles = await prisma.profile.findMany({
-    orderBy: { name: 'asc' }
-  })
+  const profiles = await ProfileService.list()
   res.json(profiles.map(sanitizeProfile))
 }
 
 export async function getProfile(req: Request, res: Response): Promise<void | Response> {
   const id = req.params.id as string
-  const profile = await prisma.profile.findUnique({
-    where: { id },
-    include: { tunnels: true }
-  })
+  const profile = await ProfileService.get(id)
   if (!profile) return res.status(404).json({ error: 'Profile not found' })
   res.json(sanitizeProfile(profile))
 }
@@ -79,13 +72,7 @@ export async function createProfile(req: Request, res: Response): Promise<void |
   const encryptedPassword = password ? CryptoService.encrypt(password) : null
   const sshKeyId = data.authMethod === 'password' || !data.sshKeyId ? null : data.sshKeyId
 
-  const profile = await prisma.profile.create({
-    data: {
-      ...data,
-      sshKeyId,
-      encryptedPassword
-    }
-  })
+  const profile = await ProfileService.create({ ...data, sshKeyId, encryptedPassword })
   res.status(201).json(sanitizeProfile(profile))
 }
 
@@ -121,42 +108,21 @@ export async function updateProfile(req: Request, res: Response): Promise<void |
     }
   }
 
-  try {
-    const profile = await prisma.profile.update({
-      where: { id },
-      data: updateData
-    })
-    res.json(sanitizeProfile(profile))
-  } catch {
-    res.status(404).json({ error: 'Profile not found' })
-  }
+  const profile = await ProfileService.update(id, updateData)
+  if (!profile) return res.status(404).json({ error: 'Profile not found' })
+  res.json(sanitizeProfile(profile))
 }
 
 export async function deleteProfile(req: Request, res: Response): Promise<void> {
   const id = req.params.id as string
-  try {
-    await prisma.profile.delete({ where: { id } })
-    res.json({ success: true })
-  } catch {
-    res.status(404).json({ error: 'Profile not found' })
-  }
+  if (await ProfileService.remove(id)) res.json({ success: true })
+  else res.status(404).json({ error: 'Profile not found' })
 }
 
 export async function duplicateProfile(req: Request, res: Response): Promise<void | Response> {
   const id = req.params.id as string
-  const existing = await prisma.profile.findUnique({ where: { id } })
-  if (!existing) return res.status(404).json({ error: 'Profile not found' })
-
-  const { id: _id, createdAt: _ca, updatedAt: _ua, lastConnectedAt: _lc, ...data } = existing
-  void _id
-  void _ca
-  void _ua
-  void _lc
-  data.name = `${data.name} (Copy)`
-
-  const duplicate = await prisma.profile.create({
-    data
-  })
+  const duplicate = await ProfileService.duplicate(id)
+  if (!duplicate) return res.status(404).json({ error: 'Profile not found' })
   res.status(201).json(sanitizeProfile(duplicate))
 }
 
@@ -174,7 +140,7 @@ export async function connectProfile(req: Request, res: Response): Promise<void 
   if (!body.success) {
     return res.status(400).json({ error: body.error.issues[0]?.message ?? 'Invalid request' })
   }
-  const profile = await prisma.profile.findUnique({ where: { id } })
+  const profile = await ProfileService.findForConnect(id)
   if (!profile) return res.status(404).json({ error: 'Profile not found' })
 
   try {
