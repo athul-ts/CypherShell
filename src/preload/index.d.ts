@@ -1,4 +1,13 @@
 declare global {
+  /** One entry of the local directory listing (BL-44; FR-04 local pane). */
+  interface LocalDirEntry {
+    name: string
+    type: 'd' | 'f'
+    size: number
+    modifyTime: string
+    permissions: number
+  }
+
   interface Window {
     api: {
       backendPort: number
@@ -37,7 +46,7 @@ declare global {
         token: string
       ) => void
       openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) => void
-      readLocalDir: (dirPath?: string) => Promise<{ path: string; files: unknown[] }>
+      readLocalDir: (dirPath?: string) => Promise<{ path: string; files: LocalDirEntry[] }>
       /** SEC-07 / BL-20: this connection window's one-time token, or null. */
       getConnectionToken: () => Promise<string | null>
       /** BL-30: absolute path of a file dropped from the OS; '' if it has none. */

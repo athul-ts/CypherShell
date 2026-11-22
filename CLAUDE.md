@@ -142,7 +142,7 @@ npm run build                                     # compile backend TS → dist/
 
 ## Backlog Status
 
-BL-01 … BL-16 are done, except BL-05 (disconnect reasons, partial) — see `specs/index.md`. The remaining gaps from the 2026-11-10 spec audit are recorded in `SRS_SSH_Desktop_App.md` as ⚠️ notes marked "tracked, not scheduled", plus the unimplemented requirements FR-07.8 (change master password), FR-11 (SSH host-key verification) and the NFR-02 additions (local-API caller authentication, token revocation on every transport). Spec them as BL items before implementing.
+BL-01 … BL-44 are done; BL-45 (performance checks) is open and BL-46 (backend in a `utilityProcess` plus Electron fuses) waits for ADR-005 to be accepted — see `specs/index.md`. Remaining gaps are recorded in `SRS_SSH_Desktop_App.md` as ⚠️ notes marked "tracked, not scheduled". Spec any new requirement as a BL item before implementing it.
 
 ## Common Pitfalls
 

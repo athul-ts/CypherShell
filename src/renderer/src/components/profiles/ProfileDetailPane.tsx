@@ -84,11 +84,6 @@ function apiErrorText(err: unknown): string | undefined {
   return (err as { response?: { data?: { error?: string } } })?.response?.data?.error
 }
 
-interface TerminalWindowApi {
-  openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) => void
-  openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) => void
-}
-
 export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.JSX.Element {
   const [localStatus, setStatus] = useState<ConnectionStatus>('disconnected')
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -163,23 +158,13 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
   const handleOpenTerminal = (): void => {
     if (!sessionId || status !== 'connected') return
     const token = sessionStorage.getItem('jwt') || ''
-    ;(window.api as unknown as TerminalWindowApi).openTerminalWindow(
-      sessionId,
-      profileId,
-      profile?.name || 'Terminal',
-      token
-    )
+    window.api.openTerminalWindow(sessionId, profileId, profile?.name || 'Terminal', token)
   }
 
   const handleOpenSftp = (): void => {
     if (!sessionId || status !== 'connected') return
     const token = sessionStorage.getItem('jwt') || ''
-    ;(window.api as unknown as TerminalWindowApi).openSftpWindow(
-      sessionId,
-      profileId,
-      profile?.name || 'SFTP',
-      token
-    )
+    window.api.openSftpWindow(sessionId, profileId, profile?.name || 'SFTP', token)
   }
 
   const queryClient = useQueryClient()

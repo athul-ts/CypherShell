@@ -3,22 +3,7 @@ import { File, Folder, RefreshCw } from 'lucide-react'
 import { PathBreadcrumb } from './PathBreadcrumb'
 import { reportError } from '../../lib/log'
 
-interface LocalFileEntry {
-  name: string
-  type: 'd' | 'f'
-  size: number
-  modifyTime: string
-  permissions: number
-}
-
-interface ReadLocalDirResult {
-  path: string
-  files: LocalFileEntry[]
-}
-
-type LocalDirApi = {
-  readLocalDir: (dirPath?: string) => Promise<ReadLocalDirResult>
-}
+type LocalFileEntry = LocalDirEntry
 
 interface LocalFilePaneProps {
   sessionId: string
@@ -35,8 +20,7 @@ export function LocalFilePane({ showHidden, onDownload }: LocalFilePaneProps): R
   const fetchDir = async (path?: string): Promise<void> => {
     setIsLoading(true)
     try {
-      const localApi = (window as unknown as { api: LocalDirApi }).api
-      const res = await localApi.readLocalDir(path || currentPath)
+      const res = await window.api.readLocalDir(path || currentPath)
       setCurrentPath(res.path)
       setFiles(res.files)
     } catch (err) {

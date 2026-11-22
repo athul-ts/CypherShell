@@ -1485,7 +1485,7 @@ electron-updater          v6.8
 | `ssh2` failures on unusual SSH server configs       | Medium     | Wrap all connections in try/catch; expose raw error in UI                                                                                                                                                                                                            |
 | xterm.js perf with very high output (log tail)      | Medium     | Enable WebGL renderer addon; implement output throttling                                                                                                                                                                                                             |
 | PPK import accuracy across PPK format versions      | Low–Medium | Test with real PuTTY PPK v2/v3 files; sshpk handles both                                                                                                                                                                                                             |
-| `better-sqlite3` native binary bundling in Electron | Medium     | `after-pack.cjs` rebuilds the `.node` binary against Electron's ABI in the staging area; `bindings` + `file-uri-to-path` ship as `extraResources`                                                                                                                    |
+| `better-sqlite3` native binary bundling in Electron | Resolved   | `better-sqlite3` 13 ships N-API prebuilds; `after-pack.cjs` keeps only the target's binary and checks its architecture (BL-36, ADR-003) |
 | SQLite corruption on OS force-kill                  | Low        | WAL mode enabled on DB init                                                                                                                                                                                                                                          |
 | Prisma engine binary missing in packaged app        | Medium     | Resolved — `binaryTargets = ["native"]` only; Prisma CLI not shipped; migrations applied via `better-sqlite3` at startup                                                                                                                                             |
 | Electron bundle > 200MB                             | Resolved   | esbuild bundles backend pure-JS deps inline; installer is ~101 MB                                                                                                                                                                                                    |
@@ -1497,11 +1497,11 @@ electron-updater          v6.8
 
 ## 16. Implementation Status
 
-Current build state as of v3.4 of this document (Phase 2 security hardening, 2026-11-11). A row returns to ✅ when its backlog item lands.
+Current build state after BL-44 (Phases 4–5, 2026-11). A row returns to ✅ when its backlog item lands.
 
 | Module                     | Status      | Notes                                                                                                                                         |
 | -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Electron main process      | ✅ Complete | Backend spawn + crash restart (BL-16), IPC (sender-checked, BL-21), single instance (BL-25), idle lock (BL-18), auto-updater (BL-24), app.log |
+| Electron main process      | ✅ Complete | Backend spawn + crash restart (BL-16), IPC (sender-checked, BL-21), single instance (BL-25), idle lock (BL-18), auto-updater (BL-24), rotating app.log (BL-43) |
 | Preload / contextBridge    | ✅ Complete | Typed window.api only — no generic IPC passthrough or path-based file calls (BL-22)                                                           |
 | App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow; re-auth on 401 / backend restart (BL-10, BL-16); lock on `app:locked` (BL-18)                           |
 | SetupWizard page           | ✅ Complete | First-run master password setup; 10-character minimum + strength hint (BL-26)                                                                 |
@@ -1515,9 +1515,9 @@ Current build state as of v3.4 of this document (Phase 2 security hardening, 202
 | LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC (home directory only)                                                                                      |
 | Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                                                                            |
 | Logs page                  | ✅ Complete | Server-side filters and paging (BL-32); CSV export via save dialog (BL-28)                                                                    |
-| Settings page              | ✅ Complete | Theme, font, lock (re-encrypting, BL-10; 10-character minimum, BL-26), retention                                                              |
+| Settings page              | ✅ Complete | Theme, font, lock (re-encrypting, BL-10; 10-character minimum, BL-26), change master password (BL-39), known hosts (BL-38), retention |
 | UpdateBanner               | ✅ Complete | Auto-update notification + install; Releases link on macOS (BL-24)                                                                            |
-| SSH service                | ✅ Complete | Session pool, password + key auth, consumer-aware reaper (BL-11)                                                                              |
+| SSH service                | ✅ Complete | Session pool, password (+ keyboard-interactive, BL-40) and key auth, host-key verification (BL-38), automatic reconnect (BL-41), consumer-aware reaper (BL-11) |
 | SFTP service               | ✅ Complete | All file ops + SSE progress; one channel per transfer (BL-14)                                                                                 |
 | Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                                                                          |
 | Key service                | ✅ Complete | OpenSSH generation (BL-12), import + conversion, fingerprint, .cskb export/import                                                             |
@@ -2442,18 +2442,18 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-44 — Cleanup and Documentation
+### ~~BL-44 — Cleanup and Documentation~~ ✅ Implemented
 
 **Requirements:** NFR-06
 **Priority:** Low
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/renderer/noApiCasts.test.ts
 
 **Work:** delete the unused `pages/Terminal.tsx`; remove the three `window.api as unknown as …` casts by typing the preload API (`index.d.ts`) for the window-opening calls and local directory entries; refresh `CLAUDE.md` (backlog status, drop the "unimplemented" sentence) and the §16 status table.
 
 **Acceptance Criteria:**
 
-- [ ] No `as unknown as` casts of `window.api` remain; typecheck passes
-- [ ] `CLAUDE.md` and §16 describe the current state
+- [x] No `as unknown as` casts of `window.api` remain; typecheck passes
+- [x] `CLAUDE.md` and §16 describe the current state
 
 ---
 
