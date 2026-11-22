@@ -1,4 +1,5 @@
 import { useTransferStore, TransferEvent, NewTransfer } from '../store/transferStore'
+import { reportError } from '../lib/log'
 
 interface UseSFTPTransfer {
   listenToTransfer: (transferId: string) => Promise<void>
@@ -36,7 +37,7 @@ export function useSFTPTransfer(sessionId: string): UseSFTPTransfer {
             source.close()
           }
         } catch (err) {
-          console.error('Failed to parse SSE event', err)
+          reportError('useSFTPTransfer: could not parse an SSE event', err)
         }
       }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { File, Folder, RefreshCw } from 'lucide-react'
 import { PathBreadcrumb } from './PathBreadcrumb'
+import { reportError } from '../../lib/log'
 
 interface LocalFileEntry {
   name: string
@@ -39,7 +40,7 @@ export function LocalFilePane({ showHidden, onDownload }: LocalFilePaneProps): R
       setCurrentPath(res.path)
       setFiles(res.files)
     } catch (err) {
-      console.error(err)
+      reportError('LocalFilePane', err)
     } finally {
       setIsLoading(false)
     }

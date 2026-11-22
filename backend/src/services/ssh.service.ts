@@ -16,6 +16,11 @@ import { AppLockService } from './app-lock.service'
 export const UNSUPPORTED_CHALLENGE_MESSAGE =
   'This server asked for an additional verification step (such as a one-time code), which CypherShell does not support yet.'
 
+/** Callback for fire-and-forget audit writes: a failed entry is logged, never thrown. */
+const logFailure = (err: unknown): void => {
+  logger.error('Could not write an audit entry: ' + String(err))
+}
+
 export interface CreateSessionOptions {
   /** Fingerprint the user confirmed for a host key that was not trusted yet (BL-38). */
   acceptHostKey?: string
@@ -267,7 +272,7 @@ export class SSHService {
             profile.host,
             false,
             err.message
-          ).catch(console.error)
+          ).catch(logFailure)
         }
         reject(err)
       }
@@ -302,7 +307,7 @@ export class SSHService {
     }
     this.sessions.set(session.id, session)
     this.startReaper()
-    AuditService.logConnection(profile.id, profile.name, profile.host, true).catch(console.error)
+    AuditService.logConnection(profile.id, profile.name, profile.host, true).catch(logFailure)
     this.attachClient(session, client)
     return session
   }
@@ -330,7 +335,7 @@ export class SSHService {
       reason,
       Date.now() - session.clientStartedAt,
       session.endError
-    ).catch(console.error)
+    ).catch(logFailure)
 
     if (session.removed || reason === 'user' || reason === 'timeout') {
       this.sessions.delete(session.id)
@@ -413,7 +418,7 @@ export class SSHService {
           session.hasTcpListener = false
           this.attachClient(session, client)
           session.state = 'connected'
-          AuditService.logReconnect(profile, true).catch(console.error)
+          AuditService.logReconnect(profile, true).catch(logFailure)
           await TunnelService.restoreRemoteForwards(session).catch((err) =>
             logger.error('Could not restore remote forwards: ' + String(err))
           )
@@ -430,7 +435,7 @@ export class SSHService {
         { id: session.profileId, name: session.profileName, host: session.host },
         false,
         lastError
-      ).catch(console.error)
+      ).catch(logFailure)
       this.markLost(session)
     } finally {
       stopListeningForLock()

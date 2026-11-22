@@ -3,8 +3,9 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  main: {},
-  preload: {},
+  // BL-43: stack traces in app.log point into the TypeScript sources
+  main: { build: { sourcemap: true } },
+  preload: { build: { sourcemap: true } },
   renderer: {
     resolve: {
       alias: {

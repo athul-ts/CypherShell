@@ -16,7 +16,8 @@ import { spawn, type ChildProcess } from 'child_process'
 import portfinder from 'portfinder'
 import iconPng from '../../resources/icon.png?asset'
 import iconIco from '../../build/icon.ico?asset'
-import { writeFileSync, appendFileSync, realpathSync, existsSync } from 'fs'
+import { realpathSync, existsSync } from 'fs'
+import { AppLog, createRendererErrorHandler } from './log'
 import { stat, readdir, readFile, writeFile } from 'fs/promises'
 import * as crypto from 'crypto'
 import * as os from 'os'
@@ -71,24 +72,20 @@ const connectionTokens = new ConnectionTokenBroker()
 /** BL-18: one idle clock for every window; the backend publishes the policy. */
 const idleLock = new IdleLock({ lock: requestLock })
 
-function logToFile(message: string): void {
-  try {
-    const logPath = join(app.getPath('userData'), 'app.log')
-    const timestamp = new Date().toISOString()
-    const formattedMessage = `[${timestamp}] ${message}\n`
-    appendFileSync(logPath, formattedMessage)
-  } catch (err) {
-    console.error('Failed to write to log file:', err)
-  }
+// BL-43: created on first use, because userData is only final once startup has set it.
+let appLog: AppLog | null = null
+function getAppLog(): AppLog {
+  appLog ??= new AppLog(join(app.getPath('userData'), 'app.log'))
+  return appLog
 }
 
+function logToFile(message: string): void {
+  getAppLog().write(message)
+}
+
+/** BL-43: keeps the previous run's log as app.log.1 instead of overwriting it. */
 function initLogFile(): void {
-  try {
-    const logPath = join(app.getPath('userData'), 'app.log')
-    writeFileSync(logPath, `=== APP STARTUP: ${new Date().toISOString()} ===\n`)
-  } catch (err) {
-    console.error('Failed to initialize log file:', err)
-  }
+  getAppLog().start()
 }
 
 /** Sends to the main window if it is still open. */
@@ -193,7 +190,8 @@ async function startBackend(): Promise<number> {
 
   const spawnBackend = (): ChildProcess => {
     logToFile('Spawning backend child process...')
-    const child = spawn(nodeExecutable, [backendScript], {
+    // BL-43: --enable-source-maps makes stack traces point into the TypeScript sources.
+    const child = spawn(nodeExecutable, ['--enable-source-maps', backendScript], {
       cwd: backendCwd,
       // BL-18: an IPC channel for lock requests and lock-state reports
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
@@ -214,13 +212,11 @@ async function startBackend(): Promise<number> {
 
     child.stdout?.on('data', (data) => {
       const message = data.toString().trim()
-      console.log(`Backend: ${message}`)
       logToFile(`[Backend STDOUT] ${message}`)
     })
 
     child.stderr?.on('data', (data) => {
       const message = data.toString().trim()
-      console.error(`Backend error: ${message}`)
       logToFile(`[Backend STDERR] ${message}`)
     })
 
@@ -282,20 +278,17 @@ function setupAutoUpdater(): void {
   autoUpdater.on('error', (err) => {
     const errMsg = err instanceof Error ? err.message : String(err)
     logToFile(`AutoUpdater error: ${errMsg}`)
-    console.error('Auto-updater error:', err)
   })
 
   // Check silently on startup, then every 4 hours
   autoUpdater.checkForUpdates().catch((err) => {
     logToFile(`AutoUpdater initial check error: ${err.message || err}`)
-    console.error(err)
   })
 
   const updaterInterval = setInterval(
     () => {
       autoUpdater.checkForUpdates().catch((err) => {
         logToFile(`AutoUpdater periodic check error: ${err.message || err}`)
-        console.error(err)
       })
     },
     4 * 60 * 60 * 1000
@@ -434,6 +427,9 @@ function handleTrusted(
   })
 }
 
+/** BL-43: error reports from the renderer land in app.log (validated and rate-limited). */
+const reportRendererError = createRendererErrorHandler(logToFile)
+
 function onSyncTrusted(channel: string, value: () => unknown): void {
   ipcMain.on(channel, (event) => {
     event.returnValue = isTrustedSender(event, channel) ? value() : null
@@ -487,6 +483,10 @@ function registerIpcHandlers(): void {
       return { isFile: stats.isFile(), size: stats.size }
     }
   }
+  // BL-43: the renderer's error reports (channel declared in preload/index.ts and index.d.ts)
+  handleTrusted('log:rendererError', (_event, context, message) =>
+    reportRendererError(context, message)
+  )
   handleTrusted('dialog:saveTextFile', (_event, request) => saveTextFile(request, textFileDeps))
   handleTrusted('dialog:openTextFile', (_event, request) => openTextFile(request, textFileDeps))
 

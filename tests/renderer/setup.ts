@@ -21,6 +21,7 @@ Object.defineProperty(window, 'api', {
     backendPort: 3001,
     launchSecret: 'renderer-test-launch-secret', // BL-17
     appVersion: '0.0.0-test',
+    logRendererError: vi.fn().mockResolvedValue(undefined), // BL-43
     openFileDialog: vi.fn().mockResolvedValue(null),
     openDirectoryDialog: vi.fn().mockResolvedValue(null),
     saveFileDialog: vi.fn().mockResolvedValue(null),

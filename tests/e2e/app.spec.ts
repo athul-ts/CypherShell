@@ -117,3 +117,26 @@ test('setup wizard — skip lock renders dashboard', async () => {
     await closeApp(launched)
   }
 })
+
+test('[BL-43] a renderer error report lands in app.log', async () => {
+  const launched = await launchApp()
+
+  try {
+    const win = await launched.app.firstWindow()
+    await win.waitForLoadState('domcontentloaded')
+    await expectThrowawayProfile(launched)
+
+    await win.evaluate(() =>
+      (
+        window as unknown as { api: { logRendererError: (c: string, m: string) => Promise<void> } }
+      ).api.logRendererError('e2e', 'reported from the renderer')
+    )
+
+    const log = path.join(launched.userDataDir, 'app.log')
+    await expect
+      .poll(() => fs.readFileSync(log, 'utf8'), { timeout: 5000 })
+      .toContain('[Renderer] e2e: reported from the renderer')
+  } finally {
+    await closeApp(launched)
+  }
+})

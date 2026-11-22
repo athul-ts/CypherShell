@@ -278,7 +278,7 @@
 | ~~BL-40~~ | ~~Keyboard-interactive login~~ | ~~Medium~~ | FR-01.9 | ✅ Done |
 | ~~BL-41~~ | ~~Automatic SSH reconnect~~ | ~~Medium~~ | FR-02.6, NFR-03 | ✅ Done |
 | ~~BL-42~~ | ~~Thin controllers~~ | ~~Medium~~ | NFR-06 | ✅ Done |
-| BL-43     | Logging                                                             | Medium       | NFR-06                               | ❌ Open         |
+| ~~BL-43~~ | ~~Logging~~ | ~~Medium~~ | NFR-06 | ✅ Done |
 | BL-44     | Cleanup and documentation                                           | Low          | NFR-06                               | ❌ Open         |
 | BL-45     | Performance checks                                                  | Medium       | NFR-01                               | ❌ Open         |
 | BL-46     | Backend in utilityProcess + fuses (needs ADR-005)                   | Medium       | NFR-02                               | ❌ Open         |

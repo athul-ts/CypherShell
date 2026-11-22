@@ -27,6 +27,9 @@ const api = {
   // BL-17: sent on every API request and with the terminal WebSocket
   launchSecret: ipcRenderer.sendSync('get-launch-secret') as string,
   appVersion: ipcRenderer.sendSync('get-app-version') as string,
+  // BL-43: error reports go to app.log in the main process, not to the console
+  logRendererError: (context: string, message: string): Promise<void> =>
+    ipcRenderer.invoke('log:rendererError', context, message),
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
   openDirectoryDialog: () => ipcRenderer.invoke('dialog:openDirectory'),
   saveFileDialog: (defaultName: string) => ipcRenderer.invoke('dialog:saveFile', defaultName),
@@ -66,6 +69,8 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
+    // The bridge does not exist yet when this fails, so nothing else can report it.
+    // eslint-disable-next-line no-console
     console.error(error)
   }
 } else {

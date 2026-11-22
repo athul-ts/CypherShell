@@ -22,6 +22,7 @@ import { cn } from '../../lib/utils'
 import { ProfileForm } from './ProfileForm'
 import { useSessionHeartbeat } from '../../hooks/useSessionHeartbeat'
 import { HostKeyDialog, type HostKeyInfo } from './HostKeyDialog'
+import { reportError } from '../../lib/log'
 
 interface ProfileDetailPaneProps {
   profileId: string
@@ -139,7 +140,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
         setHostKey(data.data)
         return
       }
-      console.error('Failed to connect:', error)
+      reportError('ProfileDetailPane: connect failed', error)
       toast.error('Connection failed. Please check the profile settings and try again.')
     }
   }
@@ -150,7 +151,7 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
     try {
       await api.delete(`/sessions/${sessionId}`)
     } catch (error) {
-      console.error('Failed to disconnect:', error)
+      reportError('ProfileDetailPane: disconnect failed', error)
       toast.error('Failed to disconnect gracefully. The session may still be active.')
     } finally {
       setSessionId(null)

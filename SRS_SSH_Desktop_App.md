@@ -284,7 +284,7 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 - Creates `BrowserWindow`, loads Vite renderer
 - Passes backend port to preload via IPC channel (`get-backend-port`)
 - Handles: window lifecycle, native file dialogs, auto-updater (startup + every 4 hours; notify-only on macOS — BL-24)
-- Writes diagnostic logs to `{userData}/app.log`
+- Writes diagnostic logs to `{userData}/app.log`; each start keeps the previous run as `app.log.1` and `app.log.2`, and a log over 5 MB rotates ✅ (BL-43, `src/main/log.ts`)
 - Generates a per-launch secret in memory (BL-17) and a per-install storage key (wrapped with Electron `safeStorage` when available; `secrets/` is `0700`, `storage-key` `0600` — BL-19) and passes both to the backend as environment variables. There is no JWT secret on disk: the backend creates its own in memory (BL-19)
 - Runs the app's one idle clock: every window's `input-event` resets it; after `autoLockMinutes` without input (lock on) main asks the backend to lock, then closes the terminal and SFTP windows and sends `app:locked` to the main window ✅ (BL-18, `src/main/idleLock.ts`)
 - Hardens every `webContents`: `window.open` denied (http(s) to `shell.openExternal`), navigation outside the renderer blocked, IPC served only to top-level app frames ✅ (BL-21, `src/main/windowSecurity.ts`)
@@ -299,6 +299,7 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
   - `dialog:saveFile` — native OS save dialog (SFTP download target)
   - `dialog:saveTextFile` — main shows the save dialog and writes the given text to the chosen file (BL-22)
   - `dialog:openTextFile` — main shows the open dialog and returns the chosen file's name and text (BL-22)
+  - `log:rendererError` — the renderer reports an error `(context, message)`; main validates it, caps it at 2 KB, allows 20 per minute and writes it to app.log (BL-43)
   - `window:openTerminal` — spawns standalone terminal window
   - `window:openSftp` — spawns standalone SFTP window
   - `get-connection-token` — one-time JWT hand-off, to the connection window it was issued for (SEC-07, BL-20)
@@ -2419,11 +2420,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-43 — Logging
+### ~~BL-43 — Logging~~ ✅ Implemented
 
 **Requirements:** NFR-06
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/logRotation.test.ts, tests/renderer/lib/log.test.ts, tests/e2e/app.spec.ts
 
 **Problem:** `app.log` is overwritten at every start, so the log of a crashed run is lost; the log has no size limit; 26 `console.*` calls bypass the structured loggers; renderer errors never reach the log; stack traces point into bundled code.
 
@@ -2435,9 +2436,9 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] Two consecutive starts keep the first run's log as `app.log.1`; a log over 5 MB rotates
-- [ ] `no-console` is enforced; the renderer's errors appear in `app.log`
-- [ ] The log IPC rejects other senders, oversized messages and floods (unit-tested)
+- [x] Two consecutive starts keep the first run's log as `app.log.1`; a log over 5 MB rotates
+- [x] `no-console` is enforced; the renderer's errors appear in `app.log`
+- [x] The log IPC rejects other senders, oversized messages and floods (unit-tested)
 
 ---
 

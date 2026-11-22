@@ -4,6 +4,8 @@ declare global {
       backendPort: number
       /** BL-17: per-launch secret — the `X-CypherShell-Launch` header and the terminal WebSocket's `launch`. */
       launchSecret: string
+      /** BL-43: writes an error report to app.log (validated, capped and rate-limited by main). */
+      logRendererError: (context: string, message: string) => Promise<void>
       openFileDialog: () => Promise<string[]>
       openDirectoryDialog: () => Promise<string | null>
       saveFileDialog: (defaultName: string) => Promise<string | null>
