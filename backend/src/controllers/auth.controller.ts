@@ -5,6 +5,7 @@ import { SecretsService, type RekeyResult } from '../services/secrets.service'
 import { TokenStore } from '../services/token-store.service'
 import { AppLockService } from '../services/app-lock.service'
 import { ConfigService } from '../services/config.service'
+import { Secrets } from '../config/secrets'
 import { logger } from '../services/logger.service'
 import { env } from '../config/env'
 import { z } from 'zod'
@@ -35,7 +36,7 @@ function generateJWT(): string {
  * in by the main process (SEC-05).
  */
 function storageSecret(): string {
-  return process.env.STORAGE_KEY || 'UNLOCKED_NO_PASSWORD'
+  return Secrets.storageKey() || 'UNLOCKED_NO_PASSWORD'
 }
 
 /** Candidate keys for data written while lock was off, plus the key in memory. */

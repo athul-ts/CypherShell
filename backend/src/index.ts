@@ -4,8 +4,17 @@ import { setupTerminalWebSocket } from './websocket/terminal.ws'
 import { AppLockService } from './services/app-lock.service'
 import { HostBridge } from './services/host-bridge.service'
 import { logger } from './services/logger.service'
+import { Secrets } from './config/secrets'
 
 async function bootstrap(): Promise<void> {
+  // BL-46: inside the Electron utility process the secrets arrive in the first message from main,
+  // before anything that needs them is created. Otherwise they come from the environment.
+  const init = await HostBridge.receiveInit()
+  if (init) {
+    Secrets.set(init)
+    logger.info('Start-up secrets received from the main process')
+  }
+
   await initDatabase()
 
   const app = createApp()

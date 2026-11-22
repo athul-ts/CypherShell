@@ -1,8 +1,15 @@
-import type { ChildProcess } from 'child_process'
+/**
+ * The part of a process the supervisor needs. Both a `child_process` ChildProcess and an
+ * Electron `UtilityProcess` (BL-46) satisfy it; the utility process reports only the exit code.
+ */
+export interface SupervisedProcess {
+  once(event: 'exit', listener: (code: number | null, signal?: string | null) => void): unknown
+  kill(): unknown
+}
 
 export interface BackendSupervisorOptions {
   /** Starts the backend process. Called again for every restart. */
-  spawn: () => ChildProcess
+  spawn: () => SupervisedProcess
   /** Called right after a restart has been spawned, with the restart number. */
   onRestart?: (restart: number) => void
   /** Called once when the supervisor stops restarting after repeated failures. */
@@ -34,7 +41,7 @@ const DEFAULT_WINDOW_MS = 2 * 60 * 1000
  * Deliberately free of Electron imports so it can be unit-tested.
  */
 export class BackendSupervisor {
-  private child: ChildProcess | null = null
+  private child: SupervisedProcess | null = null
   private stopped = false
   private failureTimes: number[] = []
   private restartHandle: unknown = null
@@ -43,11 +50,11 @@ export class BackendSupervisor {
   constructor(private readonly options: BackendSupervisorOptions) {}
 
   /** The current backend process, or null between a crash and its restart. */
-  get process(): ChildProcess | null {
+  get process(): SupervisedProcess | null {
     return this.child
   }
 
-  start(): ChildProcess {
+  start(): SupervisedProcess {
     this.stopped = false
     return this.launch()
   }
@@ -61,14 +68,18 @@ export class BackendSupervisor {
     }
   }
 
-  private launch(): ChildProcess {
+  private launch(): SupervisedProcess {
     const child = this.options.spawn()
     this.child = child
     child.once('exit', (code, signal) => this.handleExit(child, code, signal))
     return child
   }
 
-  private handleExit(child: ChildProcess, code: number | null, signal: string | null): void {
+  private handleExit(
+    child: SupervisedProcess,
+    code: number | null,
+    signal: string | null | undefined
+  ): void {
     if (child !== this.child) return // an older process; already handled
     this.child = null
     if (this.stopped) return

@@ -5,6 +5,8 @@ import {
   ipcMain,
   dialog,
   safeStorage,
+  utilityProcess,
+  type UtilityProcess,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type WebContents
@@ -12,7 +14,6 @@ import {
 import { join, resolve, relative, isAbsolute, dirname, basename } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
-import { spawn, type ChildProcess } from 'child_process'
 import portfinder from 'portfinder'
 import iconPng from '../../resources/icon.png?asset'
 import iconIco from '../../build/icon.ico?asset'
@@ -22,6 +23,7 @@ import { stat, readdir, readFile, writeFile } from 'fs/promises'
 import * as crypto from 'crypto'
 import * as os from 'os'
 import { BackendSupervisor } from './backendSupervisor'
+import { attachBackendHandshake } from './backendHandshake'
 import { IdleLock, parseBackendMessage } from './idleLock'
 import { loadOrCreateStorageKey, removeLegacyJwtSecret } from './secretFiles'
 import {
@@ -105,17 +107,22 @@ function onAppLocked(): void {
 /** BL-18: the idle clock ran out — ask the backend to lock. */
 function requestLock(): void {
   logToFile('Idle timeout reached; locking the app')
-  const child = backendSupervisor?.process
-  if (child?.connected) {
-    child.send({ type: 'lock' }, (err) => {
-      if (err) {
-        logToFile(`Could not ask the backend to lock: ${err.message}`)
-        onAppLocked()
-      }
-    })
+  const child = currentBackend()
+  if (child) {
+    try {
+      child.postMessage({ type: 'lock' })
+    } catch (err) {
+      logToFile(`Could not ask the backend to lock: ${String(err)}`)
+      onAppLocked()
+    }
   } else {
     onAppLocked() // no backend holds a key right now; still hide every window's content
   }
+}
+
+/** BL-46: the backend is an Electron utility process; the supervisor holds it as a SupervisedProcess. */
+function currentBackend(): UtilityProcess | null {
+  return (backendSupervisor?.process as UtilityProcess | null | undefined) ?? null
 }
 
 /** BL-18: messages from the backend over the IPC channel. */
@@ -167,11 +174,9 @@ async function startBackend(): Promise<number> {
     `Storage key ${created ? 'generated' : 'loaded'} (${keychain ? 'safeStorage' : 'file-based fallback'})`
   )
 
-  // In dev: use system `node` and source paths.
-  // In production: use Electron's own Node.js runtime (ELECTRON_RUN_AS_NODE=1)
-  // so the packaged app has no dependency on the user having Node.js installed.
-  const nodeExecutable = is.dev ? 'node' : process.execPath
-
+  // BL-46 / ADR-005: the backend runs in an Electron utility process, in development too. It does
+  // not use ELECTRON_RUN_AS_NODE, so the RunAsNode fuse can be off, and it gets the storage key and
+  // the launch secret in a message instead of its environment.
   const backendScript = is.dev
     ? join(__dirname, '../../backend/dist/index.js')
     : join(process.resourcesPath, 'backend/dist/index.js')
@@ -180,32 +185,32 @@ async function startBackend(): Promise<number> {
     ? join(__dirname, '../../backend')
     : join(process.resourcesPath, 'backend')
 
-  logToFile(`nodeExecutable: ${nodeExecutable}`)
   logToFile(`backendScript: ${backendScript}`)
   logToFile(`backendCwd: ${backendCwd}`)
 
-  // BL-19: a JWT_SECRET inherited from the environment is never passed on.
+  // BL-19: a JWT_SECRET inherited from the environment is never passed on, and neither is a
+  // Node-mode switch from the parent.
   const inheritedEnv: NodeJS.ProcessEnv = { ...process.env }
   delete inheritedEnv.JWT_SECRET
+  delete inheritedEnv.ELECTRON_RUN_AS_NODE
+  delete inheritedEnv.STORAGE_KEY
+  delete inheritedEnv.LAUNCH_SECRET
 
-  const spawnBackend = (): ChildProcess => {
-    logToFile('Spawning backend child process...')
-    // BL-43: --enable-source-maps makes stack traces point into the TypeScript sources.
-    const child = spawn(nodeExecutable, ['--enable-source-maps', backendScript], {
+  const spawnBackend = (): UtilityProcess => {
+    logToFile('Starting the backend utility process...')
+    const child = utilityProcess.fork(backendScript, [], {
       cwd: backendCwd,
-      // BL-18: an IPC channel for lock requests and lock-state reports
-      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+      serviceName: 'CypherShell Backend',
+      stdio: 'pipe',
+      // BL-43: --enable-source-maps makes stack traces point into the TypeScript sources.
+      execArgv: ['--enable-source-maps'],
       env: {
         ...inheritedEnv,
-        ELECTRON_RUN_AS_NODE: '1', // Makes Electron binary behave as Node.js
         PORT: String(backendPort),
         DATABASE_URL: `file:${dbPath}`,
-        STORAGE_KEY: storageKey,
-        LAUNCH_SECRET: launchSecret, // BL-17
         // BL-17: extra CORS origin for the electron-vite dev server only;
         // cleared otherwise so an inherited value never reaches the backend.
         ALLOWED_CORS_ORIGINS: devServerUrl ? new URL(devServerUrl).origin : '',
-        CYPHERSHELL_HOST_IPC: '1', // BL-18
         NODE_ENV: 'production'
       }
     })
@@ -220,14 +225,11 @@ async function startBackend(): Promise<number> {
       logToFile(`[Backend STDERR] ${message}`)
     })
 
-    child.on('message', handleBackendMessage)
+    // The backend announces itself; main answers with the secrets (see backendHandshake.ts).
+    attachBackendHandshake(child, { storageKey, launchSecret }, handleBackendMessage)
 
-    child.on('close', (code) => {
-      logToFile(`Backend child process exited with code ${code}`)
-    })
-
-    child.on('error', (err) => {
-      logToFile(`Backend child process error: ${err.message}`)
+    child.on('exit', (code) => {
+      logToFile(`Backend utility process exited with code ${code}`)
     })
 
     return child
@@ -576,23 +578,22 @@ function registerIpcHandlers(): void {
   })
 }
 
-/** CODE-08: Kill the backend child process with SIGTERM + SIGKILL fallback. */
+/** CODE-08: stops the backend utility process, with a forced kill if it hangs. */
 function killBackendProcess(): void {
-  const backendProcess = backendSupervisor?.process
+  const backendProcess = currentBackend()
   backendSupervisor?.stop() // quitting: the coming exit is expected, do not restart
   if (!backendProcess) return
+  let exited = false
+  backendProcess.once('exit', () => {
+    exited = true
+  })
   try {
-    backendProcess.kill('SIGTERM')
-    // Force SIGKILL after 3s if still running (SIGTERM-only can orphan a hung backend)
+    backendProcess.kill()
+    // A hung backend would otherwise be orphaned: end it by pid after 3 s.
     const forceTimer = setTimeout(() => {
+      if (exited || backendProcess.pid === undefined) return
       try {
-        if (backendProcess?.exitCode === null) {
-          if (process.platform !== 'win32') {
-            backendProcess.kill('SIGKILL')
-          } else {
-            backendProcess.kill() // TerminateProcess on Windows
-          }
-        }
+        process.kill(backendProcess.pid, 'SIGKILL') // TerminateProcess on Windows
       } catch {
         // Process already exited
       }
@@ -667,11 +668,11 @@ function startPrimaryInstance(): void {
   })
 
   process.on('exit', () => {
-    const backendProcess = backendSupervisor?.process
+    const backendProcess = currentBackend()
     backendSupervisor?.stop()
     if (backendProcess) {
       try {
-        backendProcess.kill('SIGTERM')
+        backendProcess.kill()
       } catch {
         // Ignore — process exiting anyway
       }

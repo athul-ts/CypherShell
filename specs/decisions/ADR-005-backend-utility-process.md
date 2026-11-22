@@ -1,7 +1,7 @@
 # ADR-005 — Run the backend in an Electron utility process and lock down the runtime with fuses
 
 **Date:** 2026-11-20
-**Status:** Proposed
+**Status:** Accepted (2026-11-22)
 **Deciders:** Athul T S
 
 ---
@@ -48,6 +48,7 @@ Start the backend with Electron's `utilityProcess.fork`, send its secrets in the
 - A message to a process we just started cannot be read by other processes the way an environment block can, so the two secrets are no longer exposed to same-user observers.
 - Disabling the Node-mode fuses removes the signed-binary-as-a-Node-runtime path and the `NODE_OPTIONS` / inspector injection points. ASAR integrity makes tampering with the packaged renderer and main code detectable at start-up.
 - The change keeps ADR-002's structure (separate process, supervisor restart, HTTP/WebSocket to the renderer), so the renderer, the API and all backend tests are unaffected.
+- A utility process has no `disconnect` event: Electron ends it together with the app, so the `process.on('disconnect')` exit remains only for the plain child-process path.
 - Accepted trade-off: backend logs now arrive through the utility process's piped stdout/stderr instead of the child's; `process.send`-based host messages move to `process.parentPort`, with the existing `process.send` path kept for tests.
 
 ---
@@ -61,12 +62,14 @@ Start the backend with Electron's `utilityProcess.fork`, send its secrets in the
 - **Negative:** ASAR integrity validation covers Windows and macOS only, and the fuses are applied at packaging time, so a development run does not exercise them — the packaged build must be smoke-tested.
 - **Negative:** developing against a utility process makes attaching a debugger to the backend less direct than `node --inspect`.
 
-**To verify in BL-46 before this ADR moves to Accepted** (not yet tested):
+**Verified during BL-46 (2026-11-22, Windows, Electron 45.4.1):**
 
-1. A utility process can run `resources/backend/dist/index.js`, which lives outside the ASAR, with `better-sqlite3` and `ssh2` loading from `resources/backend/node_modules`.
-2. `onlyLoadAppFromAsar` does not block that path, and the `file://` renderer still loads with `grantFileProtocolExtraPrivileges` off.
-3. `process.parentPort` is available to the backend and delivers the first message before the server listens.
-4. Windows packaging with the fuses set starts and passes the e2e smoke test; macOS and Linux packaging pass `package.yml`.
+1. A utility process runs `resources/backend/dist/index.js`, which lives outside the ASAR, and loads `better-sqlite3` and `ssh2` from `resources/backend/node_modules`. ✅ (a spike with the real modules, then the packaged app)
+2. `onlyLoadAppFromAsar` does not block that path. ✅ **`grantFileProtocolExtraPrivileges` must stay on:** with it off the packaged `file://` renderer does not load (`chrome-error://chromewebdata`), so it keeps Electron's default and the app loads only its own bundled files.
+3. `process.parentPort` is available and `process.send` is not, so the host bridge uses the port. The backend announces `ready`, main answers with the secrets, and the backend creates nothing that needs them before they arrive. ✅
+4. The packaged Windows app, built with the fuses, starts on a throwaway profile; `npx @electron/fuses read` shows them; the renderer loads and calls the backend with the launch secret; a run with `ELECTRON_RUN_AS_NODE=1` starts the app instead of acting as Node; and a one-byte change to `app.asar` stops the app from starting (ASAR integrity). ✅ macOS and Linux are verified by the `Check Electron fuses` step of `build.yml` (run by `package.yml`) and remain unverified locally.
+
+**Found while verifying:** Chromium writes the OS-crypt key that `safeStorage` uses to `Local State` lazily. A first run that is force-killed within about 10 s loses that key, and the next run generates a new storage key. This is independent of this ADR (it happens without the fuses) and only matters before any data has been stored, but it is noted here.
 
 ---
 

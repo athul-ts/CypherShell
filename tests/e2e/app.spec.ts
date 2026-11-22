@@ -142,3 +142,32 @@ test('[BL-43] a renderer error report lands in app.log', async () => {
     await closeApp(launched)
   }
 })
+
+test('[BL-46] the backend runs in a utility process and gets its secrets in a message', async () => {
+  const launched = await launchApp()
+
+  try {
+    const win = await launched.app.firstWindow()
+    await win.waitForLoadState('domcontentloaded')
+    await expectThrowawayProfile(launched)
+
+    const log = path.join(launched.userDataDir, 'app.log')
+    await expect
+      .poll(() => fs.readFileSync(log, 'utf8'), { timeout: 15000 })
+      .toContain('Start-up secrets received from the main process')
+    const text = fs.readFileSync(log, 'utf8')
+    expect(text).toContain('Starting the backend utility process')
+    expect(text).toContain('Backend listening on 127.0.0.1')
+    // The window can talk to the backend: it asks for the status without a token.
+    const status = await win.evaluate(async () => {
+      const api = (window as unknown as { api: { backendPort: number; launchSecret: string } }).api
+      const res = await fetch(`http://127.0.0.1:${api.backendPort}/api/auth/status`, {
+        headers: { 'X-CypherShell-Launch': api.launchSecret }
+      })
+      return res.status
+    })
+    expect(status).toBe(200)
+  } finally {
+    await closeApp(launched)
+  }
+})

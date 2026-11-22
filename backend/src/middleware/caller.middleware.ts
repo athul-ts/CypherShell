@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'crypto'
 import type { IncomingMessage } from 'http'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import type { CorsOptions } from 'cors'
+import { Secrets } from '../config/secrets'
 
 /**
  * BL-17: who may call the local API.
@@ -49,7 +50,8 @@ function isHttpOrigin(value: string): boolean {
  */
 export function callerPolicyFromEnv(source: NodeJS.ProcessEnv = process.env): CallerPolicy {
   return {
-    launchSecret: source.LAUNCH_SECRET ?? '',
+    // BL-46: with the real environment, the secret main sent at start-up (kept in memory) wins.
+    launchSecret: source === process.env ? Secrets.launchSecret() : (source.LAUNCH_SECRET ?? ''),
     extraOrigins: (source.ALLOWED_CORS_ORIGINS ?? '')
       .split(',')
       .map((origin) => origin.trim().replace(/\/$/, ''))

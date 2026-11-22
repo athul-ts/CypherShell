@@ -281,7 +281,7 @@
 | ~~BL-43~~ | ~~Logging~~ | ~~Medium~~ | NFR-06 | ✅ Done |
 | ~~BL-44~~ | ~~Cleanup and documentation~~ | ~~Low~~ | NFR-06 | ✅ Done |
 | ~~BL-45~~ | ~~Performance checks~~ | ~~Medium~~ | NFR-01 | ✅ Done |
-| BL-46     | Backend in utilityProcess + fuses (needs ADR-005)                   | Medium       | NFR-02                               | ❌ Open         |
+| ~~BL-46~~ | ~~Backend in utilityProcess + fuses (needs ADR-005)~~ | ~~Medium~~ | NFR-02 | ✅ Done |
 
 ---
 
@@ -293,7 +293,7 @@
 | ADR-002 | Spawn Express as child process over direct Electron IPC  | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)                 |
 | ADR-003 | SQLite + Prisma over cloud/external database             | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)                     |
 | ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1   | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md)               |
-| ADR-005 | Backend in a utility process + Electron fuses (proposed) | [specs/decisions/ADR-005-backend-utility-process.md](decisions/ADR-005-backend-utility-process.md) |
+| ADR-005 | Backend in a utility process + Electron fuses (accepted 2026-11-22) | [specs/decisions/ADR-005-backend-utility-process.md](decisions/ADR-005-backend-utility-process.md) |
 
 ---
 

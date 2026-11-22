@@ -280,7 +280,7 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 - Takes the single-instance lock first; a second launch quits before writing the log or spawning a backend, and the running app brings its main window to the front ✅ (BL-25)
 - Uses `portfinder` to find a free localhost port starting from 4000
 - Sets `process.env.DATABASE_URL = file:{userData}/sshclient.db`
-- Spawns Express.js backend as a child process using Electron's bundled Node.js (`ELECTRON_RUN_AS_NODE=1`), with a Node IPC channel for lock requests and lock-state reports ✅ (BL-18)
+- Starts the Express.js backend as an Electron utility process (`utilityProcess.fork`, BL-46), with a message channel for lock requests and lock-state reports ✅ (BL-18). The storage key and launch secret are sent in the first message, not in the environment; the packaged app has the `RunAsNode`, `NODE_OPTIONS` and `--inspect` fuses off and ASAR integrity on (ADR-005) ✅ (BL-46)
 - Creates `BrowserWindow`, loads Vite renderer
 - Passes backend port to preload via IPC channel (`get-backend-port`)
 - Handles: window lifecycle, native file dialogs, auto-updater (startup + every 4 hours; notify-only on macOS — BL-24)
@@ -2485,11 +2485,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-46 — Backend in `utilityProcess` and Electron Fuses
+### ~~BL-46 — Backend in `utilityProcess` and Electron Fuses~~ ✅ Implemented
 
 **Requirements:** NFR-02
 **Priority:** Medium
-**Status:** ❌ Open — **blocked until ADR-005 is accepted**
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/hostBridgeInit.test.ts, tests/backend/backendHandshake.test.ts, tests/backend/fuses.test.ts, tests/e2e/app.spec.ts; packaged Windows app checked by hand (fuses, renderer, ASAR tamper)
 
 **Problem:** the backend is started as `ELECTRON_RUN_AS_NODE`, which keeps the signed app binary usable as a general Node.js runtime (it also honours `NODE_OPTIONS` and `--inspect`), and the storage key and launch secret travel in environment variables.
 
@@ -2497,10 +2497,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] The backend runs in a utility process; the e2e suite and the supervisor tests pass
-- [ ] `@electron/fuses read` on the packaged app shows the fuses above
-- [ ] The storage key and launch secret are not present in the backend's environment
-- [ ] The packaged Windows app starts on a throwaway profile; macOS and Linux are verified in CI
+- [x] The backend runs in a utility process; the e2e suite and the supervisor tests pass
+- [x] `@electron/fuses read` on the packaged app shows the fuses above
+- [x] The storage key and launch secret are not present in the backend's environment
+- [x] The packaged Windows app starts on a throwaway profile (checked 2026-11-22)
+- [ ] macOS and Linux: the `Check Electron fuses` step of `build.yml` passes in `package.yml` (not yet run)
 
 ---
 
