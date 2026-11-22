@@ -195,6 +195,13 @@ test('[BL-47] local files are granted by main and resolved for the backend (real
     const main = await launched.app.firstWindow()
     await main.waitForLoadState('domcontentloaded')
 
+    // The backend starts after the window: wait until it listens before calling it.
+    await expect
+      .poll(() => fs.readFileSync(path.join(launched.userDataDir, 'app.log'), 'utf8'), {
+        timeout: 30000
+      })
+      .toContain('Backend listening on 127.0.0.1')
+
     // A token for the SFTP window, and the native dialogs answered by main-side stubs.
     const token = await main.evaluate(async () => {
       const api = (window as unknown as { api: Api }).api
