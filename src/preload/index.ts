@@ -30,9 +30,25 @@ const api = {
   // BL-43: error reports go to app.log in the main process, not to the console
   logRendererError: (context: string, message: string): Promise<void> =>
     ipcRenderer.invoke('log:rendererError', context, message),
-  openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
-  openDirectoryDialog: () => ipcRenderer.invoke('dialog:openDirectory'),
-  saveFileDialog: (defaultName: string) => ipcRenderer.invoke('dialog:saveFile', defaultName),
+  // BL-47 / ADR-006: local files for SFTP transfers. The page gets opaque grants from main and
+  // sends those to the backend — never a local path. Served to SFTP windows only.
+  pickUploadFile: () => ipcRenderer.invoke('sftp:pickUploadFile'),
+  pickDownloadTarget: (request: { name: string; folder?: string }) =>
+    ipcRenderer.invoke('sftp:pickDownloadTarget', request),
+  readLocalDir: (dirPath?: string) => ipcRenderer.invoke('sftp:readLocalDir', dirPath),
+  // A file dropped from the OS. The path is read here, from the real File (page script cannot
+  // build one), goes straight to main and is never returned to the page (File.path was removed
+  // in Electron 32).
+  grantDroppedFile: (file: File): Promise<unknown> => {
+    let filePath = ''
+    try {
+      filePath = webUtils.getPathForFile(file)
+    } catch {
+      return Promise.resolve(null) // not a File
+    }
+    if (!filePath) return Promise.resolve(null) // a File made in JavaScript has no path
+    return ipcRenderer.invoke('sftp:grantDroppedFile', filePath)
+  },
   // BL-22: main runs the dialog and does the IO
   saveTextFile: (request: { kind: TextFileKind; defaultName: string; content: string }) =>
     ipcRenderer.invoke('dialog:saveTextFile', request),
@@ -44,9 +60,6 @@ const api = {
     ipcRenderer.invoke('window:openSftp', { sessionId, profileId, title, token }),
   // SEC-07 / BL-20: main hands each connection window its own token, once
   getConnectionToken: () => ipcRenderer.invoke('get-connection-token'),
-  // BL-30: the absolute path of a file dropped from the OS (File.path was removed in Electron 32)
-  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
-  readLocalDir: (dirPath?: string) => ipcRenderer.invoke('fs:readDir', dirPath),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   // BL-24: the Releases page, for the macOS manual update
   openDownloadPage: () => ipcRenderer.invoke('updater:openDownloadPage'),

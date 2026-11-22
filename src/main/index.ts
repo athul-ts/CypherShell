@@ -11,20 +11,29 @@ import {
   type IpcMainInvokeEvent,
   type WebContents
 } from 'electron'
-import { join, resolve, relative, isAbsolute, dirname, basename } from 'path'
+import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import portfinder from 'portfinder'
 import iconPng from '../../resources/icon.png?asset'
 import iconIco from '../../build/icon.ico?asset'
-import { realpathSync, existsSync } from 'fs'
 import { AppLog, createRendererErrorHandler } from './log'
-import { stat, readdir, readFile, writeFile } from 'fs/promises'
+import { stat, readFile, writeFile } from 'fs/promises'
 import * as crypto from 'crypto'
 import * as os from 'os'
 import { BackendSupervisor } from './backendSupervisor'
-import { attachBackendHandshake } from './backendHandshake'
-import { IdleLock, parseBackendMessage } from './idleLock'
+import { attachBackendHandshake, routeBackendMessage } from './backendHandshake'
+import { IdleLock } from './idleLock'
+import { LocalGrantRegistry, type GrantResolveRequest } from './localGrants'
+import {
+  createLocalPanePolicy,
+  grantDroppedFile,
+  pickDownloadTarget,
+  pickUploadFile,
+  readLocalDir,
+  resolveGrantRequest,
+  type LocalFilesContext
+} from './localFiles'
 import { loadOrCreateStorageKey, removeLegacyJwtSecret } from './secretFiles'
 import {
   ConnectionTokenBroker,
@@ -71,6 +80,38 @@ let mainWindow: BrowserWindow | null = null
 const connectionWindows = new Set<BrowserWindow>()
 /** SEC-07 / BL-20: each new connection window's one-time JWT hand-off. */
 const connectionTokens = new ConnectionTokenBroker()
+/** BL-47 / ADR-006: grants for the files an SFTP window may transfer. */
+const localGrants = new LocalGrantRegistry()
+let localFilesContext: Promise<LocalFilesContext> | null = null
+
+/** The grant registry, the local-pane policy (home minus the app's own data) and the dialogs. */
+function getLocalFiles(): Promise<LocalFilesContext> {
+  localFilesContext ??= createLocalPanePolicy({
+    home: os.homedir(),
+    refused: [app.getPath('userData'), app.getPath('sessionData')]
+  }).then((policy) => {
+    const windowOf = (windowId: number): BrowserWindow | undefined =>
+      BrowserWindow.getAllWindows().find((w) => w.webContents.id === windowId)
+    return {
+      registry: localGrants,
+      policy,
+      dialogs: {
+        open: (windowId, options) => {
+          const win = windowOf(windowId)
+          const opts = options as Electron.OpenDialogOptions
+          return win ? dialog.showOpenDialog(win, opts) : dialog.showOpenDialog(opts)
+        },
+        save: (windowId, options) => {
+          const win = windowOf(windowId)
+          const opts = options as Electron.SaveDialogOptions
+          return win ? dialog.showSaveDialog(win, opts) : dialog.showSaveDialog(opts)
+        }
+      }
+    }
+  })
+  return localFilesContext
+}
+
 /** BL-18: one idle clock for every window; the backend publishes the policy. */
 const idleLock = new IdleLock({ lock: requestLock })
 
@@ -97,6 +138,7 @@ function sendToMainWindow(channel: string, ...args: unknown[]): void {
 
 /** BL-18: the app locked — close every terminal and SFTP window and show the lock screen. */
 function onAppLocked(): void {
+  localGrants.clear() // BL-47: a lock revokes every local-file grant
   for (const win of [...connectionWindows]) {
     if (!win.isDestroyed()) win.destroy()
   }
@@ -125,17 +167,40 @@ function currentBackend(): UtilityProcess | null {
   return (backendSupervisor?.process as UtilityProcess | null | undefined) ?? null
 }
 
-/** BL-18: messages from the backend over the IPC channel. */
-function handleBackendMessage(raw: unknown): void {
-  const message = parseBackendMessage(raw)
-  if (!message) return
-  if (message.type === 'lock-policy') {
-    idleLock.setPolicy(message)
-    logToFile(`Auto-lock: ${message.enabled ? `after ${message.autoLockMinutes} min idle` : 'off'}`)
-  } else {
-    logToFile('App locked')
-    onAppLocked()
+/** BL-47: answers a backend's request to resolve a local-file grant — to that backend, once. */
+async function answerGrantRequest(
+  child: Pick<UtilityProcess, 'postMessage'>,
+  request: GrantResolveRequest
+): Promise<void> {
+  let reply: { ok: true; path: string } | { ok: false; code: string }
+  try {
+    reply = await resolveGrantRequest(await getLocalFiles(), request)
+  } catch (err) {
+    logToFile(`Could not resolve a local-file grant: ${String(err)}`) // never logs the grant itself
+    reply = { ok: false, code: 'REFUSED' }
   }
+  try {
+    child.postMessage({ type: 'grant-resolved', requestId: request.requestId, ...reply })
+  } catch (err) {
+    logToFile(`Could not answer a grant request: ${String(err)}`) // the backend has gone away
+  }
+}
+
+/** BL-18 / BL-47: messages from the backend over the message channel. */
+function handleBackendMessage(raw: unknown, child: Pick<UtilityProcess, 'postMessage'>): void {
+  routeBackendMessage(raw, {
+    lockPolicy: (message) => {
+      idleLock.setPolicy(message)
+      logToFile(
+        `Auto-lock: ${message.enabled ? `after ${message.autoLockMinutes} min idle` : 'off'}`
+      )
+    },
+    locked: () => {
+      logToFile('App locked')
+      onAppLocked()
+    },
+    grantResolve: (request) => void answerGrantRequest(child, request)
+  })
 }
 
 async function startBackend(): Promise<number> {
@@ -226,7 +291,9 @@ async function startBackend(): Promise<number> {
     })
 
     // The backend announces itself; main answers with the secrets (see backendHandshake.ts).
-    attachBackendHandshake(child, { storageKey, launchSecret }, handleBackendMessage)
+    attachBackendHandshake(child, { storageKey, launchSecret }, (raw) =>
+      handleBackendMessage(raw, child)
+    )
 
     child.on('exit', (code) => {
       logToFile(`Backend utility process exited with code ${code}`)
@@ -323,9 +390,12 @@ function createConnectionWindow(
   })
   connectionWindows.add(connWindow)
   const windowId = connWindow.webContents.id
+  // BL-47: only SFTP windows get local-file grants, bound to their SSH session.
+  if (type === 'sftp') localGrants.openWindow(windowId, sessionId)
   connWindow.on('closed', () => {
     connectionWindows.delete(connWindow)
     connectionTokens.forget(windowId)
+    localGrants.closeWindow(windowId)
   })
 
   connWindow.on('ready-to-show', () => {
@@ -452,26 +522,20 @@ function registerIpcHandlers(): void {
   // silently goes stale on every bump.
   onSyncTrusted('get-app-version', () => app.getVersion())
 
-  handleTrusted('dialog:openFile', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openFile'] })
-    if (!canceled) return filePaths
-    return []
-  })
-
-  handleTrusted('dialog:openDirectory', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] })
-    if (!canceled) return filePaths[0]
-    return null
-  })
-
-  // SFTP download target: the backend writes the file the user picks here.
-  handleTrusted('dialog:saveFile', async (_event, defaultName) => {
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: typeof defaultName === 'string' ? basename(defaultName) : undefined
-    })
-    if (!canceled) return filePath
-    return null
-  })
+  // BL-47 / ADR-006: local files for SFTP transfers. The page gets opaque grants, never paths it
+  // could send to the backend; only SFTP windows are served (the functions check the window).
+  handleTrusted('sftp:pickUploadFile', async (event) =>
+    pickUploadFile(await getLocalFiles(), event.sender.id)
+  )
+  handleTrusted('sftp:pickDownloadTarget', async (event, request) =>
+    pickDownloadTarget(await getLocalFiles(), event.sender.id, request)
+  )
+  handleTrusted('sftp:grantDroppedFile', async (event, path) =>
+    grantDroppedFile(await getLocalFiles(), event.sender.id, path)
+  )
+  handleTrusted('sftp:readLocalDir', async (event, dirPath) =>
+    readLocalDir(await getLocalFiles(), event.sender.id, dirPath)
+  )
 
   // BL-22: text export/import — the renderer never names a path; main runs
   // the dialog and reads or writes only the file the user picked.
@@ -505,77 +569,6 @@ function registerIpcHandlers(): void {
   handleTrusted('window:openSftp', (_event, request) => openConnectionWindow('sftp', request))
   // SEC-07 / BL-20: only the window a token was issued for can claim it, once
   handleTrusted('get-connection-token', (event) => connectionTokens.claim(event.sender.id))
-
-  // ─── Path validation for local filesystem operations ────────────────
-  // Resolves user-supplied paths against allowed base directories to
-  // prevent path-traversal / arbitrary filesystem access (SEC-04).
-  const ALLOWED_BASE_DIRS: ReadonlySet<string> = new Set([realpathSync(os.homedir())])
-
-  function validateFilePath(userPath: string): string {
-    if (!userPath || typeof userPath !== 'string') {
-      throw new Error('Invalid path')
-    }
-
-    // Resolve relative paths against homedir
-    const resolvedPath = isAbsolute(userPath) ? resolve(userPath) : resolve(os.homedir(), userPath)
-
-    // For existing paths, resolve symlinks and '..' to get the canonical path
-    let realPath: string
-    if (existsSync(resolvedPath)) {
-      realPath = realpathSync(resolvedPath)
-    } else {
-      // For new files/dirs, resolve the parent directory
-      const parentDir = dirname(resolvedPath)
-      // Verify the parent exists and is within bounds
-      if (!existsSync(parentDir)) {
-        throw new Error(`Parent directory does not exist: "${userPath}"`)
-      }
-      const realParent = realpathSync(parentDir)
-      realPath = join(realParent, basename(resolvedPath))
-    }
-
-    // Must be within one of the allowed base directories
-    const withinBounds = [...ALLOWED_BASE_DIRS].some((base) => {
-      const rel = relative(base, realPath)
-      return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
-    })
-
-    if (!withinBounds) {
-      throw new Error(`Access denied: path is outside allowed directories`)
-    }
-
-    return realPath
-  }
-
-  // Local pane listing (FR-04.2) — read-only, home directory only
-  handleTrusted('fs:readDir', async (_event, dirPath) => {
-    try {
-      const p =
-        typeof dirPath === 'string' && dirPath
-          ? validateFilePath(dirPath)
-          : realpathSync(os.homedir())
-      const dirents = await readdir(p, { withFileTypes: true })
-      const files = await Promise.all(
-        dirents.map(async (d) => {
-          try {
-            const s = await stat(join(p, d.name))
-            return {
-              name: d.name,
-              type: d.isDirectory() ? 'd' : 'f',
-              size: s.size,
-              modifyTime: s.mtime.toISOString(),
-              permissions: s.mode
-            }
-          } catch {
-            return null
-          }
-        })
-      )
-      return { path: p, files: files.filter(Boolean) }
-    } catch (err: unknown) {
-      throw new Error(err instanceof Error ? err.message : String(err))
-    }
-  })
 }
 
 /** CODE-08: stops the backend utility process, with a forced kill if it hangs. */

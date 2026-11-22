@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import { SftpService } from '../services/sftp.service'
 import { LocalPathError, LocalPathService } from '../services/local-path.service'
+import { LocalGrantError, LocalGrantService } from '../services/local-grant.service'
 import { AppLockService } from '../services/app-lock.service'
 import { logger } from '../services/logger.service'
 
@@ -47,7 +48,17 @@ const remotePath = z
   .max(4096, 'Remote path is too long')
   .refine((value) => !value.includes('\0'), 'Invalid remote path')
 
-const localPath = z.string().min(1, 'Local path required').max(4096, 'Local path is too long')
+/**
+ * BL-47 / ADR-006: a local file is named by a grant the main process issued, never by a path.
+ * The schemas are strict, so a `localPath` (or any other extra key) is refused.
+ */
+const GRANT = /^[0-9a-f]{32}$/
+const grantField = z.string().regex(GRANT, 'Invalid local file grant')
+const UploadLocal = z.strictObject({
+  grant: grantField,
+  name: z.string().min(1).max(255).optional()
+})
+const DownloadLocal = z.strictObject({ grant: grantField })
 
 const ListQuerySchema = z.object({
   path: z
@@ -58,8 +69,16 @@ const ListQuerySchema = z.object({
   showHidden: z.enum(['true', 'false']).optional()
 })
 
-const UploadSchema = z.object({ localPath, remotePath, transferId: transferIdFor('up') })
-const DownloadSchema = z.object({ remotePath, localPath, transferId: transferIdFor('dn') })
+const UploadSchema = z.strictObject({
+  local: UploadLocal,
+  remotePath,
+  transferId: transferIdFor('up')
+})
+const DownloadSchema = z.strictObject({
+  remotePath,
+  local: DownloadLocal,
+  transferId: transferIdFor('dn')
+})
 const RemotePathSchema = z.object({ remotePath })
 const RenameSchema = z.object({ oldPath: remotePath, newPath: remotePath })
 const ChmodSchema = z.object({
@@ -101,6 +120,19 @@ export async function listDirectory(req: Request, res: Response): Promise<void> 
   }
 }
 
+/** Answers a refused local file (400, or 503 when main could not be asked). False for other errors. */
+function answerLocalFileError(res: Response, error: unknown): boolean {
+  if (error instanceof LocalGrantError) {
+    res.status(error.status).json({ error: error.message, code: error.code })
+    return true
+  }
+  if (error instanceof LocalPathError) {
+    res.status(400).json({ error: error.message })
+    return true
+  }
+  return false
+}
+
 /** Shared tail of upload/download: refuse a busy id, then start the transfer in the background. */
 function startTransfer(
   res: Response,
@@ -136,11 +168,12 @@ export async function uploadFile(req: Request, res: Response): Promise<void> {
 
   let source: string
   try {
-    source = await LocalPathService.uploadSource(body.data.localPath)
+    // The main process says which file this grant names; the checks below are a second line.
+    const granted = await LocalGrantService.resolve(sessionId, body.data.local, 'read')
+    source = await LocalPathService.uploadSource(granted)
   } catch (error: unknown) {
-    if (!(error instanceof LocalPathError)) throw error
-    res.status(400).json({ error: error.message })
-    return
+    if (answerLocalFileError(res, error)) return
+    throw error
   }
 
   startTransfer(
@@ -159,11 +192,11 @@ export async function downloadFile(req: Request, res: Response): Promise<void> {
 
   let target: string
   try {
-    target = await LocalPathService.downloadTarget(body.data.localPath)
+    const granted = await LocalGrantService.resolve(sessionId, body.data.local, 'write')
+    target = await LocalPathService.downloadTarget(granted)
   } catch (error: unknown) {
-    if (!(error instanceof LocalPathError)) throw error
-    res.status(400).json({ error: error.message })
-    return
+    if (answerLocalFileError(res, error)) return
+    throw error
   }
 
   startTransfer(

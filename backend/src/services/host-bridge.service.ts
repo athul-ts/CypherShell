@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { logger } from './logger.service'
 
 /**
@@ -19,6 +20,56 @@ export type MainToBackendMessage = { type: 'lock' }
 export interface InitSecrets {
   storageKey: string
   launchSecret: string
+}
+
+/** Why main refused to resolve an SFTP local-file grant (BL-47). UNAVAILABLE is the backend's own. */
+export const GRANT_ERROR_CODES = [
+  'GRANT_UNKNOWN',
+  'GRANT_MISMATCH',
+  'NAME_NOT_ALLOWED',
+  'REFUSED',
+  'NOT_FOUND',
+  'NOT_A_FILE',
+  'UNAVAILABLE'
+] as const
+export type GrantErrorCode = (typeof GRANT_ERROR_CODES)[number]
+export type GrantReply = { ok: true; path: string } | { ok: false; code: GrantErrorCode }
+
+export interface GrantResolveInput {
+  sessionId: string
+  grant: string
+  access: 'read' | 'write'
+  name?: string
+}
+
+const UNAVAILABLE: GrantReply = { ok: false, code: 'UNAVAILABLE' }
+
+/** An absolute POSIX path, a drive path or a UNC path — what main resolves a grant to. */
+const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/]|[\\/]{2})/
+
+/**
+ * Reads a message from main as the answer to `requestId`. `match` is false for anything that is
+ * not an answer to this request (so the listener keeps waiting); a matching but malformed answer
+ * counts as UNAVAILABLE.
+ */
+function parseGrantReply(data: unknown, requestId: string): { match: boolean; reply: GrantReply } {
+  if (typeof data !== 'object' || data === null) return { match: false, reply: UNAVAILABLE }
+  const m = data as Record<string, unknown>
+  if (m.type !== 'grant-resolved' || m.requestId !== requestId) {
+    return { match: false, reply: UNAVAILABLE }
+  }
+  if (
+    m.ok === true &&
+    typeof m.path === 'string' &&
+    !m.path.includes('\u0000') &&
+    ABSOLUTE_PATH.test(m.path)
+  ) {
+    return { match: true, reply: { ok: true, path: m.path } }
+  }
+  if (m.ok === false && (GRANT_ERROR_CODES as readonly unknown[]).includes(m.code)) {
+    return { match: true, reply: { ok: false, code: m.code as GrantErrorCode } }
+  }
+  return { match: true, reply: UNAVAILABLE }
 }
 
 /** The part of Electron's `process.parentPort` the backend uses. */
@@ -95,6 +146,36 @@ export const HostBridge = {
    */
   onDisconnect(handler: () => void): void {
     if (!parentPort() && HostBridge.isConnected()) process.once('disconnect', handler)
+  },
+
+  /**
+   * BL-47: asks the main process to resolve an SFTP local-file grant and waits for its answer.
+   * Without a parent port (tests, standalone runs) or without an answer in time the result is
+   * UNAVAILABLE: the backend never falls back to a path from the request.
+   */
+  resolveLocalGrant(input: GrantResolveInput, timeoutMs = 5000): Promise<GrantReply> {
+    const port = parentPort()
+    if (!port) return Promise.resolve(UNAVAILABLE)
+    const requestId = randomUUID()
+    return new Promise((resolve) => {
+      const finish = (reply: GrantReply): void => {
+        clearTimeout(timer)
+        port.off('message', listener)
+        resolve(reply)
+      }
+      const timer = setTimeout(() => finish(UNAVAILABLE), timeoutMs)
+      const listener = (event: { data: unknown }): void => {
+        const { match, reply } = parseGrantReply(event.data, requestId)
+        if (match) finish(reply)
+      }
+      port.on('message', listener)
+      try {
+        port.postMessage({ type: 'grant-resolve', requestId, ...input })
+      } catch (err) {
+        logger.warn('Could not ask the main process to resolve a grant: ' + String(err))
+        finish(UNAVAILABLE)
+      }
+    })
   },
 
   /**

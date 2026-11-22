@@ -31,6 +31,15 @@ describe('[BL-22] the preload surface', () => {
     expect(names).not.toContain('executeLocalFileOp')
     expect(names).not.toContain('openJsonFileDialog')
     expect(names).not.toContain('openCskbFileDialog')
+    // BL-47: SFTP files are granted by main; no call hands the page a local path
+    for (const gone of [
+      'openFileDialog',
+      'openDirectoryDialog',
+      'saveFileDialog',
+      'getPathForFile'
+    ]) {
+      expect(names).not.toContain(gone)
+    }
     expect((window as unknown as { electron?: unknown }).electron).toBeUndefined()
   })
 })

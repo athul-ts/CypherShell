@@ -3,6 +3,9 @@
  * message, not in its environment. It announces itself with `{ type: 'ready' }`; main answers
  * with `{ type: 'init', storageKey, launchSecret }`. No Electron imports, so it is unit-tested.
  */
+import { parseBackendMessage, type BackendMessage } from './idleLock'
+import { parseGrantResolveRequest, type GrantResolveRequest } from './localGrants'
+
 export interface StartupSecrets {
   storageKey: string
   launchSecret: string
@@ -35,4 +38,24 @@ export function attachBackendHandshake(
     }
     onMessage(message)
   })
+}
+
+export interface BackendMessageHandlers {
+  lockPolicy: (message: Extract<BackendMessage, { type: 'lock-policy' }>) => void
+  locked: () => void
+  /** BL-47: the backend asks main to resolve an SFTP local-file grant. */
+  grantResolve: (request: GrantResolveRequest) => void
+}
+
+/**
+ * Routes a message from the backend (BL-47). Grant requests are parsed first; the lock messages
+ * follow; anything else is ignored — an unknown message is never treated as a lock.
+ */
+export function routeBackendMessage(raw: unknown, handlers: BackendMessageHandlers): void {
+  const grantRequest = parseGrantResolveRequest(raw)
+  if (grantRequest) return handlers.grantResolve(grantRequest)
+  const message = parseBackendMessage(raw)
+  if (!message) return
+  if (message.type === 'locked') handlers.locked()
+  else handlers.lockPolicy(message)
 }

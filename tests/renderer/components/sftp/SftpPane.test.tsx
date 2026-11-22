@@ -4,6 +4,8 @@ import { useTransferStore } from '@/store/transferStore'
 import { renderWithQuery } from '../../helpers/renderWithQuery'
 import { SftpPane } from '@/components/sftp/SftpPane'
 import { api } from '@/lib/api'
+import { toast } from 'sonner'
+import { LOCAL_FILE_MIME, localFileDragPayload } from '@/lib/localFiles'
 
 // Isolate LocalFilePane (uses window IPC calls not relevant here)
 vi.mock('@/components/sftp/LocalFilePane', () => ({
@@ -188,8 +190,15 @@ describe('[FR-04.15][BL-30] absolute remote paths', () => {
   })
 })
 
-describe('[FR-04.4][BL-30] dropping a file from the OS', () => {
-  it('uploads the path that getPathForFile returns', async () => {
+const bridge = window.api as unknown as {
+  pickUploadFile: ReturnType<typeof vi.fn>
+  pickDownloadTarget: ReturnType<typeof vi.fn>
+  grantDroppedFile: ReturnType<typeof vi.fn>
+}
+const GRANT = 'd'.repeat(32)
+
+describe('[FR-04.4][BL-30][BL-47] dropping a file from the OS', () => {
+  it('uploads with the grant main issued for the file — never a path', async () => {
     vi.stubGlobal('EventSource', FakeEventSource)
     answerWith('/home/tester')
     mockApi.post.mockResolvedValue({ data: { success: true } })
@@ -201,21 +210,126 @@ describe('[FR-04.4][BL-30] dropping a file from the OS', () => {
       fireEvent.drop(target, { dataTransfer: { files: [file], getData: () => '' } })
     })
 
-    expect(window.api.getPathForFile).toHaveBeenCalledWith(file)
+    expect(bridge.grantDroppedFile).toHaveBeenCalledWith(file)
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalled())
+    const [url, body] = mockApi.post.mock.calls.at(-1) as [string, Record<string, unknown>]
+    expect(url).toBe('/sftp/sess-drop/upload')
+    expect(body).toMatchObject({ local: { grant: GRANT }, remotePath: '/home/tester/report.pdf' })
+    expect(body).not.toHaveProperty('localPath')
+    vi.unstubAllGlobals()
+    useTransferStore.setState({ transfers: [] })
+  })
+
+  it('says so when main cannot grant the dropped file', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    answerWith('/home/tester')
+    mockApi.post.mockClear()
+    bridge.grantDroppedFile.mockResolvedValueOnce(null)
+    renderWithQuery(<SftpPane sessionId="sess-nogrant" />)
+
+    const target = await screen.findByRole('button', { name: /upload/i })
+    await act(async () => {
+      fireEvent.drop(target, {
+        dataTransfer: { files: [new File(['x'], 'x.bin')], getData: () => '' }
+      })
+    })
+
+    expect(toast.error).toHaveBeenCalledWith('Could not read the dropped file')
+    expect(mockApi.post).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('a text/plain-only drop uploads nothing', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    answerWith('/home/tester')
+    mockApi.post.mockClear()
+    renderWithQuery(<SftpPane sessionId="sess-plain" />)
+
+    const target = await screen.findByRole('button', { name: /upload/i })
+    await act(async () => {
+      fireEvent.drop(target, {
+        dataTransfer: {
+          files: [],
+          getData: (type: string) => (type === 'text/plain' ? '/etc/passwd' : '')
+        }
+      })
+    })
+
+    expect(mockApi.post).not.toHaveBeenCalled()
+    expect(bridge.grantDroppedFile).not.toHaveBeenCalledWith(expect.anything())
+    vi.unstubAllGlobals()
+  })
+
+  it('uploads a local-pane file by its folder grant and name', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    answerWith('/home/tester')
+    mockApi.post.mockResolvedValue({ data: { success: true } })
+    renderWithQuery(<SftpPane sessionId="sess-pane" />)
+
+    const target = await screen.findByRole('button', { name: /upload/i })
+    await act(async () => {
+      fireEvent.drop(target, {
+        dataTransfer: {
+          files: [],
+          getData: (type: string) =>
+            type === LOCAL_FILE_MIME ? localFileDragPayload('e'.repeat(32), 'notes.txt') : ''
+        }
+      })
+    })
+
     await waitFor(() =>
       expect(mockApi.post).toHaveBeenCalledWith(
-        '/sftp/sess-drop/upload',
+        '/sftp/sess-pane/upload',
         expect.objectContaining({
-          localPath: '/dropped/report.pdf',
-          remotePath: '/home/tester/report.pdf'
+          local: { grant: 'e'.repeat(32), name: 'notes.txt' },
+          remotePath: '/home/tester/notes.txt'
         })
       )
     )
     vi.unstubAllGlobals()
+    useTransferStore.setState({ transfers: [] })
   })
 })
 
-describe('[FR-04.13][BL-30] retrying a failed transfer', () => {
+describe('[FR-04.4][FR-04.5][BL-47] the Upload and Download buttons', () => {
+  it('Upload sends the grant from the native Open dialog', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    answerWith('/home/tester')
+    mockApi.post.mockResolvedValue({ data: { success: true } })
+    bridge.pickUploadFile.mockResolvedValueOnce({ grant: 'c'.repeat(32), name: 'photo.png' })
+    renderWithQuery(<SftpPane sessionId="sess-btn" />)
+    await screen.findByText('notes.txt') // the pane has resolved its absolute home path
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /upload/i }))
+    })
+
+    await waitFor(() =>
+      expect(mockApi.post).toHaveBeenCalledWith(
+        '/sftp/sess-btn/upload',
+        expect.objectContaining({
+          local: { grant: 'c'.repeat(32) },
+          remotePath: '/home/tester/photo.png'
+        })
+      )
+    )
+    vi.unstubAllGlobals()
+    useTransferStore.setState({ transfers: [] })
+  })
+
+  it('Upload does nothing when the dialog is cancelled', async () => {
+    answerWith('/home/tester')
+    mockApi.post.mockClear()
+    bridge.pickUploadFile.mockResolvedValueOnce(null)
+    renderWithQuery(<SftpPane sessionId="sess-cancel" />)
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /upload/i }))
+    })
+    expect(mockApi.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('[FR-04.13][BL-30][BL-47] retrying a failed transfer', () => {
   const failed = {
     id: 'up-old1',
     filename: 'a.txt',
@@ -226,11 +340,11 @@ describe('[FR-04.13][BL-30] retrying a failed transfer', () => {
     percent: 0,
     error: 'Permission denied',
     startedAt: 0,
-    localPath: '/local/a.txt',
+    local: { grant: 'c'.repeat(32) },
     remotePath: '/srv/a.txt'
   }
 
-  it('shows the error and a Retry that restarts the same transfer', async () => {
+  it('shows the error and a Retry that restarts the same transfer with the same grant', async () => {
     vi.stubGlobal('EventSource', FakeEventSource)
     answerWith('/home/tester')
     mockApi.post.mockResolvedValue({ data: { success: true } })
@@ -245,7 +359,7 @@ describe('[FR-04.13][BL-30] retrying a failed transfer', () => {
     await waitFor(() =>
       expect(mockApi.post).toHaveBeenCalledWith(
         '/sftp/sess-retry/upload',
-        expect.objectContaining({ localPath: '/local/a.txt', remotePath: '/srv/a.txt' })
+        expect.objectContaining({ local: { grant: 'c'.repeat(32) }, remotePath: '/srv/a.txt' })
       )
     )
     const ids = useTransferStore.getState().transfers.map((t) => t.id)
@@ -273,5 +387,68 @@ describe('[FR-04.13][BL-30] retrying a failed transfer', () => {
     expect(screen.getByTitle('Retry transfer')).toBeInTheDocument()
     vi.unstubAllGlobals()
     useTransferStore.setState({ transfers: [] })
+  })
+
+  it('a grant that is no longer valid hides Retry and asks to pick the file again', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    answerWith('/home/tester')
+    mockApi.post.mockRejectedValue({
+      response: {
+        data: {
+          error: 'This file is no longer available to this window. Pick it again.',
+          code: 'GRANT_UNKNOWN'
+        }
+      }
+    })
+    useTransferStore.setState({ transfers: [] })
+    renderWithQuery(<SftpPane sessionId="sess-gone" />)
+
+    const target = await screen.findByRole('button', { name: /upload/i })
+    await act(async () => {
+      fireEvent.drop(target, {
+        dataTransfer: { files: [new File(['x'], 'x.bin')], getData: () => '' }
+      })
+    })
+
+    expect(await screen.findByText(/pick it again/i)).toBeInTheDocument()
+    expect(screen.queryByTitle('Retry transfer')).toBeNull()
+    vi.unstubAllGlobals()
+    useTransferStore.setState({ transfers: [] })
+  })
+})
+
+describe('[FR-04.5][BL-47] the Download button', () => {
+  it('downloads into the file the native Save dialog granted', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    answerWith('/home/tester')
+    mockApi.post.mockResolvedValue({ data: { success: true } })
+    bridge.pickDownloadTarget.mockResolvedValueOnce({ grant: 'b'.repeat(32), name: 'notes.txt' })
+    renderWithQuery(<SftpPane sessionId="sess-dl" />)
+
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle('Download'))
+    })
+
+    expect(bridge.pickDownloadTarget).toHaveBeenCalledWith({ name: 'notes.txt' })
+    await waitFor(() =>
+      expect(mockApi.post).toHaveBeenCalledWith('/sftp/sess-dl/download', {
+        remotePath: '/home/tester/notes.txt',
+        local: { grant: 'b'.repeat(32) },
+        transferId: expect.stringMatching(/^dn-/)
+      })
+    )
+    vi.unstubAllGlobals()
+    useTransferStore.setState({ transfers: [] })
+  })
+
+  it('does nothing when the Save dialog is cancelled', async () => {
+    answerWith('/home/tester')
+    mockApi.post.mockClear()
+    bridge.pickDownloadTarget.mockResolvedValueOnce(null)
+    renderWithQuery(<SftpPane sessionId="sess-dl-cancel" />)
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle('Download'))
+    })
+    expect(mockApi.post).not.toHaveBeenCalled()
   })
 })

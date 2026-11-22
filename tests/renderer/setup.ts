@@ -22,9 +22,12 @@ Object.defineProperty(window, 'api', {
     launchSecret: 'renderer-test-launch-secret', // BL-17
     appVersion: '0.0.0-test',
     logRendererError: vi.fn().mockResolvedValue(undefined), // BL-43
-    openFileDialog: vi.fn().mockResolvedValue(null),
-    openDirectoryDialog: vi.fn().mockResolvedValue(null),
-    saveFileDialog: vi.fn().mockResolvedValue(null),
+    // BL-47: grants, never local paths
+    pickUploadFile: vi.fn().mockResolvedValue(null),
+    pickDownloadTarget: vi.fn().mockResolvedValue(null),
+    grantDroppedFile: vi.fn((file: File) =>
+      Promise.resolve({ grant: 'd'.repeat(32), name: file.name })
+    ),
     saveTextFile: vi.fn().mockResolvedValue(null), // BL-22
     openTextFile: vi.fn().mockResolvedValue(null), // BL-22
     onUpdateAvailable: vi.fn(() => () => {}),
@@ -36,8 +39,12 @@ Object.defineProperty(window, 'api', {
     openTerminalWindow: vi.fn(),
     openSftpWindow: vi.fn(),
     getConnectionToken: vi.fn().mockResolvedValue(null), // BL-20
-    getPathForFile: vi.fn((file: File) => `/dropped/${file.name}`), // BL-30
-    readLocalDir: vi.fn().mockResolvedValue({ entries: [] })
+    readLocalDir: vi.fn().mockResolvedValue({
+      path: '/home/tester',
+      parent: null,
+      grant: 'f'.repeat(32),
+      files: []
+    })
   },
   writable: true,
   configurable: true

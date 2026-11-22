@@ -12,9 +12,11 @@ export class LocalPathError extends Error {
 /**
  * Checks the local paths that SFTP transfers read and write (BL-23, NFR-02).
  *
- * The paths come from the native open/save dialogs or the local pane, where
- * the user may pick any folder, so there is no base-directory restriction.
- * What is checked is that each path is what the transfer needs it to be: an
+ * Since BL-47 the request names a grant and the main process says which path it is
+ * (`LocalGrantService`); the backend never sees a path the page sent. The paths come from the
+ * native open/save dialogs, OS drops or the local pane, where the user may pick any folder, so
+ * there is no base-directory restriction. This is a second line of defense: it checks that each
+ * path main returned is what the transfer needs it to be: an
  * absolute, normalized path to a regular file — never a relative path
  * (which would resolve against the backend's working directory), a
  * directory, a device or a pipe.

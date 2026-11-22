@@ -28,6 +28,7 @@ import { PathBreadcrumb } from './PathBreadcrumb'
 import { normalizeSftpPath, parentPath } from '../../lib/sftpPaths'
 import { InputDialog } from './InputDialog'
 import { useSessionHeartbeat } from '../../hooks/useSessionHeartbeat'
+import { readLocalFileDrag, type LocalFileRef } from '../../lib/localFiles'
 
 interface SftpPaneProps {
   sessionId: string
@@ -52,6 +53,11 @@ function makeTransferId(prefix: 'up' | 'dn'): string {
 /** The server's error text from an Axios failure, if it sent one. */
 function apiError(err: unknown): string | undefined {
   return (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+}
+
+/** The server's error code from an Axios failure (BL-47: GRANT_UNKNOWN, …), if it sent one. */
+function apiErrorCode(err: unknown): string | undefined {
+  return (err as { response?: { data?: { code?: string } } })?.response?.data?.code
 }
 
 /** Octal permission bits as shown in the listing, e.g. "755". */
@@ -123,6 +129,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const clearCompleted = useTransferStore((s) => s.clearCompleted)
   const cancelTransferStore = useTransferStore((s) => s.cancelTransfer)
   const removeTransfer = useTransferStore((s) => s.removeTransfer)
+  const forgetLocal = useTransferStore((s) => s.forgetLocal)
   const updateProgress = useTransferStore((s) => s.updateProgress)
 
   const handleCancel = async (transferId: string): Promise<void> => {
@@ -140,23 +147,29 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     }
   }
 
+  /** BL-47: the native Open dialog; main returns a grant and the name, never the path. */
   const handleUpload = async (): Promise<void> => {
-    const files = await window.api.openFileDialog()
-    if (!files || files.length === 0) return
-    await executeUpload(files[0])
+    const picked = await window.api.pickUploadFile()
+    if (!picked) return
+    await executeUpload({ grant: picked.grant }, picked.name)
   }
 
   /** A request the backend refused never reaches the SSE stream, so fail the transfer here. */
-  const failTransfer = (transferId: string, err: unknown): void =>
+  const failTransfer = (transferId: string, err: unknown): void => {
     updateProgress({
       transferId,
       status: 'error',
       message: apiError(err) ?? (err instanceof Error ? err.message : 'Transfer failed')
     })
+    // BL-47: a grant that is gone cannot be retried — the user has to pick the file again.
+    if (apiErrorCode(err) === 'GRANT_UNKNOWN') forgetLocal(transferId)
+  }
 
-  const executeUpload = async (localPath: string, targetPath?: string): Promise<void> => {
-    // Local paths use \\ on Windows and / elsewhere; splitting on only one returned the whole path
-    const filename = localPath.split(/[\\/]/).pop() || 'unknown'
+  const executeUpload = async (
+    local: LocalFileRef,
+    filename: string,
+    targetPath?: string
+  ): Promise<void> => {
     const remotePath = targetPath ?? normalizeSftpPath(currentPath, filename)
     const transferId = makeTransferId('up')
 
@@ -168,7 +181,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       bytesTransferred: 0,
       totalBytes: 0,
       percent: 0,
-      localPath,
+      local,
       remotePath
     })
 
@@ -176,7 +189,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       // Open SSE listener FIRST so we don't miss events from fast transfers
       await listenToTransfer(transferId)
       api
-        .post(`/sftp/${sessionId}/upload`, { localPath, remotePath, transferId })
+        .post(`/sftp/${sessionId}/upload`, { local, remotePath, transferId })
         .catch((err) => failTransfer(transferId, err))
     } catch (err) {
       failTransfer(transferId, err)
@@ -186,13 +199,15 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const handleDropToRemote = async (e: React.DragEvent): Promise<void> => {
     e.preventDefault()
     setDragOver(false)
-    const localPath = e.dataTransfer.getData('text/plain')
-    if (localPath) {
-      await executeUpload(localPath)
+    // BL-47: a file dragged out of the local pane carries a grant and a name. text/plain is
+    // never read: any drag from anywhere could put a path there.
+    const fromPane = readLocalFileDrag(e.dataTransfer)
+    if (fromPane) {
+      await executeUpload({ grant: fromPane.grant, name: fromPane.name }, fromPane.name)
     } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      // BL-30: File.path no longer exists (Electron 32); the preload resolves the real path
-      const droppedPath = window.api.getPathForFile(e.dataTransfer.files[0])
-      if (droppedPath) await executeUpload(droppedPath)
+      // BL-30 / BL-47: the preload reads the dropped file's path and main grants it
+      const granted = await window.api.grantDroppedFile(e.dataTransfer.files[0])
+      if (granted) await executeUpload({ grant: granted.grant }, granted.name)
       else toast.error('Could not read the dropped file')
     }
   }
@@ -204,16 +219,30 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       return
     }
 
-    const localPath = await window.api.saveFileDialog(file.name)
-    if (!localPath) return
+    // BL-47: the native Save dialog; main returns a grant for the file the user chose
+    const picked = await window.api.pickDownloadTarget({ name: file.name })
+    if (!picked) return
 
     const remotePath = normalizeSftpPath(currentPath, file.name)
-    await executeDownload(remotePath, localPath, file.name, file.size)
+    await executeDownload(remotePath, { grant: picked.grant }, picked.name, file.size)
+  }
+
+  /** A remote file dropped on the local pane: the Save dialog opens in that folder (BL-47). */
+  const handleDropOnLocal = async (
+    remote: { filename: string; remotePath: string; size: number },
+    folderGrant: string
+  ): Promise<void> => {
+    const picked = await window.api.pickDownloadTarget({
+      name: remote.filename,
+      folder: folderGrant
+    })
+    if (!picked) return
+    await executeDownload(remote.remotePath, { grant: picked.grant }, picked.name, remote.size)
   }
 
   const executeDownload = async (
     remotePath: string,
-    localPath: string,
+    local: LocalFileRef,
     filename: string,
     size: number
   ): Promise<void> => {
@@ -226,14 +255,14 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       bytesTransferred: 0,
       totalBytes: size,
       percent: 0,
-      localPath,
+      local,
       remotePath
     })
     try {
       // Open SSE listener FIRST so we don't miss events from fast transfers
       await listenToTransfer(transferId)
       api
-        .post(`/sftp/${sessionId}/download`, { remotePath, localPath, transferId })
+        .post(`/sftp/${sessionId}/download`, { remotePath, local, transferId })
         .catch((err) => failTransfer(transferId, err))
     } catch (err) {
       failTransfer(transferId, err)
@@ -242,10 +271,10 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   /** BL-30: start a failed transfer again from the same source to the same target. */
   const handleRetry = (t: Transfer): void => {
-    if (!t.localPath || !t.remotePath) return
+    if (!t.local || !t.remotePath) return
     removeTransfer(t.id)
-    if (t.type === 'upload') void executeUpload(t.localPath, t.remotePath)
-    else void executeDownload(t.remotePath, t.localPath, t.filename, t.totalBytes)
+    if (t.type === 'upload') void executeUpload(t.local, t.filename, t.remotePath)
+    else void executeDownload(t.remotePath, t.local, t.filename, t.totalBytes)
   }
 
   const handleDelete = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
@@ -365,12 +394,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       <div className="flex flex-1 overflow-hidden">
         {/* Left Pane: Local File System */}
         <div className="w-1/2 min-w-[300px]">
-          <LocalFilePane
-            sessionId={sessionId}
-            showHidden={showHidden}
-            onUpload={executeUpload}
-            onDownload={executeDownload}
-          />
+          <LocalFilePane showHidden={showHidden} onDownload={handleDropOnLocal} />
         </div>
 
         {/* Right Pane: Remote File System */}
@@ -654,7 +678,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
                         <span className="text-red-500 flex items-center gap-1">
                           <XCircle className="w-3 h-3" /> Error
                         </span>
-                        {t.localPath && t.remotePath && (
+                        {t.local && t.remotePath && (
                           <button
                             onClick={() => handleRetry(t)}
                             title="Retry transfer"

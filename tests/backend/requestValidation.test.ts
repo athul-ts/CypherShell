@@ -7,10 +7,11 @@
  *    the first progress event throw inside an ssh2 callback and killed the
  *    backend.
  *  - The local path went straight to fastPut/fastGet (relative paths,
- *    directories, devices).
+ *    directories, devices). Since BL-47 the request names a grant and main resolves it;
+ *    the fake resolver below returns constant paths chosen by comparing the grant.
  *  - Tunnel and config bodies were unvalidated.
  */
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
 import request from 'supertest'
 import { EventEmitter } from 'events'
 import fs from 'fs'
@@ -23,6 +24,8 @@ import { startTestSshServer, type TestSshServer } from './helpers/sshServer'
 import { trustTestServer } from './helpers/knownHosts'
 import { SSHService } from '../../backend/src/services/ssh.service'
 import { TunnelService } from '../../backend/src/services/tunnel.service'
+import { SftpService } from '../../backend/src/services/sftp.service'
+import { LocalGrantService } from '../../backend/src/services/local-grant.service'
 import { LocalPathError, LocalPathService } from '../../backend/src/services/local-path.service'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
@@ -61,6 +64,7 @@ beforeAll(async () => {
     })
   profileId = profile.body.id
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-validation-'))
+  restoreResolver = LocalGrantService.useResolver(fakeResolver)
 })
 
 afterEach(() => {
@@ -68,6 +72,7 @@ afterEach(() => {
 })
 
 afterAll(async () => {
+  restoreResolver()
   await sshServer.close()
   fs.rmSync(tempDir, { recursive: true, force: true })
   await prisma.auditLog.deleteMany()
@@ -75,6 +80,36 @@ afterAll(async () => {
   await prisma.appConfig.deleteMany()
   CryptoService.clearActiveKey()
 })
+
+const GRANT_UP = 'a'.repeat(32)
+const GRANT_DOWN = 'b'.repeat(32)
+const GRANT_RELATIVE = 'c'.repeat(32)
+const GRANT_MISSING = 'd'.repeat(32)
+const GRANT_DIR = 'e'.repeat(32)
+const GRANT_MISSING_FOLDER = 'f'.repeat(32)
+const GRANT_DENIED = '1'.repeat(32)
+
+/** Which error the fake answers for GRANT_DENIED. */
+let denyWith = 'GRANT_UNKNOWN'
+
+/**
+ * Stands in for the main process. It answers constant paths, chosen by comparing the grant — it
+ * never builds a path from the request (ADR-006 rule 4).
+ */
+const resolver = vi.fn(async (request: { grant: string }) => {
+  if (request.grant === GRANT_UP) return { ok: true as const, path: __filename }
+  if (request.grant === GRANT_DOWN) return { ok: true as const, path: path.join(tempDir, 'x') }
+  if (request.grant === GRANT_RELATIVE) return { ok: true as const, path: 'relative/file.txt' }
+  if (request.grant === GRANT_MISSING)
+    return { ok: true as const, path: path.join(tempDir, 'missing.txt') }
+  if (request.grant === GRANT_DIR) return { ok: true as const, path: tempDir }
+  if (request.grant === GRANT_MISSING_FOLDER) {
+    return { ok: true as const, path: path.join(tempDir, 'nope', 'file.txt') }
+  }
+  return { ok: false as const, code: denyWith as never }
+})
+const fakeResolver = (request: { grant: string }): ReturnType<typeof resolver> => resolver(request)
+let restoreResolver: () => void = () => {}
 
 async function connect(): Promise<string> {
   const res = await request(app)
@@ -129,13 +164,13 @@ describe('[BL-23] transferId format', () => {
     const upload = await request(app)
       .post('/api/sftp/any/upload')
       .set(...auth())
-      .send({ localPath: __filename, remotePath: '/tmp/x', transferId: id })
+      .send({ local: { grant: GRANT_UP }, remotePath: '/tmp/x', transferId: id })
     expect(upload.status).toBe(400)
 
     const download = await request(app)
       .post('/api/sftp/any/download')
       .set(...auth())
-      .send({ localPath: path.join(tempDir, 'x'), remotePath: '/tmp/x', transferId: id })
+      .send({ local: { grant: GRANT_DOWN }, remotePath: '/tmp/x', transferId: id })
     expect(download.status).toBe(400)
 
     const progress = await request(app).get(
@@ -153,12 +188,12 @@ describe('[BL-23] transferId format', () => {
     const upload = await request(app)
       .post('/api/sftp/any/upload')
       .set(...auth())
-      .send({ localPath: __filename, remotePath: '/tmp/x', transferId: 'dn-abc' })
+      .send({ local: { grant: GRANT_UP }, remotePath: '/tmp/x', transferId: 'dn-abc' })
     expect(upload.status).toBe(400)
     const download = await request(app)
       .post('/api/sftp/any/download')
       .set(...auth())
-      .send({ localPath: path.join(tempDir, 'x'), remotePath: '/tmp/x', transferId: 'up-abc' })
+      .send({ local: { grant: GRANT_DOWN }, remotePath: '/tmp/x', transferId: 'up-abc' })
     expect(download.status).toBe(400)
   })
 
@@ -167,14 +202,14 @@ describe('[BL-23] transferId format', () => {
     const res = await request(app)
       .post(`/api/sftp/${sessionId}/upload`)
       .set(...auth())
-      .send({ localPath: __filename, remotePath: '/tmp/x', transferId: 'error' })
+      .send({ local: { grant: GRANT_UP }, remotePath: '/tmp/x', transferId: 'error' })
     expect(res.status).toBe(400)
     expect((await request(app).get('/api/health')).status).toBe(200)
   })
 
   it('refuses a second transfer with an id that is still in progress', async () => {
     const sessionId = await connectWithStalledSftp()
-    const body = { localPath: __filename, remotePath: '/tmp/dup', transferId: 'up-dup1' }
+    const body = { local: { grant: GRANT_UP }, remotePath: '/tmp/dup', transferId: 'up-dup1' }
     const first = await request(app)
       .post(`/api/sftp/${sessionId}/upload`)
       .set(...auth())
@@ -193,23 +228,23 @@ describe('[BL-23] transferId format', () => {
   })
 })
 
-describe('[BL-23] local paths', () => {
+describe('[BL-23] local paths (the path main resolved is still checked)', () => {
   it('refuses relative, missing and directory upload sources', async () => {
-    for (const localPath of ['relative/file.txt', path.join(tempDir, 'missing.txt'), tempDir]) {
+    for (const grant of [GRANT_RELATIVE, GRANT_MISSING, GRANT_DIR]) {
       const res = await request(app)
         .post('/api/sftp/any/upload')
         .set(...auth())
-        .send({ localPath, remotePath: '/tmp/x', transferId: 'up-path1' })
+        .send({ local: { grant }, remotePath: '/tmp/x', transferId: 'up-path1' })
       expect(res.status).toBe(400)
     }
   })
 
   it('refuses a download into a missing folder or onto a folder', async () => {
-    for (const localPath of [path.join(tempDir, 'nope', 'file.txt'), tempDir]) {
+    for (const grant of [GRANT_MISSING_FOLDER, GRANT_DIR]) {
       const res = await request(app)
         .post('/api/sftp/any/download')
         .set(...auth())
-        .send({ localPath, remotePath: '/tmp/x', transferId: 'dn-path1' })
+        .send({ local: { grant }, remotePath: '/tmp/x', transferId: 'dn-path1' })
       expect(res.status).toBe(400)
     }
   })
@@ -229,6 +264,124 @@ describe('[BL-23] local paths', () => {
     await expect(LocalPathService.uploadSource(`${tempDir}${path.sep}a\0b`)).rejects.toThrow(
       LocalPathError
     )
+  })
+})
+
+describe('[BL-47] local files are named by grant', () => {
+  const post = (kind: 'upload' | 'download', body: object): request.Test =>
+    request(app)
+      .post(`/api/sftp/any/${kind}`)
+      .set(...auth())
+      .send(body)
+
+  it.each([
+    ['upload', { localPath: __filename, remotePath: '/tmp/x', transferId: 'up-legacy' }],
+    ['download', { localPath: __filename, remotePath: '/tmp/x', transferId: 'dn-legacy' }]
+  ] as const)('refuses a legacy localPath on %s', async (kind, body) => {
+    const res = await post(kind, body)
+    expect(res.status).toBe(400)
+  })
+
+  it('refuses a localPath next to a valid grant, and any other extra key', async () => {
+    const base = { local: { grant: GRANT_UP }, remotePath: '/tmp/x', transferId: 'up-extra1' }
+    expect((await post('upload', { ...base, localPath: __filename })).status).toBe(400)
+    expect((await post('upload', { ...base, extra: 1 })).status).toBe(400)
+    expect(
+      (await post('upload', { ...base, local: { grant: GRANT_UP, localPath: __filename } })).status
+    ).toBe(400)
+  })
+
+  it.each([
+    ['no grant', {}],
+    ['a short grant', { grant: 'abc' }],
+    ['an upper-case grant', { grant: 'A'.repeat(32) }],
+    ['a path as the grant', { grant: __filename }]
+  ])('refuses %s', async (_label, local) => {
+    const res = await post('upload', { local, remotePath: '/tmp/x', transferId: 'up-badgrant' })
+    expect(res.status).toBe(400)
+  })
+
+  it('refuses a name on a download grant and a name that is too long on an upload', async () => {
+    const download = await post('download', {
+      local: { grant: GRANT_DOWN, name: 'x' },
+      remotePath: '/tmp/x',
+      transferId: 'dn-name1'
+    })
+    expect(download.status).toBe(400)
+    const upload = await post('upload', {
+      local: { grant: GRANT_UP, name: 'x'.repeat(256) },
+      remotePath: '/tmp/x',
+      transferId: 'up-name1'
+    })
+    expect(upload.status).toBe(400)
+  })
+
+  it('asks main for the session, grant, access and name — and starts no transfer when refused', async () => {
+    resolver.mockClear()
+    const res = await post('upload', {
+      local: { grant: GRANT_DENIED, name: 'a.txt' },
+      remotePath: '/tmp/x',
+      transferId: 'up-ask1'
+    })
+    expect(resolver).toHaveBeenCalledWith({
+      sessionId: 'any',
+      grant: GRANT_DENIED,
+      access: 'read',
+      name: 'a.txt'
+    })
+    expect(res.status).toBe(400)
+    expect(SftpService.isTransferIdInUse('up-ask1')).toBe(false)
+
+    resolver.mockClear()
+    await post('download', {
+      local: { grant: GRANT_DENIED },
+      remotePath: '/tmp/x',
+      transferId: 'dn-ask1'
+    })
+    expect(resolver).toHaveBeenCalledWith({
+      sessionId: 'any',
+      grant: GRANT_DENIED,
+      access: 'write'
+    })
+  })
+
+  it.each([
+    ['GRANT_UNKNOWN', 400],
+    ['GRANT_MISMATCH', 400],
+    ['NAME_NOT_ALLOWED', 400],
+    ['REFUSED', 400],
+    ['NOT_FOUND', 400],
+    ['NOT_A_FILE', 400],
+    ['UNAVAILABLE', 503]
+  ])('answers %s with %i and the code', async (code, status) => {
+    denyWith = code
+    try {
+      const res = await post('upload', {
+        local: { grant: GRANT_DENIED },
+        remotePath: '/tmp/x',
+        transferId: 'up-code1'
+      })
+      expect(res.status).toBe(status)
+      expect(res.body.code).toBe(code)
+      expect(typeof res.body.error).toBe('string')
+    } finally {
+      denyWith = 'GRANT_UNKNOWN'
+    }
+  })
+
+  it('answers 503 when main cannot be asked (no parent port, no fallback to a path)', async () => {
+    restoreResolver()
+    try {
+      const res = await post('upload', {
+        local: { grant: GRANT_UP },
+        remotePath: '/tmp/x',
+        transferId: 'up-nomain'
+      })
+      expect(res.status).toBe(503)
+      expect(res.body.code).toBe('UNAVAILABLE')
+    } finally {
+      restoreResolver = LocalGrantService.useResolver(fakeResolver)
+    }
   })
 })
 
