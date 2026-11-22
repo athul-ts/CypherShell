@@ -220,7 +220,7 @@
 
 | ID     | Requirement                                                                                  | Status |
 | ------ | -------------------------------------------------------------------------------------------- | ------ |
-| NFR-01 | Performance targets — measured by BL-45; cold start 4.2 s is above the 4 s target | ⚠️     |
+| NFR-01 | Performance targets — measured by BL-45; cold start 5.4 s (launch to window shown) is above the 4 s target | ⚠️     |
 | NFR-02 | Security — AES-256-GCM, PBKDF2, context isolation, localhost-only                            | ⚠️     |
 | NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                    | ✅     |
 | NFR-04 | Usability — destructive confirms, loading states, plain-language errors                      | ✅     |

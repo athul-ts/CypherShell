@@ -857,7 +857,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 
 | Metric                                  | Target                   | Measured by (BL-45)                                                       | Status |
 | --------------------------------------- | ------------------------ | ------------------------------------------------------------------------- | ------ |
-| App cold start (Electron window open)   | < 4 seconds              | `tests/e2e/perf.spec.ts`: launch → first window (soft gate: fails above 8 s) | ⚠️ 4.2 s on the Windows development machine — above the target, below the gate |
+| App cold start (Electron window open)   | < 4 seconds              | `tests/e2e/perf.spec.ts`: launch → window shown on ready-to-show (soft gate: fails above 8 s) | ⚠️ 5.4 s on the Windows development machine — above the target, below the gate (the window is created at about 0.2 s but first paint takes about 4 s) |
 | Vite renderer ready after window opens  | < 1 second               | `tests/e2e/perf.spec.ts`: window → setup wizard visible (soft gate)       | ✅ 0.23 s |
 | SSH terminal input-to-display latency   | < 50ms                   | `tests/perf/api.perf.ts`: p95 of 200 WebSocket echoes (backend path only: it excludes the renderer's drawing time) | ✅ 0.3 ms |
 | Profile list load (100 profiles)        | < 200ms                  | `tests/perf/api.perf.ts`: `GET /api/profiles`, median of 20              | ✅ 2.5 ms |

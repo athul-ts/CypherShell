@@ -25,16 +25,28 @@ test('[NFR-01] cold start under 4 s and renderer ready under 1 s', async () => {
   })
   try {
     const win = await app.firstWindow()
+    const windowOpened = performance.now()
+
+    // firstWindow() resolves when the (hidden) BrowserWindow exists; the user sees the app when
+    // main shows it on ready-to-show, so that is where the cold start ends.
+    await expect
+      .poll(
+        () =>
+          app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows().some((w) => w.isVisible())
+          ),
+        { timeout: 30000, intervals: [25] }
+      )
+      .toBe(true)
     const coldStart = performance.now() - started
 
-    const windowOpened = performance.now()
     await expect(win.getByRole('button', { name: /continue without a password/i })).toBeVisible({
       timeout: 30000
     })
     const rendererReady = performance.now() - windowOpened
 
     const results = [
-      record('cold-start', coldStart, 'ms', 4000, 'soft', 'launch to first window'),
+      record('cold-start', coldStart, 'ms', 4000, 'soft', 'launch to the window being shown'),
       record('renderer-ready', rendererReady, 'ms', 1000, 'soft', 'window to setup wizard')
     ]
     for (const r of results) {
