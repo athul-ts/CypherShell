@@ -1,7 +1,7 @@
 # ADR-006 — Local files by grant from the main process
 
 **Date:** 2026-11-22
-**Status:** Proposed
+**Status:** Accepted (2026-11-22)
 **Deciders:** Athul T S
 
 ---

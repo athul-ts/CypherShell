@@ -282,7 +282,7 @@
 | ~~BL-44~~ | ~~Cleanup and documentation~~                                       | ~~Low~~      | NFR-06                               | ✅ Done         |
 | ~~BL-45~~ | ~~Performance checks~~                                              | ~~Medium~~   | NFR-01                               | ✅ Done         |
 | ~~BL-46~~ | ~~Backend in utilityProcess + fuses (needs ADR-005)~~               | ~~Medium~~   | NFR-02                               | ✅ Done         |
-| BL-47     | Local files by grant (ADR-006)                                      | High         | NFR-02, FR-04.4, FR-04.5, FR-04.13   | ❌ Open         |
+| ~~BL-47~~ | ~~Local files by grant (ADR-006)~~ | ~~High~~ | NFR-02, FR-04.4, FR-04.5, FR-04.13 | ✅ Done |
 
 ---
 
@@ -295,7 +295,7 @@
 | ADR-003 | SQLite + Prisma over cloud/external database                        | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)                     |
 | ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1              | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md)               |
 | ADR-005 | Backend in a utility process + Electron fuses (accepted 2026-11-22) | [specs/decisions/ADR-005-backend-utility-process.md](decisions/ADR-005-backend-utility-process.md) |
-| ADR-006 | Local files by grant from the main process (proposed)               | [specs/decisions/ADR-006-local-file-grants.md](decisions/ADR-006-local-file-grants.md)             |
+| ADR-006 | Local files by grant from the main process (accepted 2026-11-22)               | [specs/decisions/ADR-006-local-file-grants.md](decisions/ADR-006-local-file-grants.md)             |
 
 ---
 

@@ -889,7 +889,7 @@ Run `npm run test:perf` for the backend metrics and `npm run test:e2e` for the t
 - Express bound to `127.0.0.1` only — never `0.0.0.0`
 - JWT expires after 1 hour (`expiresIn: '1h'`), re-issued on unlock; the renderer re-authenticates when a request outside `/api/auth` returns 401 ✅ (BL-16)
 - All API inputs validated with zod before reaching controllers ✅ (BL-23 — SFTP, tunnel and config joined the profile, auth and key routes)
-- The backend accepts no local path from the renderer: SFTP transfers name a grant that the main process issued for a file the user picked in a native dialog or dropped from the OS, or for a local-pane folder (under home, never in the app's own data folders); main resolves it for the backend and checks it again ❌ (BL-47, ADR-006). The resolved path is still checked: absolute, normalized, an existing regular file to upload, an existing directory to download into ✅ (BL-23). (This replaces "no `..` traversal in SFTP paths": for a user with shell access, remote `..` is not a security boundary, so remote paths are only checked for well-formedness.)
+- The backend accepts no local path from the renderer: SFTP transfers name a grant that the main process issued for a file the user picked in a native dialog or dropped from the OS, or for a local-pane folder (under home, never in the app's own data folders); main resolves it for the backend and checks it again ✅ (BL-47, ADR-006). The resolved path is still checked: absolute, normalized, an existing regular file to upload, an existing directory to download into ✅ (BL-23). (This replaces "no `..` traversal in SFTP paths": for a user with shell access, remote `..` is not a security boundary, so remote paths are only checked for well-formedness.)
 - Context isolation enabled in Electron — renderer has no direct Node.js access
 - SSH host keys are verified before authentication (FR-11) ✅ (BL-38)
 - The local API accepts requests only from CypherShell's own renderer: a per-launch secret on `/api/auth/*` and the WebSocket upgrade, a strict Origin allowlist (no `null`, no arbitrary localhost origins in production) and a `Host` header check against DNS rebinding ✅ (BL-17)
@@ -897,7 +897,7 @@ Run `npm run test:perf` for the backend metrics and `npm run test:e2e` for the t
 - JWTs are signed with a secret that exists only in the backend's memory, accept only `HS256`, and always carry a revocable `jti`; secret files are readable by the owner only (`0600` in a `0700` directory) ✅ (BL-19)
 - No credential appears in a window URL ✅ (BL-20)
 - Every window denies `window.open` and navigation outside the app, and IPC handlers serve only top-level app frames ✅ (BL-21)
-- The renderer cannot read or write files by path: text import and export go through native dialogs that the main process runs ✅ (BL-22), and SFTP transfers go through grants ❌ (BL-47)
+- The renderer cannot read or write files by path: text import and export go through native dialogs that the main process runs ✅ (BL-22), and SFTP transfers go through grants ✅ (BL-47)
 - A new master password has at least 10 characters ✅ (BL-26)
 
 ### NFR-03: Reliability
@@ -1287,7 +1287,7 @@ Express bound to `127.0.0.1:{port}` — not `0.0.0.0`. The port is not externall
 - All Node.js APIs exposed only via typed `contextBridge` surface
 - Standalone connection windows receive the JWT through a one-time IPC hand-off (`get-connection-token`), keyed by the window — no credential in the window URL or window state ✅ (BL-20)
 - Every window denies `window.open` (http(s) links open in the system browser) and navigation outside the app; every IPC handler serves only a top-level frame showing the app's renderer ✅ (BL-21)
-- The renderer has no generic IPC passthrough and no call that reads or writes a path it supplies; text export/import is bound to native dialogs run by main ✅ (BL-22); SFTP local files are granted by main and only SFTP windows receive grants ❌ (BL-47)
+- The renderer has no generic IPC passthrough and no call that reads or writes a path it supplies; text export/import is bound to native dialogs run by main ✅ (BL-22); SFTP local files are granted by main and only SFTP windows receive grants ✅ (BL-47)
 
 ---
 
@@ -2517,11 +2517,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 - [x] The packaged Windows app starts on a throwaway profile (checked 2026-11-22)
 - [ ] macOS and Linux: the `Check Electron fuses` step of `build.yml` passes in `package.yml` (not yet run)
 
-### BL-47 — Local Files by Grant
+### ~~BL-47 — Local Files by Grant~~ ✅ Implemented
 
 **Requirements:** NFR-02, FR-04.4, FR-04.5, FR-04.13, FR-04.15, §10.6, §10.7 (ADR-006)
 **Priority:** High
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/localGrants.test.ts, tests/backend/localFiles.test.ts, tests/backend/localGrantService.test.ts, tests/backend/preloadBridge.test.ts, tests/backend/requestValidation.test.ts, tests/backend/backendHandshake.test.ts, tests/renderer/lib/localFiles.test.ts, tests/renderer/components/sftp/LocalFilePane.test.tsx, tests/renderer/components/sftp/SftpPane.test.tsx, tests/e2e/app.spec.ts
 
 Specified 2026-11-22, after GitHub CodeQL (js/path-injection) reported five high alerts on PR #23.
 
@@ -2555,13 +2555,15 @@ Specified 2026-11-22, after GitHub CodeQL (js/path-injection) reported five high
 
 **Acceptance Criteria:**
 
-- [ ] No backend endpoint accepts a local path: a request with `localPath` gets 400, and the five CodeQL path-injection alerts close without new ones
-- [ ] Uploads work from the Upload button, an OS drop and a local-pane drag; downloads from the Download button and from a drop on the local pane (through the pre-filled Save dialog)
-- [ ] A grant is refused for another session, after its window closes, after a lock, and for the wrong access; a `dir` grant refuses `..`, path separators and Windows device names
-- [ ] The local pane lists the home folder, goes Up to it, and refuses the app's own data folders — also through a symlink or junction, a different letter case or an 8.3 name
-- [ ] A drop that carries only `text/plain` uploads nothing
-- [ ] Retry reuses the grant; a grant that is no longer valid hides Retry and asks to pick the file again
-- [ ] An e2e test covers the real main ↔ backend round trip
+- [x] No backend endpoint accepts a local path: a request with `localPath` gets 400
+- [ ] The five CodeQL path-injection alerts close without new ones (to be confirmed by the CodeQL run on GitHub after the push)
+- [x] Uploads work from the Upload button, an OS drop and a local-pane drag; downloads from the Download button and from a drop on the local pane (through the pre-filled Save dialog) — covered by component tests and the e2e round trip
+- [ ] The same flows checked by hand in the packaged app against a real SSH server (not yet done)
+- [x] A grant is refused for another session, after its window closes, after a lock, and for the wrong access; a `dir` grant refuses `..`, path separators and Windows device names
+- [x] The local pane lists the home folder, goes Up to it, and refuses the app's own data folders — also through a symlink or junction, a different letter case or an 8.3 name
+- [x] A drop that carries only `text/plain` uploads nothing
+- [x] Retry reuses the grant; a grant that is no longer valid hides Retry and asks to pick the file again
+- [x] An e2e test covers the real main ↔ backend round trip
 
 ---
 

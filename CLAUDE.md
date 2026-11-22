@@ -142,7 +142,7 @@ npm run build                                     # compile backend TS → dist/
 
 ## Backlog Status
 
-BL-01 … BL-46 are done (`npm run test:perf` measures NFR-01; BL-46 runs the backend in a `utilityProcess` with Electron fuses set, ADR-005) — see `specs/index.md`. Remaining gaps are recorded in `SRS_SSH_Desktop_App.md` as ⚠️ notes marked "tracked, not scheduled". Spec any new requirement as a BL item before implementing it.
+BL-01 … BL-47 are done (`npm run test:perf` measures NFR-01; BL-46 runs the backend in a `utilityProcess` with Electron fuses set, ADR-005) — see `specs/index.md`. Remaining gaps are recorded in `SRS_SSH_Desktop_App.md` as ⚠️ notes marked "tracked, not scheduled". Spec any new requirement as a BL item before implementing it.
 
 ## Common Pitfalls
 
