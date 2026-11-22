@@ -2,10 +2,14 @@
 
 ## CypherShell — Secure SSH Desktop Client
 
-**Version:** 3.6
+**Version:** 3.7
 **Author:** Athul T S
-**Date:** 2026-11-20
+**Date:** 2026-11-22
 **Status:** Living Document — v1.0 Feature Complete, v1.1 Backlog Active (BL-10 … BL-16 implemented 2026-11-10; BL-17 … BL-28 implemented 2026-11-11)
+
+> **Changelog from v3.6:**
+>
+> - BL-47 (2026-11-22): local files by grant — the backend no longer accepts local paths; the main process grants the files and folders the user picks (native dialogs, OS drops, local-pane listings) and resolves each grant for the backend (ADR-006). It closes the CodeQL path-injection alerts on PR #23 and the related drop and file-name defects
 
 > **Changelog from v3.5:**
 >
@@ -242,8 +246,8 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 │  ┌──────────────▼──────────────┐                         │
 │  │       Preload Script        │                         │
 │  │  exposes: backendPort,      │                         │
-│  │  openFileDialog, appVersion │                         │
-│  │  fs:readDir, saveTextFile   │                         │
+│  │  pickUploadFile, appVersion │                         │
+│  │  readLocalDir, saveTextFile │                         │
 │  └──────────────┬──────────────┘                         │
 │                 │                                         │
 │  ┌──────────────▼──────────────┐                         │
@@ -285,7 +289,7 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
 - Passes backend port to preload via IPC channel (`get-backend-port`)
 - Handles: window lifecycle, native file dialogs, auto-updater (startup + every 4 hours; notify-only on macOS — BL-24)
 - Writes diagnostic logs to `{userData}/app.log`; each start keeps the previous run as `app.log.1` and `app.log.2`, and a log over 5 MB rotates ✅ (BL-43, `src/main/log.ts`)
-- Generates a per-launch secret in memory (BL-17) and a per-install storage key (wrapped with Electron `safeStorage` when available; `secrets/` is `0700`, `storage-key` `0600` — BL-19) and passes both to the backend as environment variables. There is no JWT secret on disk: the backend creates its own in memory (BL-19)
+- Generates a per-launch secret in memory (BL-17) and a per-install storage key (wrapped with Electron `safeStorage` when available; `secrets/` is `0700`, `storage-key` `0600` — BL-19) and sends both to the backend in its first message (BL-46; before that they were environment variables). There is no JWT secret on disk: the backend creates its own in memory (BL-19)
 - Runs the app's one idle clock: every window's `input-event` resets it; after `autoLockMinutes` without input (lock on) main asks the backend to lock, then closes the terminal and SFTP windows and sends `app:locked` to the main window ✅ (BL-18, `src/main/idleLock.ts`)
 - Hardens every `webContents`: `window.open` denied (http(s) to `shell.openExternal`), navigation outside the renderer blocked, IPC served only to top-level app frames ✅ (BL-21, `src/main/windowSecurity.ts`)
 - Gracefully terminates the backend child process on app quit
@@ -294,16 +298,17 @@ A technically proficient user who manages remote Linux/Unix servers and wants a 
   - `get-backend-port` — returns the backend port
   - `get-launch-secret` — returns the per-launch secret (BL-17)
   - `get-app-version` — returns `app.getVersion()`, the app version from the packaged `package.json`
-  - `dialog:openFile` — native OS file picker
-  - `dialog:openDirectory` — native OS directory picker
-  - `dialog:saveFile` — native OS save dialog (SFTP download target)
+  - `sftp:pickUploadFile` — native Open dialog; returns a grant for the chosen file, never its path (BL-47)
+  - `sftp:pickDownloadTarget` — native Save dialog for an SFTP download, optionally in a granted local-pane folder; returns a grant (BL-47)
+  - `sftp:grantDroppedFile` — grant for a file dropped from the OS; the path comes from the preload, never from the page (BL-47)
   - `dialog:saveTextFile` — main shows the save dialog and writes the given text to the chosen file (BL-22)
   - `dialog:openTextFile` — main shows the open dialog and returns the chosen file's name and text (BL-22)
   - `log:rendererError` — the renderer reports an error `(context, message)`; main validates it, caps it at 2 KB, allows 20 per minute and writes it to app.log (BL-43)
   - `window:openTerminal` — spawns standalone terminal window
   - `window:openSftp` — spawns standalone SFTP window
   - `get-connection-token` — one-time JWT hand-off, to the connection window it was issued for (SEC-07, BL-20)
-  - `fs:readDir` — reads local directory listing for SFTP local pane (home directory only)
+  - `sftp:readLocalDir` — local-pane listing under the home folder, never inside the app's own data folders, with a read-only grant for the folder (BL-47)
+  - `grant-resolve` (backend → main message) — main resolves an SFTP grant to the local path for the backend that asked (BL-47)
   - `updater:install` — triggers update install and app restart (no-op on macOS — BL-24)
   - `updater:openDownloadPage` — opens the GitHub Releases page (BL-24)
   - `backend:restarted` (main → renderer event) — the backend was restarted after a crash; windows re-authenticate (BL-16)
@@ -320,9 +325,6 @@ interface ElectronAPI {
   backendPort: number
   launchSecret: string // BL-17
   appVersion: string
-  openFileDialog: () => Promise<string[]>
-  openDirectoryDialog: () => Promise<string | null>
-  saveFileDialog: (defaultName: string) => Promise<string | null>
   saveTextFile: (req: {
     kind: TextFileKind
     defaultName: string
@@ -332,8 +334,16 @@ interface ElectronAPI {
   openTerminalWindow: (sessionId: string, profileId: string, title: string, token: string) => void
   openSftpWindow: (sessionId: string, profileId: string, title: string, token: string) => void
   getConnectionToken: () => Promise<string | null> // this window's token, once (BL-20)
-  getPathForFile: (file: File) => string // absolute path of a file dropped from the OS (BL-30)
-  readLocalDir: (dirPath?: string) => Promise<{ path: string; files: DirEntry[] }>
+  // SFTP windows only (BL-47): the page gets opaque grants, never local paths it can send on
+  pickUploadFile: () => Promise<{ grant: string; name: string } | null>
+  pickDownloadTarget: (req: {
+    name: string
+    folder?: string
+  }) => Promise<{ grant: string; name: string } | null>
+  grantDroppedFile: (file: File) => Promise<{ grant: string; name: string } | null>
+  readLocalDir: (
+    dirPath?: string
+  ) => Promise<{ path: string; parent: string | null; grant: string; files: DirEntry[] }>
   onUpdateAvailable: (cb: (info: { version: string; manual: boolean }) => void) => () => void // returns an unsubscribe function
   onUpdateDownloaded: (cb: () => void) => () => void
   onBackendRestarted: (cb: () => void) => () => void // BL-16
@@ -343,7 +353,7 @@ interface ElectronAPI {
 }
 ```
 
-No raw Node.js or Electron APIs are exposed to the renderer — no generic `ipcRenderer` passthrough (the `@electron-toolkit/preload` `window.electron` bridge is gone), no call that reads or writes a renderer-supplied path, and subscriptions pass data only, never the `IpcRendererEvent` (BL-22).
+No raw Node.js or Electron APIs are exposed to the renderer — no generic `ipcRenderer` passthrough (the `@electron-toolkit/preload` `window.electron` bridge is gone), no call that reads or writes a renderer-supplied path, no local path the page could hand to the backend (SFTP file access goes through grants that main issues — BL-47), and subscriptions pass data only, never the `IpcRendererEvent` (BL-22).
 
 ### 4.3 Renderer — React SPA (`src/renderer/`)
 
@@ -388,11 +398,12 @@ User types in xterm.js
 ### 4.6 SFTP Data Flow
 
 ```
-User clicks Upload in SFTP pane (native file dialog returns a local path)
+User clicks Upload in SFTP pane (main shows the native Open dialog and returns a grant — BL-47)
   → EventSource opens GET /api/sftp/:sessionId/progress/:transferId first
   → Axios POST JSON to /api/sftp/:sessionId/upload
-      Body: { transferId, localPath, remotePath }
-    → Express controller → SftpService.upload(sessionId, localPath, remotePath, transferId)
+      Body: { transferId, local: { grant }, remotePath }
+    → Express controller → asks main to resolve the grant (grant-resolve) → local path
+      → SftpService.upload(sessionId, localPath, remotePath, transferId)
       → ssh2 fastPut streams file chunks to `<remotePath>.partial`, then renames it
         → On each chunk: sftp.service emits progress to in-memory EventEmitter
           → SSE handler (GET /api/sftp/:sessionId/progress/:transferId)
@@ -412,7 +423,9 @@ CypherShell/
 ├── src/                                  # electron-vite source root
 │   │
 │   ├── main/                             # Electron Main Process
-│   │   ├── index.ts                      # Window creation, backend spawn, IPC, updater, path validation
+│   │   ├── index.ts                      # Window creation, backend spawn, IPC, updater
+│   │   ├── localGrants.ts                # Grants for SFTP local files (BL-47)
+│   │   ├── localFiles.ts                 # Local-pane listing, SFTP dialogs and drops, grant resolution (BL-47)
 │   │   ├── backendSupervisor.ts          # Restart-on-crash policy for the backend child (BL-16)
 │   │   ├── idleLock.ts                   # One idle clock for every window + backend messages (BL-18)
 │   │   ├── secretFiles.ts                # Owner-only secrets/ and storage key (BL-19)
@@ -519,6 +532,7 @@ CypherShell/
 │       │   ├── app-lock.service.ts       # Lock: forget key, revoke tokens, close transports (BL-18)
 │       │   ├── host-bridge.service.ts    # IPC channel to the main process (BL-18)
 │       │   ├── local-path.service.ts     # SFTP local-path checks (BL-23)
+│       │   ├── local-grant.service.ts    # Asks main to resolve SFTP grants (BL-47)
 │       │   ├── audit.service.ts          # Event logging + CSV export
 │       │   ├── config.service.ts         # App config read/update (singleton row)
 │       │   ├── token-store.service.ts    # Issued JWT ids (revocation on lock)
@@ -648,8 +662,8 @@ CypherShell/
 - FR-04.1 — SFTP Explorer opens in standalone window from Profile Details tab ✅
 - FR-04.2 — Left pane: local machine files; Right pane: remote server files ✅
 - FR-04.3 — Navigate by double-clicking folders ✅
-- FR-04.4 — Upload: Upload button (native file dialog) + drag-and-drop ✅ (BL-30 — files dropped from the OS use `webUtils.getPathForFile`; uploading over an existing file replaces it)
-- FR-04.5 — Download: Download button (native save dialog) ✅
+- FR-04.4 — Upload: Upload button (native file dialog) + drag-and-drop ✅ (BL-30 — files dropped from the OS use `webUtils.getPathForFile`; uploading over an existing file replaces it). From BL-47 every source is a grant from main, and a `text/plain` drop is ignored
+- FR-04.5 — Download: Download button (native save dialog) ✅. From BL-47 a remote file dropped on the local pane also opens the Save dialog, in that folder with a cleaned name
 - FR-04.6 — Rename in-place via the row action and F2 ✅ (BL-14 — in-app dialog)
 - FR-04.7 — Delete with confirmation ✅ (BL-30 — files, and empty folders through `rmdir`; a non-empty folder fails with the server's message, recursive delete is out of scope)
 - FR-04.8 — Create new folder via button and Ctrl+Shift+N ✅ (BL-14 — in-app dialog)
@@ -657,9 +671,9 @@ CypherShell/
 - FR-04.10 — Per-transfer progress via SSE: filename, bytes, %, speed + elapsed computed from progress deltas ✅
 - FR-04.11 — Multiple simultaneous transfers in a queue; each has its own SSE stream and its own SFTP channel ✅ (BL-14)
 - FR-04.12 — Transfer history: completed, active, and failed ✅
-- FR-04.13 — Failed transfers: one-click retry with error reason shown ✅ (BL-30 — a failed transfer shows its error and a Retry button; a request the backend refuses also fails visibly)
+- FR-04.13 — Failed transfers: one-click retry with error reason shown ✅ (BL-30 — a failed transfer shows its error and a Retry button; a request the backend refuses also fails visibly). From BL-47 Retry reuses the grant; a grant that is no longer valid asks the user to pick the file again
 - FR-04.14 — Toggle hidden files (dotfiles) ✅
-- FR-04.15 — Breadcrumb path bar in both panes with click-to-navigate ⚠️ — the remote pane now starts at the absolute home path and reaches `/` (BL-30); the local pane is still limited to the home directory (tracked, not scheduled)
+- FR-04.15 — Breadcrumb path bar in both panes with click-to-navigate ⚠️ — the remote pane now starts at the absolute home path and reaches `/` (BL-30); the local pane is still limited to the home directory (tracked, not scheduled). From BL-47 it goes Up to home, and it refuses the app's own data folders
 - FR-04.16 — Cancel an in-progress transfer — only that transfer's channel is closed ✅ (BL-01, BL-14)
 
 ---
@@ -855,15 +869,15 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 
 ### NFR-01: Performance
 
-| Metric                                  | Target                   | Measured by (BL-45)                                                       | Status |
-| --------------------------------------- | ------------------------ | ------------------------------------------------------------------------- | ------ |
-| App cold start (Electron window open)   | < 4 seconds              | `tests/e2e/perf.spec.ts`: launch → window shown on ready-to-show (soft gate: fails above 8 s) | ⚠️ 5.4 s on the Windows development machine — above the target, below the gate (the window is created at about 0.2 s but first paint takes about 4 s) |
-| Vite renderer ready after window opens  | < 1 second               | `tests/e2e/perf.spec.ts`: window → setup wizard visible (soft gate)       | ✅ 0.23 s |
-| SSH terminal input-to-display latency   | < 50ms                   | `tests/perf/api.perf.ts`: p95 of 200 WebSocket echoes (backend path only: it excludes the renderer's drawing time) | ✅ 0.3 ms |
-| Profile list load (100 profiles)        | < 200ms                  | `tests/perf/api.perf.ts`: `GET /api/profiles`, median of 20              | ✅ 2.5 ms |
-| SFTP directory listing (1000 files)     | < 2 seconds              | `tests/perf/api.perf.ts`: first listing, including opening the channel    | ✅ 11 ms |
-| Maximum concurrent SSH sessions         | 20 without memory issues | `tests/perf/api.perf.ts`: 20 sessions, each shell must echo; memory growth reported | ✅ 20 of 20 echo, +2.8 MB |
-| SQLite query time (all typical queries) | < 50ms                   | `tests/perf/api.perf.ts`: audit page over 10 000 rows, profile list, key list | ✅ ≤ 1.6 ms |
+| Metric                                  | Target                   | Measured by (BL-45)                                                                                                | Status                                                                                                                                                |
+| --------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App cold start (Electron window open)   | < 4 seconds              | `tests/e2e/perf.spec.ts`: launch → window shown on ready-to-show (soft gate: fails above 8 s)                      | ⚠️ 5.4 s on the Windows development machine — above the target, below the gate (the window is created at about 0.2 s but first paint takes about 4 s) |
+| Vite renderer ready after window opens  | < 1 second               | `tests/e2e/perf.spec.ts`: window → setup wizard visible (soft gate)                                                | ✅ 0.23 s                                                                                                                                             |
+| SSH terminal input-to-display latency   | < 50ms                   | `tests/perf/api.perf.ts`: p95 of 200 WebSocket echoes (backend path only: it excludes the renderer's drawing time) | ✅ 0.3 ms                                                                                                                                             |
+| Profile list load (100 profiles)        | < 200ms                  | `tests/perf/api.perf.ts`: `GET /api/profiles`, median of 20                                                        | ✅ 2.5 ms                                                                                                                                             |
+| SFTP directory listing (1000 files)     | < 2 seconds              | `tests/perf/api.perf.ts`: first listing, including opening the channel                                             | ✅ 11 ms                                                                                                                                              |
+| Maximum concurrent SSH sessions         | 20 without memory issues | `tests/perf/api.perf.ts`: 20 sessions, each shell must echo; memory growth reported                                | ✅ 20 of 20 echo, +2.8 MB                                                                                                                             |
+| SQLite query time (all typical queries) | < 50ms                   | `tests/perf/api.perf.ts`: audit page over 10 000 rows, profile list, key list                                      | ✅ ≤ 1.6 ms                                                                                                                                           |
 
 Run `npm run test:perf` for the backend metrics and `npm run test:e2e` for the two startup timings. Each value is written to `perf-results/<metric>.json`; CI lists them in the job summary. Hard gates fail the run at the target; the two startup timings are soft gates (a warning above the target, a failure above twice the target). The values above were measured on 2026-11-22 on the Windows development machine; the CI numbers will differ.
 
@@ -875,7 +889,7 @@ Run `npm run test:perf` for the backend metrics and `npm run test:e2e` for the t
 - Express bound to `127.0.0.1` only — never `0.0.0.0`
 - JWT expires after 1 hour (`expiresIn: '1h'`), re-issued on unlock; the renderer re-authenticates when a request outside `/api/auth` returns 401 ✅ (BL-16)
 - All API inputs validated with zod before reaching controllers ✅ (BL-23 — SFTP, tunnel and config joined the profile, auth and key routes)
-- The **local** paths the backend reads and writes for SFTP transfers are validated: absolute, normalized, an existing regular file to upload, an existing directory to download into ✅ (BL-23). (This replaces "no `..` traversal in SFTP paths": for a user with shell access, remote `..` is not a security boundary, so remote paths are only checked for well-formedness.)
+- The backend accepts no local path from the renderer: SFTP transfers name a grant that the main process issued for a file the user picked in a native dialog or dropped from the OS, or for a local-pane folder (under home, never in the app's own data folders); main resolves it for the backend and checks it again ❌ (BL-47, ADR-006). The resolved path is still checked: absolute, normalized, an existing regular file to upload, an existing directory to download into ✅ (BL-23). (This replaces "no `..` traversal in SFTP paths": for a user with shell access, remote `..` is not a security boundary, so remote paths are only checked for well-formedness.)
 - Context isolation enabled in Electron — renderer has no direct Node.js access
 - SSH host keys are verified before authentication (FR-11) ✅ (BL-38)
 - The local API accepts requests only from CypherShell's own renderer: a per-launch secret on `/api/auth/*` and the WebSocket upgrade, a strict Origin allowlist (no `null`, no arbitrary localhost origins in production) and a `Host` header check against DNS rebinding ✅ (BL-17)
@@ -883,7 +897,7 @@ Run `npm run test:perf` for the backend metrics and `npm run test:e2e` for the t
 - JWTs are signed with a secret that exists only in the backend's memory, accept only `HS256`, and always carry a revocable `jti`; secret files are readable by the owner only (`0600` in a `0700` directory) ✅ (BL-19)
 - No credential appears in a window URL ✅ (BL-20)
 - Every window denies `window.open` and navigation outside the app, and IPC handlers serve only top-level app frames ✅ (BL-21)
-- The renderer cannot read or write files by path: text import and export go through native dialogs that the main process runs ✅ (BL-22)
+- The renderer cannot read or write files by path: text import and export go through native dialogs that the main process runs ✅ (BL-22), and SFTP transfers go through grants ❌ (BL-47)
 - A new master password has at least 10 characters ✅ (BL-26)
 
 ### NFR-03: Reliability
@@ -1137,8 +1151,8 @@ Each WebSocket opens its own shell channel on the session's SSH connection. "Rec
 ```
 GET    /api/sftp/:sessionId/list      ?path=.&showHidden=false               → { files[] }
 GET    /api/sftp/:sessionId/realpath  ?path=.                                → { path } — the absolute path (BL-30)
-POST   /api/sftp/:sessionId/upload    { localPath, remotePath, transferId }  → { success, transferId } (progress via SSE)
-POST   /api/sftp/:sessionId/download  { remotePath, localPath, transferId }  → { success, transferId } (progress via SSE)
+POST   /api/sftp/:sessionId/upload    { local: { grant, name? }, remotePath, transferId } → { success, transferId } (progress via SSE; BL-47)
+POST   /api/sftp/:sessionId/download  { remotePath, local: { grant }, transferId }        → { success, transferId } (progress via SSE; BL-47)
 POST   /api/sftp/:sessionId/delete    { remotePath }                         → Delete file
 POST   /api/sftp/:sessionId/rename    { oldPath, newPath }                   → Rename/move
 POST   /api/sftp/:sessionId/mkdir     { remotePath }                         → Create directory
@@ -1147,9 +1161,9 @@ GET    /api/sftp/:sessionId/progress/:transferId ?token=<JWT>                →
 DELETE /api/sftp/:sessionId/transfer/:transferId                             → Cancel an in-progress transfer (BL-01)
 ```
 
-Upload and download take paths on the local disk (chosen through native dialogs), not multipart bodies.
+Upload and download name a local file by grant, not by path and not as a multipart body (BL-47): `grant` is 32 hex characters issued by the main process; `name` (1–255 characters) names a file inside a local-pane folder grant. The backend asks main to resolve the grant; an invalid grant gets `400 { error, code }` (`GRANT_UNKNOWN`, `GRANT_MISMATCH`, `NAME_NOT_ALLOWED`, `REFUSED`, `NOT_FOUND`, `NOT_A_FILE`) and no answer from main gets `503` (`UNAVAILABLE`). A body with `localPath` or any other extra key gets `400`.
 
-Validation (BL-23): `transferId` matches `^(up|dn)-[0-9a-z]{1,32}$` — `up-` for uploads, `dn-` for downloads — on upload, download, progress and cancel (`400` otherwise); starting a transfer whose id is in progress gives `409`. `localPath` must be absolute; an upload source must be an existing regular file and a download target's folder must exist (the target must not be a folder) — `400` otherwise. Remote paths are non-empty, at most 4096 characters, without NUL; `mode` is 3–4 octal digits or an integer up to `0o7777`.
+Validation (BL-23): `transferId` matches `^(up|dn)-[0-9a-z]{1,32}$` — `up-` for uploads, `dn-` for downloads — on upload, download, progress and cancel (`400` otherwise); starting a transfer whose id is in progress gives `409`. The path main resolves must be absolute; an upload source must be an existing regular file and a download target's folder must exist (the target must not be a folder) — `400` otherwise. Remote paths are non-empty, at most 4096 characters, without NUL; `mode` is 3–4 octal digits or an integer up to `0o7777`.
 
 ### 9.6a SFTP Progress — SSE
 
@@ -1263,7 +1277,7 @@ Express bound to `127.0.0.1:{port}` — not `0.0.0.0`. The port is not externall
 - All request bodies validated with `zod` schemas ✅ (BL-23 — SFTP, tunnel and config joined the profile, auth and key controllers)
 - SSH hostnames validated against RFC 1123 ⚠️ — not implemented; any non-empty host is accepted (tracked, not scheduled)
 - Ports validated (1–65535) ✅ for profiles, imported tunnels and tunnel start/stop (BL-23)
-- SFTP local paths validated — absolute, normalized, a regular file to upload, an existing folder to download into ✅ (BL-23). Remote paths are only checked for well-formedness: for a user with shell access, remote `..` is not a security boundary
+- SFTP local files are named by grants that the main process issued and resolves (BL-47); the resolved path is validated — absolute, normalized, a regular file to upload, an existing folder to download into ✅ (BL-23). Remote paths are only checked for well-formedness: for a user with shell access, remote `..` is not a security boundary
 - SFTP `transferId` restricted to `up-…` / `dn-…` — it names an `EventEmitter` event ✅ (BL-23)
 
 ### 10.7 Electron Security
@@ -1273,7 +1287,7 @@ Express bound to `127.0.0.1:{port}` — not `0.0.0.0`. The port is not externall
 - All Node.js APIs exposed only via typed `contextBridge` surface
 - Standalone connection windows receive the JWT through a one-time IPC hand-off (`get-connection-token`), keyed by the window — no credential in the window URL or window state ✅ (BL-20)
 - Every window denies `window.open` (http(s) links open in the system browser) and navigation outside the app; every IPC handler serves only a top-level frame showing the app's renderer ✅ (BL-21)
-- The renderer has no generic IPC passthrough and no call that reads or writes a path it supplies; text export/import is bound to native dialogs run by main ✅ (BL-22)
+- The renderer has no generic IPC passthrough and no call that reads or writes a path it supplies; text export/import is bound to native dialogs run by main ✅ (BL-22); SFTP local files are granted by main and only SFTP windows receive grants ❌ (BL-47)
 
 ---
 
@@ -1485,7 +1499,7 @@ electron-updater          v6.8
 | `ssh2` failures on unusual SSH server configs       | Medium     | Wrap all connections in try/catch; expose raw error in UI                                                                                                                                                                                                            |
 | xterm.js perf with very high output (log tail)      | Medium     | Enable WebGL renderer addon; implement output throttling                                                                                                                                                                                                             |
 | PPK import accuracy across PPK format versions      | Low–Medium | Test with real PuTTY PPK v2/v3 files; sshpk handles both                                                                                                                                                                                                             |
-| `better-sqlite3` native binary bundling in Electron | Resolved   | `better-sqlite3` 13 ships N-API prebuilds; `after-pack.cjs` keeps only the target's binary and checks its architecture (BL-36, ADR-003) |
+| `better-sqlite3` native binary bundling in Electron | Resolved   | `better-sqlite3` 13 ships N-API prebuilds; `after-pack.cjs` keeps only the target's binary and checks its architecture (BL-36, ADR-003)                                                                                                                              |
 | SQLite corruption on OS force-kill                  | Low        | WAL mode enabled on DB init                                                                                                                                                                                                                                          |
 | Prisma engine binary missing in packaged app        | Medium     | Resolved — `binaryTargets = ["native"]` only; Prisma CLI not shipped; migrations applied via `better-sqlite3` at startup                                                                                                                                             |
 | Electron bundle > 200MB                             | Resolved   | esbuild bundles backend pure-JS deps inline; installer is ~101 MB                                                                                                                                                                                                    |
@@ -1499,37 +1513,37 @@ electron-updater          v6.8
 
 Current build state after BL-44 (Phases 4–5, 2026-11). A row returns to ✅ when its backlog item lands.
 
-| Module                     | Status      | Notes                                                                                                                                         |
-| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module                     | Status      | Notes                                                                                                                                                          |
+| -------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Electron main process      | ✅ Complete | Backend spawn + crash restart (BL-16), IPC (sender-checked, BL-21), single instance (BL-25), idle lock (BL-18), auto-updater (BL-24), rotating app.log (BL-43) |
-| Preload / contextBridge    | ✅ Complete | Typed window.api only — no generic IPC passthrough or path-based file calls (BL-22)                                                           |
-| App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow; re-auth on 401 / backend restart (BL-10, BL-16); lock on `app:locked` (BL-18)                           |
-| SetupWizard page           | ✅ Complete | First-run master password setup; 10-character minimum + strength hint (BL-26)                                                                 |
-| LockScreen page            | ✅ Complete | Unlock with bcrypt verify + JWT                                                                                                               |
-| Home page / Profile grid   | ✅ Complete | Search, filter, CRUD, duplicate, export/import                                                                                                |
-| ProfileDetailPane          | ✅ Complete | Connect/disconnect, tunnel panel, window spawning                                                                                             |
-| ProfileForm                | ✅ Complete | Create/edit with key selector; edits send only changed fields (BL-13)                                                                         |
-| TerminalPane (xterm.js)    | ✅ Complete | WebSocket I/O (UTF-8, BL-15), resize, themes, search                                                                                          |
-| TabBar                     | ✅ Complete | DnD reorder, close, Home anchor tab                                                                                                           |
-| SftpPane (dual-pane)       | ✅ Complete | All file ops via in-app dialogs, progress, transfer queue (BL-14)                                                                             |
-| LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC (home directory only)                                                                                      |
-| Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                                                                            |
-| Logs page                  | ✅ Complete | Server-side filters and paging (BL-32); CSV export via save dialog (BL-28)                                                                    |
-| Settings page              | ✅ Complete | Theme, font, lock (re-encrypting, BL-10; 10-character minimum, BL-26), change master password (BL-39), known hosts (BL-38), retention |
-| UpdateBanner               | ✅ Complete | Auto-update notification + install; Releases link on macOS (BL-24)                                                                            |
+| Preload / contextBridge    | ✅ Complete | Typed window.api only — no generic IPC passthrough or path-based file calls (BL-22)                                                                            |
+| App auth state machine     | ✅ Complete | loading → setup/locked/unlocked flow; re-auth on 401 / backend restart (BL-10, BL-16); lock on `app:locked` (BL-18)                                            |
+| SetupWizard page           | ✅ Complete | First-run master password setup; 10-character minimum + strength hint (BL-26)                                                                                  |
+| LockScreen page            | ✅ Complete | Unlock with bcrypt verify + JWT                                                                                                                                |
+| Home page / Profile grid   | ✅ Complete | Search, filter, CRUD, duplicate, export/import                                                                                                                 |
+| ProfileDetailPane          | ✅ Complete | Connect/disconnect, tunnel panel, window spawning                                                                                                              |
+| ProfileForm                | ✅ Complete | Create/edit with key selector; edits send only changed fields (BL-13)                                                                                          |
+| TerminalPane (xterm.js)    | ✅ Complete | WebSocket I/O (UTF-8, BL-15), resize, themes, search                                                                                                           |
+| TabBar                     | ✅ Complete | DnD reorder, close, Home anchor tab                                                                                                                            |
+| SftpPane (dual-pane)       | ✅ Complete | All file ops via in-app dialogs, progress, transfer queue (BL-14)                                                                                              |
+| LocalFilePane              | ✅ Complete | Local FS browsing via Electron IPC (home directory only); grants and refused app-data folders in BL-47                                                         |
+| Keys page                  | ✅ Complete | Generate, import, copy, export, delete, export/import .cskb bundle                                                                                             |
+| Logs page                  | ✅ Complete | Server-side filters and paging (BL-32); CSV export via save dialog (BL-28)                                                                                     |
+| Settings page              | ✅ Complete | Theme, font, lock (re-encrypting, BL-10; 10-character minimum, BL-26), change master password (BL-39), known hosts (BL-38), retention                          |
+| UpdateBanner               | ✅ Complete | Auto-update notification + install; Releases link on macOS (BL-24)                                                                                             |
 | SSH service                | ✅ Complete | Session pool, password (+ keyboard-interactive, BL-40) and key auth, host-key verification (BL-38), automatic reconnect (BL-41), consumer-aware reaper (BL-11) |
-| SFTP service               | ✅ Complete | All file ops + SSE progress; one channel per transfer (BL-14)                                                                                 |
-| Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                                                                          |
-| Key service                | ✅ Complete | OpenSSH generation (BL-12), import + conversion, fingerprint, .cskb export/import                                                             |
-| Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5; socket errors handled (BL-16)                                                                                  |
-| Audit service              | ✅ Complete | Event logging with disconnect reasons, filtered paging, CSV with formula guard (BL-28, BL-32)                                                 |
-| Config service             | ✅ Complete | AppConfig singleton read/update; never creates the row (BL-10)                                                                                |
-| Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                                                                                |
-| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O; consumer counting (BL-11); caller + revocation checks, closes on lock (BL-17, BL-18)                            |
-| Auth middleware            | ✅ Complete | JWT (HS256, `jti` required — BL-19) + query-param fallback for SSE; caller checks (BL-17)                                                     |
-| Rate limiting              | ✅ Complete | 5/min unlock, 300/min API                                                                                                                     |
-| Database schema            | ✅ Complete | 5 models, Prisma migrations, WAL mode                                                                                                         |
-| Build pipeline             | ✅ Complete | Win/Linux/macOS installers via CI matrix (NFR-07); ~101 MB (esbuild + runtime migrations)                                                     |
+| SFTP service               | ✅ Complete | All file ops + SSE progress; one channel per transfer (BL-14)                                                                                                  |
+| Crypto service             | ✅ Complete | AES-256-GCM + PBKDF2 (master key + passphrase-based)                                                                                                           |
+| Key service                | ✅ Complete | OpenSSH generation (BL-12), import + conversion, fingerprint, .cskb export/import                                                                              |
+| Tunnel service             | ✅ Complete | Local, remote, dynamic SOCKS5; socket errors handled (BL-16)                                                                                                   |
+| Audit service              | ✅ Complete | Event logging with disconnect reasons, filtered paging, CSV with formula guard (BL-28, BL-32)                                                                  |
+| Config service             | ✅ Complete | AppConfig singleton read/update; never creates the row (BL-10)                                                                                                 |
+| Profile service            | ✅ Complete | Export payload builder, conflict check, import with resolution                                                                                                 |
+| WebSocket terminal handler | ✅ Complete | Bidirectional base64 SSH I/O; consumer counting (BL-11); caller + revocation checks, closes on lock (BL-17, BL-18)                                             |
+| Auth middleware            | ✅ Complete | JWT (HS256, `jti` required — BL-19) + query-param fallback for SSE; caller checks (BL-17)                                                                      |
+| Rate limiting              | ✅ Complete | 5/min unlock, 300/min API                                                                                                                                      |
+| Database schema            | ✅ Complete | 5 models, Prisma migrations, WAL mode                                                                                                                          |
+| Build pipeline             | ✅ Complete | Win/Linux/macOS installers via CI matrix (NFR-07); ~101 MB (esbuild + runtime migrations)                                                                      |
 
 ---
 
@@ -1973,7 +1987,7 @@ All ten were implemented on 2026-11-11. Besides the unit and integration tests n
 
 1. SFTP, tunnel and config request bodies reach the services unvalidated.
 2. `transferId` is used raw as an `EventEmitter` event name. With `"error"`, the first progress event throws inside an ssh2 callback and the backend exits; `"newListener"` and similar names corrupt the emitter.
-3. The SFTP `localPath` goes straight to `fastPut` / `fastGet`: a relative path resolves against the backend's working directory, and a directory, device or pipe is opened as if it were a file.
+3. (Superseded in part by BL-47: the request no longer carries a local path.) The SFTP `localPath` goes straight to `fastPut` / `fastGet`: a relative path resolves against the backend's working directory, and a directory, device or pipe is opened as if it were a file.
 4. The Profile Details tab stops a dynamic tunnel by sending its (empty) remote port, so the tunnel keeps running.
 
 **Backend work:** zod schemas in the SFTP, tunnel and config controllers; a failure returns `400 { error }`.
@@ -2129,7 +2143,7 @@ Specified 2026-11-18 from the ⚠️ "tracked, not scheduled" notes in §6. Each
 
 **Problems:** Dragging files in from the OS reads `File.path`, which Electron removed in v32, so the drop uploads nothing. A failed transfer has no Retry action. Deleting a folder calls `unlink` and fails. An upload over an existing remote file fails at the final rename. Remote paths stay relative to the login directory, so `/etc` or `/var/www` cannot be reached.
 
-**Main/preload work:** `window.api.getPathForFile(file)` wraps `webUtils.getPathForFile` (both `src/preload/index.ts` and `index.d.ts`).
+**Main/preload work:** `window.api.getPathForFile(file)` wraps `webUtils.getPathForFile` (both `src/preload/index.ts` and `index.d.ts`). (Superseded by BL-47: the preload turns a dropped file into a grant and the path never reaches the page.)
 
 **Backend work:** `SftpService.deleteFile` stats the target and uses `rmdir` for a directory (non-empty directories fail with the server's message; recursive delete is out of scope). Upload finishes with the OpenSSH `posix-rename@openssh.com` extension, which replaces an existing file, and falls back to unlink-then-rename on servers without it. New `GET /api/sftp/:sessionId/realpath?path=.` returns the absolute path.
 
@@ -2503,6 +2517,52 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 - [x] The packaged Windows app starts on a throwaway profile (checked 2026-11-22)
 - [ ] macOS and Linux: the `Check Electron fuses` step of `build.yml` passes in `package.yml` (not yet run)
 
+### BL-47 — Local Files by Grant
+
+**Requirements:** NFR-02, FR-04.4, FR-04.5, FR-04.13, FR-04.15, §10.6, §10.7 (ADR-006)
+**Priority:** High
+**Status:** ❌ Open
+
+Specified 2026-11-22, after GitHub CodeQL (js/path-injection) reported five high alerts on PR #23.
+
+**Problem:** the SFTP upload and download requests carry a raw local path (`localPath`), which the backend passes to `fs` and to ssh2. BL-23 checks only the path's shape, so the page can make the backend read any file the user can read and send it to a server, or write any file the user can write — including the per-user install folder, whose `resources/backend` lies outside ASAR integrity. Related defects: any `text/plain` drop on the remote pane is used as a local path; a remote file name containing `..\` or `\` that is dropped on the local pane escapes the folder on Windows; the local pane cannot go Up to the home folder (Windows) or Up at all (POSIX), and fails silently.
+
+**Decision (ADR-006):** the main process is the only authority for local files. The page never sends a local path to the backend: it sends an opaque grant that main issued for a file or folder the user chose, and the backend asks main to resolve the grant for every transfer.
+
+**Main work:**
+
+- `src/main/localGrants.ts` (no Electron, no fs): a grant is `{ id (128-bit random, hex), kind: read | write | dir, path, windowId, sessionId }`. Only SFTP connection windows get grants, bound to the window's SSH session. A grant lives until its window closes or the app locks (no time limit, so Retry keeps working); a window holds at most 256 (the least recently used is evicted), duplicates are reused, and grant ids are never logged.
+- `src/main/localFiles.ts` (dialogs and fs injected) replaces `fs:readDir` and `validateFilePath` in `index.ts`. The IPC handlers serve only SFTP windows:
+  - `sftp:readLocalDir(path?)` → `{ path, parent, grant, files }`. An empty path, `.` or none means the home folder; other relative paths, paths outside home and paths inside the app's own `userData` and `sessionData` folders are refused. Paths are compared as native real paths (case-insensitive on Windows; 8.3 names, junctions and symlinks resolved). `parent` is null at home. Folders are detected after following symlinks. The listing's `grant` is a read-only `dir` grant.
+  - `sftp:pickUploadFile()` → `{ grant, name } | null` — the native Open dialog, parented to the SFTP window.
+  - `sftp:pickDownloadTarget({ name, folder? })` → `{ grant, name } | null` — the native Save dialog, parented, asking before it replaces a file; it opens in the folder of the `folder` grant, with a cleaned name filled in.
+  - `sftp:grantDroppedFile(path)` → `{ grant, name } | null`, sent only by the preload. Device paths (`\\.\`, `\\?\`) are refused before any file-system call; the target must be a regular file.
+  - Files picked in a native dialog or dropped from the OS are never refused by folder.
+- Resolution: the backend sends `{ type: 'grant-resolve', requestId, sessionId, grant, access, name? }`; main answers exactly once with `{ type: 'grant-resolved', requestId, ok: true, path }` or `{ …, ok: false, code }`, `code` ∈ `GRANT_UNKNOWN | GRANT_MISMATCH | NAME_NOT_ALLOWED | REFUSED | NOT_FOUND | NOT_A_FILE`. The access must match the grant's kind (a `dir` grant serves reads only) and the session must match. For a `dir` grant the name is a single path segment — 1–255 characters, not `.` or `..`, no NUL, control characters or `/`; on Windows also none of `\ : * ? " < > |`, no trailing dot or space and no reserved device name (CON, PRN, AUX, NUL, COM0–9, LPT0–9, with or without an extension) — the joined path must stay in the folder (`path.relative(folder, target) === name`), the folder must still resolve to itself, and the real target must be inside home, outside the refused folders, and a regular file.
+- Backend messages are routed by `routeBackendMessage`: grant requests first, then the lock messages; anything unknown is ignored and never treated as a lock. Main answers the backend process that asked.
+- A lock clears every grant; closing a window drops its grants.
+
+**Backend work:**
+
+- `HostBridge.resolveLocalGrant(request, timeoutMs = 5000)` over `process.parentPort`, matched by `requestId`. Without a parent port, or without an answer in time, the result is `UNAVAILABLE`.
+- `LocalGrantService.resolve(sessionId, local, access)` → the path main returned, or a `LocalGrantError` (`400 { error, code }`; `UNAVAILABLE` → `503`).
+- `POST /api/sftp/:sessionId/upload { local: { grant, name? }, remotePath, transferId }` and `POST /api/sftp/:sessionId/download { remotePath, local: { grant }, transferId }` use strict schemas: a `localPath` or any other extra key gets `400`. Order: schema → grant resolution → the `LocalPathService` checks (kept as a second line) → the transfer.
+- The backend never builds a local path from request data and has no fallback that accepts one.
+
+**Preload work:** add `pickUploadFile`, `pickDownloadTarget`, `grantDroppedFile(file)` — which calls `webUtils.getPathForFile` inside the preload and never returns the path to the page — and the new `readLocalDir`. Remove `openFileDialog`, `openDirectoryDialog`, `saveFileDialog` and `getPathForFile`. Both `src/preload/index.ts` and `index.d.ts`.
+
+**Frontend work:** the transfer store keeps `local: { grant, name? }` instead of `localPath`, so Retry reuses the grant; when a grant is no longer valid, Retry is hidden and the error asks the user to pick the file again. Local-pane rows drag with the type `application/x-cyphershell-local` (`{ grant, name }`); a drop that carries only `text/plain` does nothing. Dropping a remote file on the local pane opens the native Save dialog in that folder with the file name filled in. The local pane goes Up through `parent`, and a refused folder shows a message.
+
+**Acceptance Criteria:**
+
+- [ ] No backend endpoint accepts a local path: a request with `localPath` gets 400, and the five CodeQL path-injection alerts close without new ones
+- [ ] Uploads work from the Upload button, an OS drop and a local-pane drag; downloads from the Download button and from a drop on the local pane (through the pre-filled Save dialog)
+- [ ] A grant is refused for another session, after its window closes, after a lock, and for the wrong access; a `dir` grant refuses `..`, path separators and Windows device names
+- [ ] The local pane lists the home folder, goes Up to it, and refuses the app's own data folders — also through a symlink or junction, a different letter case or an 8.3 name
+- [ ] A drop that carries only `text/plain` uploads nothing
+- [ ] Retry reuses the grant; a grant that is no longer valid hides Retry and asks to pick the file again
+- [ ] An e2e test covers the real main ↔ backend round trip
+
 ---
 
-_End of SRS Document — v3.6_
+_End of SRS Document — v3.7_

@@ -136,7 +136,7 @@ npm run build                                     # compile backend TS → dist/
 - Never bind the Express server to `0.0.0.0`.
 - Never expose the raw master password or derived key beyond the auth unlock flow in `backend/src/controllers/auth.controller.ts`.
 - Never store decrypted private keys anywhere — decrypt in memory on use only.
-- Never pass user-supplied paths directly to `fs` without normalizing and validating against allowed base directories.
+- The backend accepts no local path from the renderer: SFTP transfers name a grant that the main process issued and resolves (BL-47, ADR-006). In main, a path the page names (local-pane listing) is realpath'd and checked against the home folder and the refused app-data folders; only native dialogs and OS drops grant files elsewhere. Never pass any other user-supplied path to `fs`.
 - Never skip JWT middleware on any route except `POST /api/auth/unlock` and `POST /api/auth/setup`.
 - Context isolation is ON — never set `contextIsolation: false` or `nodeIntegration: true` in webPreferences.
 

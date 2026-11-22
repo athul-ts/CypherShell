@@ -1,6 +1,6 @@
 # CypherShell — Spec Index
 
-**SRS Version:** 3.6 | **Last Updated:** 2026-11-20
+**SRS Version:** 3.7 | **Last Updated:** 2026-11-22
 **Source of Truth:** `SRS_SSH_Desktop_App.md`
 
 > This file is the fast-lookup reference for all requirement IDs. For full text, acceptance criteria, and implementation notes, read the corresponding section in `SRS_SSH_Desktop_App.md`.
@@ -218,15 +218,15 @@
 
 **SRS §7** | Re-verified against the implementation in the 2026-11-10 audit
 
-| ID     | Requirement                                                                                  | Status |
-| ------ | -------------------------------------------------------------------------------------------- | ------ |
+| ID     | Requirement                                                                                                | Status |
+| ------ | ---------------------------------------------------------------------------------------------------------- | ------ |
 | NFR-01 | Performance targets — measured by BL-45; cold start 5.4 s (launch to window shown) is above the 4 s target | ⚠️     |
-| NFR-02 | Security — AES-256-GCM, PBKDF2, context isolation, localhost-only                            | ⚠️     |
-| NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                    | ✅     |
-| NFR-04 | Usability — destructive confirms, loading states, plain-language errors                      | ✅     |
-| NFR-05 | Cross-platform — Windows, macOS, Linux                                                       | ⚠️     |
-| NFR-06 | Maintainability — 100% TypeScript, ESLint, thin controllers, Prisma schema = source of truth | ⚠️     |
-| NFR-07 | Release & distribution — Win/Linux/macOS installers, CI matrix, auto-update metadata         | ✅     |
+| NFR-02 | Security — AES-256-GCM, PBKDF2, context isolation, localhost-only                                          | ⚠️     |
+| NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                                  | ✅     |
+| NFR-04 | Usability — destructive confirms, loading states, plain-language errors                                    | ✅     |
+| NFR-05 | Cross-platform — Windows, macOS, Linux                                                                     | ⚠️     |
+| NFR-06 | Maintainability — 100% TypeScript, ESLint, thin controllers, Prisma schema = source of truth               | ⚠️     |
+| NFR-07 | Release & distribution — Win/Linux/macOS installers, CI matrix, auto-update metadata                       | ✅     |
 
 ---
 
@@ -272,28 +272,30 @@
 | ~~BL-34~~ | ~~Saved tunnel rules~~                                              | ~~Medium~~   | FR-06.4, FR-09.2                     | ✅ Done         |
 | ~~BL-35~~ | ~~Light theme and bundled font~~                                    | ~~Low~~      | §11.2, §11.3                         | ✅ Done         |
 | ~~BL-36~~ | ~~Dependency security update (Electron 45)~~                        | ~~High~~     | NFR-02, NFR-07                       | ✅ Done         |
-| ~~BL-37~~ | ~~CI on every branch~~ | ~~High~~ | NFR-06, NFR-07 | ✅ Done |
-| ~~BL-38~~ | ~~SSH host-key verification~~ | ~~High~~ | FR-11.1 … FR-11.5 | ✅ Done |
-| ~~BL-39~~ | ~~Change master password~~ | ~~High~~ | FR-07.8 | ✅ Done |
-| ~~BL-40~~ | ~~Keyboard-interactive login~~ | ~~Medium~~ | FR-01.9 | ✅ Done |
-| ~~BL-41~~ | ~~Automatic SSH reconnect~~ | ~~Medium~~ | FR-02.6, NFR-03 | ✅ Done |
-| ~~BL-42~~ | ~~Thin controllers~~ | ~~Medium~~ | NFR-06 | ✅ Done |
-| ~~BL-43~~ | ~~Logging~~ | ~~Medium~~ | NFR-06 | ✅ Done |
-| ~~BL-44~~ | ~~Cleanup and documentation~~ | ~~Low~~ | NFR-06 | ✅ Done |
-| ~~BL-45~~ | ~~Performance checks~~ | ~~Medium~~ | NFR-01 | ✅ Done |
-| ~~BL-46~~ | ~~Backend in utilityProcess + fuses (needs ADR-005)~~ | ~~Medium~~ | NFR-02 | ✅ Done |
+| ~~BL-37~~ | ~~CI on every branch~~                                              | ~~High~~     | NFR-06, NFR-07                       | ✅ Done         |
+| ~~BL-38~~ | ~~SSH host-key verification~~                                       | ~~High~~     | FR-11.1 … FR-11.5                    | ✅ Done         |
+| ~~BL-39~~ | ~~Change master password~~                                          | ~~High~~     | FR-07.8                              | ✅ Done         |
+| ~~BL-40~~ | ~~Keyboard-interactive login~~                                      | ~~Medium~~   | FR-01.9                              | ✅ Done         |
+| ~~BL-41~~ | ~~Automatic SSH reconnect~~                                         | ~~Medium~~   | FR-02.6, NFR-03                      | ✅ Done         |
+| ~~BL-42~~ | ~~Thin controllers~~                                                | ~~Medium~~   | NFR-06                               | ✅ Done         |
+| ~~BL-43~~ | ~~Logging~~                                                         | ~~Medium~~   | NFR-06                               | ✅ Done         |
+| ~~BL-44~~ | ~~Cleanup and documentation~~                                       | ~~Low~~      | NFR-06                               | ✅ Done         |
+| ~~BL-45~~ | ~~Performance checks~~                                              | ~~Medium~~   | NFR-01                               | ✅ Done         |
+| ~~BL-46~~ | ~~Backend in utilityProcess + fuses (needs ADR-005)~~               | ~~Medium~~   | NFR-02                               | ✅ Done         |
+| BL-47     | Local files by grant (ADR-006)                                      | High         | NFR-02, FR-04.4, FR-04.5, FR-04.13   | ❌ Open         |
 
 ---
 
 ## Architecture Decisions
 
-| ID      | Decision                                                 | Record                                                                                             |
-| ------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| ADR-001 | Use electron-vite over Next.js/CRA                       | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)                     |
-| ADR-002 | Spawn Express as child process over direct Electron IPC  | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)                 |
-| ADR-003 | SQLite + Prisma over cloud/external database             | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)                     |
-| ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1   | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md)               |
+| ID      | Decision                                                            | Record                                                                                             |
+| ------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| ADR-001 | Use electron-vite over Next.js/CRA                                  | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)                     |
+| ADR-002 | Spawn Express as child process over direct Electron IPC             | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)                 |
+| ADR-003 | SQLite + Prisma over cloud/external database                        | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)                     |
+| ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1              | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md)               |
 | ADR-005 | Backend in a utility process + Electron fuses (accepted 2026-11-22) | [specs/decisions/ADR-005-backend-utility-process.md](decisions/ADR-005-backend-utility-process.md) |
+| ADR-006 | Local files by grant from the main process (proposed)               | [specs/decisions/ADR-006-local-file-grants.md](decisions/ADR-006-local-file-grants.md)             |
 
 ---
 

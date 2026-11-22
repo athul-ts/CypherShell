@@ -394,10 +394,10 @@ CypherShell is designed with **defense-in-depth** — sensitive material is prot
 | Encryption key derivation    | **PBKDF2-SHA512**, 200,000 iterations; derived key held in-memory only   |
 | Key material in renderer     | Private keys are **never** sent to the renderer process                  |
 | Backend network binding      | Express binds to **`127.0.0.1`** only — not reachable externally         |
-| API authentication           | **JWT** tokens, 8-hour expiration, required on every endpoint            |
+| API authentication           | **JWT** tokens, 1-hour expiration, required on every endpoint            |
 | Rate limiting                | 5 auth attempts / min · 300 API requests / min                           |
 | Auto-lock                    | Configurable inactivity timeout clears the in-memory AES key             |
-| SFTP path traversal          | Backend validates all remote paths before operating                      |
+| Local file access            | The backend takes no local paths: main grants each file you pick         |
 | Context isolation            | Electron `contextIsolation: true`; renderer has no direct Node.js access |
 
 **Reporting a vulnerability:** Please open a [GitHub Security Advisory](https://github.com/athul-ts/CypherShell/security/advisories/new) rather than a public issue. We aim to respond within 72 hours.
