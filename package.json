@@ -7,6 +7,7 @@
   "homepage": "https://cyphershell.in",
   "scripts": {
     "test": "npm run test:backend && npm run test:renderer",
+    "test:perf": "vitest run --config tests/perf/vitest.config.ts",
     "test:backend": "vitest run --config tests/backend/vitest.config.ts",
     "test:renderer": "vitest run --config tests/renderer/vitest.config.ts",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",

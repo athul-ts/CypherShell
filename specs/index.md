@@ -220,7 +220,7 @@
 
 | ID     | Requirement                                                                                  | Status |
 | ------ | -------------------------------------------------------------------------------------------- | ------ |
-| NFR-01 | Performance targets (cold start <4s, terminal latency <50ms, etc.) — not yet measured        | ⚠️     |
+| NFR-01 | Performance targets — measured by BL-45; cold start 4.2 s is above the 4 s target | ⚠️     |
 | NFR-02 | Security — AES-256-GCM, PBKDF2, context isolation, localhost-only                            | ⚠️     |
 | NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                    | ✅     |
 | NFR-04 | Usability — destructive confirms, loading states, plain-language errors                      | ✅     |
@@ -280,7 +280,7 @@
 | ~~BL-42~~ | ~~Thin controllers~~ | ~~Medium~~ | NFR-06 | ✅ Done |
 | ~~BL-43~~ | ~~Logging~~ | ~~Medium~~ | NFR-06 | ✅ Done |
 | ~~BL-44~~ | ~~Cleanup and documentation~~ | ~~Low~~ | NFR-06 | ✅ Done |
-| BL-45     | Performance checks                                                  | Medium       | NFR-01                               | ❌ Open         |
+| ~~BL-45~~ | ~~Performance checks~~ | ~~Medium~~ | NFR-01 | ✅ Done |
 | BL-46     | Backend in utilityProcess + fuses (needs ADR-005)                   | Medium       | NFR-02                               | ❌ Open         |
 
 ---

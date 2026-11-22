@@ -855,17 +855,17 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 
 ### NFR-01: Performance
 
-| Metric                                  | Target                   |
-| --------------------------------------- | ------------------------ |
-| App cold start (Electron window open)   | < 4 seconds              |
-| Vite renderer ready after window opens  | < 1 second               |
-| SSH terminal input-to-display latency   | < 50ms                   |
-| Profile list load (100 profiles)        | < 200ms                  |
-| SFTP directory listing (1000 files)     | < 2 seconds              |
-| Maximum concurrent SSH sessions         | 20 without memory issues |
-| SQLite query time (all typical queries) | < 50ms                   |
+| Metric                                  | Target                   | Measured by (BL-45)                                                       | Status |
+| --------------------------------------- | ------------------------ | ------------------------------------------------------------------------- | ------ |
+| App cold start (Electron window open)   | < 4 seconds              | `tests/e2e/perf.spec.ts`: launch → first window (soft gate: fails above 8 s) | ⚠️ 4.2 s on the Windows development machine — above the target, below the gate |
+| Vite renderer ready after window opens  | < 1 second               | `tests/e2e/perf.spec.ts`: window → setup wizard visible (soft gate)       | ✅ 0.23 s |
+| SSH terminal input-to-display latency   | < 50ms                   | `tests/perf/api.perf.ts`: p95 of 200 WebSocket echoes (backend path only: it excludes the renderer's drawing time) | ✅ 0.3 ms |
+| Profile list load (100 profiles)        | < 200ms                  | `tests/perf/api.perf.ts`: `GET /api/profiles`, median of 20              | ✅ 2.5 ms |
+| SFTP directory listing (1000 files)     | < 2 seconds              | `tests/perf/api.perf.ts`: first listing, including opening the channel    | ✅ 11 ms |
+| Maximum concurrent SSH sessions         | 20 without memory issues | `tests/perf/api.perf.ts`: 20 sessions, each shell must echo; memory growth reported | ✅ 20 of 20 echo, +2.8 MB |
+| SQLite query time (all typical queries) | < 50ms                   | `tests/perf/api.perf.ts`: audit page over 10 000 rows, profile list, key list | ✅ ≤ 1.6 ms |
 
-⚠️ These targets have not been measured — no benchmark or timing test exists (BL-45).
+Run `npm run test:perf` for the backend metrics and `npm run test:e2e` for the two startup timings. Each value is written to `perf-results/<metric>.json`; CI lists them in the job summary. Hard gates fail the run at the target; the two startup timings are soft gates (a warning above the target, a failure above twice the target). The values above were measured on 2026-11-22 on the Windows development machine; the CI numbers will differ.
 
 ### NFR-02: Security
 
@@ -2457,11 +2457,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-45 — Performance Checks
+### ~~BL-45 — Performance Checks~~ ✅ Implemented
 
 **Requirements:** NFR-01
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/sshFixture.test.ts, tests/backend/perfSummary.test.ts, tests/perf/api.perf.ts, tests/e2e/perf.spec.ts
 
 **Problem:** the NFR-01 targets have never been measured.
 
@@ -2479,9 +2479,9 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] Each metric above is measured by a test and written to `perf-results/`
-- [ ] Hard gates fail the run when exceeded; the CI summary lists every value
-- [ ] The NFR-01 rows are marked ✅ individually as their check passes
+- [x] Each metric above is measured by a test and written to `perf-results/`
+- [x] Hard gates fail the run when exceeded; the CI summary lists every value
+- [x] The NFR-01 rows are marked ✅ individually as their check passes
 
 ---
 

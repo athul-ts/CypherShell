@@ -98,3 +98,5 @@ playwright-report/
 *.tgz
 *.gz
 *.zip
+
+perf-results/

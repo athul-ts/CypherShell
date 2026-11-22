@@ -8,7 +8,7 @@
  *  - pty + shell sessions that echo every byte back
  *  - direct-tcpip channels (the server side of `forwardOut`) that echo
  */
-import { Server, utils, type Connection, type ParsedKey } from 'ssh2'
+import { Server, utils, type Connection, type ParsedKey, type SFTPWrapper } from 'ssh2'
 import { createHash } from 'crypto'
 import type { AddressInfo } from 'net'
 
@@ -22,6 +22,12 @@ import type { AddressInfo } from 'net'
 export type TestAuthMode = 'password' | 'keyboard-interactive' | 'otp' | 'visible-prompt'
 
 export interface TestSshServerOptions {
+  /**
+   * Serves an SFTP subsystem whose every directory holds this many entries (BL-45):
+   * every tenth is a directory. Supports REALPATH, OPENDIR, READDIR, STAT, LSTAT and CLOSE;
+   * anything else answers OP_UNSUPPORTED. Without it the server has no SFTP subsystem.
+   */
+  sftpEntries?: number
   authMode?: TestAuthMode
   username?: string
   password?: string
@@ -47,6 +53,66 @@ export interface TestSshServer {
   /** Accepts another OpenSSH-format public key for public-key auth. */
   authorize(publicKey: string): void
   close(): Promise<void>
+}
+
+const SFTP_BATCH = 100
+
+/** An in-memory directory: `count` entries, every tenth a directory. */
+function serveSftp(sftp: SFTPWrapper, count: number): void {
+  const { STATUS_CODE } = utils.sftp
+  const mtime = Math.floor(Date.now() / 1000)
+  const entries = Array.from({ length: count }, (_, i) => {
+    const dir = i % 10 === 0
+    const filename = `${dir ? 'dir' : 'file'}-${String(i).padStart(5, '0')}`
+    const mode = dir ? 0o40755 : 0o100644
+    return {
+      filename,
+      longname: `${dir ? 'drwxr-xr-x' : '-rw-r--r--'} 1 tester tester ${i} Jan  1 00:00 ${filename}`,
+      attrs: { mode, uid: 1000, gid: 1000, size: i, atime: mtime, mtime }
+    }
+  })
+  const handles = new Map<string, { sent: number }>()
+  let nextHandle = 0
+  const dirAttrs = { mode: 0o40755, uid: 1000, gid: 1000, size: 0, atime: mtime, mtime }
+
+  sftp.on('REALPATH', (reqid, path) => {
+    const resolved = path === '.' || path === '' ? '/home/tester' : path
+    sftp.name(reqid, [{ filename: resolved, longname: resolved, attrs: dirAttrs }])
+  })
+  sftp.on('OPENDIR', (reqid) => {
+    const id = Buffer.from(String(nextHandle++))
+    handles.set(id.toString(), { sent: 0 })
+    sftp.handle(reqid, id)
+  })
+  sftp.on('READDIR', (reqid, handle) => {
+    const state = handles.get(handle.toString())
+    if (!state) return sftp.status(reqid, STATUS_CODE.FAILURE)
+    if (state.sent >= entries.length) return sftp.status(reqid, STATUS_CODE.EOF)
+    const batch = entries.slice(state.sent, state.sent + SFTP_BATCH)
+    state.sent += batch.length
+    sftp.name(reqid, batch)
+  })
+  sftp.on('CLOSE', (reqid, handle) => {
+    handles.delete(handle.toString())
+    sftp.status(reqid, STATUS_CODE.OK)
+  })
+  const stat = (reqid: number): void => sftp.attrs(reqid, dirAttrs)
+  sftp.on('STAT', stat)
+  sftp.on('LSTAT', stat)
+  // Everything else is not supported by this fixture.
+  for (const op of [
+    'OPEN',
+    'READ',
+    'WRITE',
+    'REMOVE',
+    'RMDIR',
+    'MKDIR',
+    'RENAME',
+    'SETSTAT'
+  ] as const) {
+    sftp.on(op, (reqid: number) => sftp.status(reqid, STATUS_CODE.OP_UNSUPPORTED))
+  }
+  sftp.on('error', () => {})
 }
 
 export async function startTestSshServer(
@@ -132,6 +198,10 @@ export async function startTestSshServer(
           size = { cols: info.cols, rows: info.rows }
           accept?.()
         })
+        const sftpEntries = options.sftpEntries
+        if (sftpEntries !== undefined) {
+          session.on('sftp', (acceptSftp) => serveSftp(acceptSftp(), sftpEntries))
+        }
         session.on('shell', (accept) => {
           const stream = accept()
           stream.on('data', (data: Buffer) => {

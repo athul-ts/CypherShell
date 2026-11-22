@@ -110,7 +110,9 @@ test('setup wizard — skip lock renders dashboard', async () => {
     // BL-37: a throwaway profile always starts on the setup wizard, so every step must happen.
     await win.getByRole('button', { name: /continue without a password/i }).click()
     await win.locator('#setup-skip-btn').click()
-    await expect(win.getByRole('heading', { name: 'Profiles' })).toBeVisible({ timeout: 15000 })
+    await expect(win.getByRole('heading', { name: 'Profiles', level: 1 })).toBeVisible({
+      timeout: 15000
+    })
 
     await win.screenshot({ path: 'tests/e2e/screenshots/after-setup.png' })
   } finally {

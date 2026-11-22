@@ -6,6 +6,8 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   timeout: 60000,
   retries: 1,
+  // BL-45: one Electron app at a time — the startup timings are meaningless when several launch together.
+  workers: 1,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'tests/e2e/report' }]],
   use: {
     // Electron-specific: no viewport needed — the window size comes from the app

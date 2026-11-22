@@ -66,4 +66,28 @@ describe('test SSH server', () => {
       })
     ).rejects.toThrow(/authentication/i)
   })
+
+  it('[BL-45] serves an SFTP directory listing of N entries when asked to', async () => {
+    const server = await startTestSshServer({ sftpEntries: 1000 })
+    servers.push(server)
+    const client = await connect({
+      host: server.host,
+      port: server.port,
+      username: server.username,
+      password: server.password
+    })
+
+    const list = await new Promise<{ filename: string; longname: string }[]>((resolve, reject) => {
+      client.sftp((err, sftp) => {
+        if (err) return reject(err)
+        sftp.readdir('/data', (e, entries) => (e ? reject(e) : resolve(entries)))
+      })
+    })
+    client.end()
+
+    expect(list).toHaveLength(1000)
+    expect(new Set(list.map((entry) => entry.filename)).size).toBe(1000)
+    expect(list.some((entry) => entry.longname.startsWith('d'))).toBe(true)
+    expect(list.some((entry) => entry.longname.startsWith('-'))).toBe(true)
+  })
 })
