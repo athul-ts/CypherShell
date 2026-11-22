@@ -682,7 +682,7 @@ CypherShell/
 
 **Priority:** High | **Status:** ✅ Implemented
 
-- FR-05.1 — Generate RSA (2048 / 4096-bit) and ED25519 keypairs in OpenSSH format ✅ (BL-12)
+- FR-05.1 — Generate RSA (2048 / 4096-bit) and ED25519 keypairs in OpenSSH format ✅ (BL-12). A generated key that ssh2 itself cannot parse — about 1 in 300 for ED25519, a fault in ssh2's writer — is discarded and generated again, up to 10 times, so no unusable key is ever stored
 - FR-05.2 — Import PEM format private keys via file picker ✅
 - FR-05.3 — Import OpenSSH format private keys ✅
 - FR-05.4 — Import PuTTY PPK keys — converted to OpenSSH via sshpk when ssh2 cannot read them ✅ (BL-12)

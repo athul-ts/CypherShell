@@ -127,7 +127,11 @@ export async function startTestSshServer(
   }
   const authorized: ParsedKey[] = (options.authorizedKeys ?? []).map(parsePublicKey)
 
-  const hostKey = utils.generateKeyPairSync('ed25519').private
+  // ssh2 writes about 1 in 300 ed25519 keys that it cannot parse itself: make another.
+  let hostKey = utils.generateKeyPairSync('ed25519').private
+  while (utils.parseKey(hostKey) instanceof Error) {
+    hostKey = utils.generateKeyPairSync('ed25519').private
+  }
   const parsedHostKey = parsePublicKey(hostKey)
   const blob = parsedHostKey.getPublicSSH()
   const connections = new Set<Connection>()

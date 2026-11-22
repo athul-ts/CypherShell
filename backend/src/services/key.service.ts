@@ -24,6 +24,9 @@ export type RsaBits = 2048 | 4096
 const GENERATED_KEY_CIPHER = 'aes256-ctr'
 const GENERATED_KEY_KDF_ROUNDS = 16
 
+/** How many times key generation is repeated when ssh2 cannot read the key it just wrote. */
+const GENERATE_ATTEMPTS = 10
+
 /** Whether the bundled ssh2 client can use this private key as-is (with its passphrase). */
 function ssh2CanParse(privateKey: string, passphrase?: string): boolean {
   return !(ssh2Utils.parseKey(privateKey, passphrase) instanceof Error)
@@ -96,10 +99,17 @@ export class KeyService {
     const encryption = passphrase
       ? { passphrase, cipher: GENERATED_KEY_CIPHER, rounds: GENERATED_KEY_KDF_ROUNDS }
       : {}
-    const pair =
-      type === 'rsa'
-        ? ssh2Utils.generateKeyPairSync('rsa', { bits, comment: name, ...encryption })
-        : ssh2Utils.generateKeyPairSync('ed25519', { comment: name, ...encryption })
+    // ssh2's generator writes roughly 1 in 300 ed25519 keys that ssh2 itself then rejects
+    // ("Malformed OpenSSH private key"). Such a key could never connect, so make another.
+    let pair: { private: string; public: string } | null = null
+    for (let attempt = 0; attempt < GENERATE_ATTEMPTS && pair === null; attempt++) {
+      const candidate =
+        type === 'rsa'
+          ? ssh2Utils.generateKeyPairSync('rsa', { bits, comment: name, ...encryption })
+          : ssh2Utils.generateKeyPairSync('ed25519', { comment: name, ...encryption })
+      if (ssh2CanParse(candidate.private, passphrase)) pair = candidate
+    }
+    if (pair === null) throw new Error('Could not generate a usable key. Please try again.')
 
     const fingerprint = sshpk.parseKey(pair.public, 'ssh').fingerprint('sha256').toString()
 
