@@ -554,7 +554,7 @@ CypherShell/
 
 ### FR-01: Saved Connection Profiles
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-01.9 — BL-40)
+**Priority:** High | **Status:** ✅ Implemented
 
 - FR-01.1 — Profile fields: Name, Host, Port (default 22), Username, Auth method (Password / SSH Key / Key + Passphrase) ✅ (BL-13)
 - FR-01.2 — Home page shows profile cards: name, host, group tag, last connected time ✅ (BL-31 — a successful connection records `lastConnectedAt`; cards show "Last connected <time ago>" or "Never connected")
@@ -579,7 +579,7 @@ CypherShell/
 - FR-01.8.6 — If the profile's `authMethod` changes (e.g. from Password to SSH Key), the form clears the irrelevant credential fields before submitting ✅
 - FR-01.8.7 — Form validation mirrors the create flow: Name, Host, Port, and Username are required; Port must be 1–65535 ✅ (BL-31 — the form shows an error under each invalid field and sends nothing until it is valid; a key method also needs a key, and a new password or passphrase where one is required)
 
-- FR-01.9 — Password profiles also log in to servers that offer only keyboard-interactive authentication: a single hidden prompt is answered with the stored password; any other challenge (one-time codes, several prompts) fails with a clear message ❌ (BL-40)
+- FR-01.9 — Password profiles also log in to servers that offer only keyboard-interactive authentication: a single hidden prompt is answered with the stored password; any other challenge (one-time codes, several prompts) fails with a clear message ✅ (BL-40 — `tryKeyboard` in `ssh.service.ts`)
 
 #### Acceptance Criteria
 
@@ -2353,11 +2353,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-40 — Keyboard-Interactive Login
+### ~~BL-40 — Keyboard-Interactive Login~~ ✅ Implemented
 
 **Requirements:** FR-01.9
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/keyboardInteractive.test.ts
 
 **Problem:** many servers (PAM setups, FreeBSD's default `sshd`) offer only `keyboard-interactive` authentication, so password profiles cannot log in to them.
 
@@ -2365,9 +2365,9 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] A server that offers only keyboard-interactive accepts the stored password; a wrong password fails
-- [ ] A server that asks two prompts or a visible prompt fails with the message above
-- [ ] Key and key+passphrase profiles never attempt keyboard-interactive
+- [x] A server that offers only keyboard-interactive accepts the stored password; a wrong password fails
+- [x] A server that asks two prompts or a visible prompt fails with the message above
+- [x] Key and key+passphrase profiles never attempt keyboard-interactive
 
 ---
 

@@ -20,7 +20,7 @@
 
 ### FR-01 — Saved Connection Profiles
 
-**SRS §6.1** | Priority: High | Overall: ⚠️ Partially Implemented (FR-01.9 — BL-40)
+**SRS §6.1** | Priority: High | Overall: ✅ Implemented
 
 | ID      | Requirement                                                                  | Status |
 | ------- | ---------------------------------------------------------------------------- | ------ |
@@ -32,7 +32,7 @@
 | FR-01.6 | Profile tagging/grouping                                                     | ✅     |
 | FR-01.7 | Real-time search and filter                                                  | ✅     |
 | FR-01.8 | Edit existing profile fields from Profile Detail tab and Home page card menu | ✅     |
-| FR-01.9 | Keyboard-interactive login for password profiles                             | ❌     |
+| FR-01.9 | Keyboard-interactive login for password profiles                             | ✅     |
 
 ---
 
@@ -275,7 +275,7 @@
 | ~~BL-37~~ | ~~CI on every branch~~ | ~~High~~ | NFR-06, NFR-07 | ✅ Done |
 | ~~BL-38~~ | ~~SSH host-key verification~~ | ~~High~~ | FR-11.1 … FR-11.5 | ✅ Done |
 | ~~BL-39~~ | ~~Change master password~~ | ~~High~~ | FR-07.8 | ✅ Done |
-| BL-40     | Keyboard-interactive login                                          | Medium       | FR-01.9                              | ❌ Open         |
+| ~~BL-40~~ | ~~Keyboard-interactive login~~ | ~~Medium~~ | FR-01.9 | ✅ Done |
 | BL-41     | Automatic SSH reconnect                                             | Medium       | FR-02.6, NFR-03                      | ❌ Open         |
 | BL-42     | Thin controllers                                                    | Medium       | NFR-06                               | ❌ Open         |
 | BL-43     | Logging                                                             | Medium       | NFR-06                               | ❌ Open         |

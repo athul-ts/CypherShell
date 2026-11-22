@@ -10,6 +10,10 @@ import { KeyService } from './key.service'
 import { HostKeyError, KnownHostService } from './known-host.service'
 import { logger } from './logger.service'
 
+/** BL-40: shown when a server asks for more than the stored password. */
+export const UNSUPPORTED_CHALLENGE_MESSAGE =
+  'This server asked for an additional verification step (such as a one-time code), which CypherShell does not support yet.'
+
 export interface CreateSessionOptions {
   /** Fingerprint the user confirmed for a host key that was not trusted yet (BL-38). */
   acceptHostKey?: string
@@ -126,6 +130,8 @@ export class SSHService {
     const sessionId = `session-${randomUUID()}`
     // Set by the host-key verifier when it stops the handshake (BL-38).
     let hostKeyError = null as HostKeyError | null
+    // Set when a keyboard-interactive challenge needs more than the stored password (BL-40).
+    let unsupportedChallenge = false
 
     const connectConfig: ConnectConfig = {
       host: profile.host,
@@ -184,6 +190,16 @@ export class SSHService {
       if (!profile.encryptedPassword) throw new Error('Password required but missing')
       const plainPassword = CryptoService.decrypt(profile.encryptedPassword)
       connectConfig.password = plainPassword
+      // FR-01.9 / BL-40: servers with only keyboard-interactive auth (PAM, FreeBSD).
+      connectConfig.tryKeyboard = true
+      client.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => {
+        if (prompts.length === 0) return finish([])
+        // Exactly one hidden prompt is a password prompt; anything else (a one-time
+        // code, several prompts, a visible prompt) is not something to answer.
+        if (prompts.length === 1 && prompts[0].echo === false) return finish([plainPassword])
+        unsupportedChallenge = true
+        finish([])
+      })
     } else if (profile.authMethod === 'key' || profile.authMethod === 'key+passphrase') {
       if (!profile.sshKeyId) throw new Error('SSH Key required but missing')
 
@@ -215,6 +231,9 @@ export class SSHService {
         if (hostKeyError) {
           reject(hostKeyError)
           return
+        }
+        if (unsupportedChallenge) {
+          err = new Error(UNSUPPORTED_CHALLENGE_MESSAGE)
         }
         AuditService.logConnection(
           profile.id,

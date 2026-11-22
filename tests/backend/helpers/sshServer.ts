@@ -12,7 +12,17 @@ import { Server, utils, type Connection, type ParsedKey } from 'ssh2'
 import { createHash } from 'crypto'
 import type { AddressInfo } from 'net'
 
+/**
+ * How the server authenticates a password login (BL-40):
+ *  - password: the "password" method (default)
+ *  - keyboard-interactive: only keyboard-interactive, one hidden "Password:" prompt
+ *  - otp: keyboard-interactive with a password prompt and a one-time-code prompt
+ *  - visible-prompt: keyboard-interactive with a single visible (echoed) prompt
+ */
+export type TestAuthMode = 'password' | 'keyboard-interactive' | 'otp' | 'visible-prompt'
+
 export interface TestSshServerOptions {
+  authMode?: TestAuthMode
   username?: string
   password?: string
   /** OpenSSH-format public keys accepted for public-key auth. */
@@ -28,6 +38,8 @@ export interface TestSshServer {
   hostKey: { type: string; fingerprint: string; publicKey: string }
   /** Authentication requests received so far; stays 0 if the client stopped at the host key. */
   authAttempts(): number
+  /** The authentication methods clients have tried, in order (BL-40). */
+  authMethodsTried(): string[]
   /** Number of client connections currently open. */
   connectionCount(): number
   /** Hangs up on every connected client, like a server dropping the link (BL-32). */
@@ -54,6 +66,8 @@ export async function startTestSshServer(
   const blob = parsedHostKey.getPublicSSH()
   const connections = new Set<Connection>()
   let authAttempts = 0
+  const methodsTried: string[] = []
+  const authMode = options.authMode ?? 'password'
 
   const server = new Server({ hostKeys: [hostKey] }, (client) => {
     connections.add(client)
@@ -64,9 +78,27 @@ export async function startTestSshServer(
 
     client.on('authentication', (ctx) => {
       authAttempts++
+      methodsTried.push(ctx.method)
       if (ctx.username !== username) return ctx.reject()
 
-      if (ctx.method === 'password') {
+      if (ctx.method === 'keyboard-interactive' && authMode !== 'password') {
+        const prompts =
+          authMode === 'otp'
+            ? [
+                { prompt: 'Password: ', echo: false },
+                { prompt: 'Code: ', echo: false }
+              ]
+            : authMode === 'visible-prompt'
+              ? [{ prompt: 'Password: ', echo: true }]
+              : [{ prompt: 'Password: ', echo: false }]
+        return ctx.prompt(prompts, 'Login', 'Answer the prompts', (answers) => {
+          const ok =
+            authMode === 'keyboard-interactive' && answers.length === 1 && answers[0] === password
+          return ok ? ctx.accept() : ctx.reject(['keyboard-interactive'])
+        })
+      }
+
+      if (ctx.method === 'password' && authMode === 'password') {
         return ctx.password === password ? ctx.accept() : ctx.reject()
       }
 
@@ -82,7 +114,9 @@ export async function startTestSshServer(
           : ctx.reject()
       }
 
-      return ctx.reject(['password', 'publickey'])
+      return ctx.reject(
+        authMode === 'password' ? ['password', 'publickey'] : ['keyboard-interactive']
+      )
     })
 
     client.on('ready', () => {
@@ -131,6 +165,7 @@ export async function startTestSshServer(
       publicKey: blob.toString('base64')
     },
     authAttempts: () => authAttempts,
+    authMethodsTried: () => [...methodsTried],
     connectionCount: () => connections.size,
     authorize: (publicKey) => {
       authorized.push(parsePublicKey(publicKey))
