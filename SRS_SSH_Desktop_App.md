@@ -612,14 +612,14 @@ CypherShell/
 
 ### FR-02: SSH Terminal
 
-**Priority:** High | **Status:** ⚠️ Partially Implemented (FR-02.6 — BL-41)
+**Priority:** High | **Status:** ✅ Implemented
 
 - FR-02.1 — Connecting opens a Profile Details tab; users spawn standalone terminal console windows from it ✅
 - FR-02.2 — xterm.js renders with full ANSI colour and escape sequence support, including UTF-8 text ✅ (BL-15 — output is written as bytes and input is encoded as UTF-8)
 - FR-02.3 — PTY resizes dynamically when the standalone window resizes (`@xterm/addon-fit`) ✅ (BL-29 — a resize sent before the remote shell is ready is applied once it starts)
 - FR-02.4 — Copy (Ctrl+Shift+C) supported; right-click pastes the clipboard ✅ (BL-08)
 - FR-02.5 — Full keyboard support: Ctrl+C, Ctrl+Z, Tab, arrow keys, function keys ✅
-- FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ — a socket drop reconnects with that backoff to a new shell on the same SSH session; `exit` (close 1000), a vanished session (1008) and a lock (4001) are not retried (BL-29). An SSH-level drop is not re-established from the profile (BL-41)
+- FR-02.6 — Auto-reconnect on drop: exponential backoff (1s → 2s → 4s), max 3 retries ✅ — a socket drop reconnects with that backoff to a new shell on the same SSH session; `exit` (close 1000), a vanished session (1008), a lock (4001) and a lost SSH connection (4002) are not retried (BL-29). From BL-41 the backend also re-establishes a dropped SSH connection itself when the profile has `autoReconnect` on: the session keeps its id, terminals keep their WebSocket and get a new shell, local and dynamic tunnels work again and remote forwards are re-registered
 - FR-02.7 — Connection status badge: connected / reconnecting / disconnected ✅ (BL-29)
 - FR-02.8 — Closing standalone terminal window closes its shell; the SSH session stays open while other terminals, tunnels, transfers or an open Profile Details tab use it ✅ (BL-11)
 - FR-02.9 — The JWT reaches popup windows through a one-time IPC hand-off, to that window only — no re-auth required, and no token in any window URL ✅ (BL-20)
@@ -888,7 +888,7 @@ CypherShell currently accepts whatever host key a server presents (no `hostVerif
 ### NFR-03: Reliability
 
 - SSH session errors are isolated per tab — one failure does not affect others ✅ (BL-16 — every forwarded socket has an error handler)
-- Auto-reconnect: exponential backoff (1s → 2s → 4s), max 3 retries ⚠️ (see FR-02.6, BL-41)
+- Auto-reconnect: exponential backoff (1s → 2s → 4s), max 3 retries ✅ (see FR-02.6, BL-41)
 - Electron main auto-restarts Express if it crashes unexpectedly ✅ (BL-16)
 - SQLite WAL mode — prevents corruption on force-quit
 - Only one instance of the app runs at a time; a second launch brings the running app to the front ✅ (BL-25)
@@ -1102,7 +1102,7 @@ DELETE /api/profiles/:id/tunnels/:tunnelId → Delete a saved rule of this profi
 
 ```
 GET    /api/sessions                  → { sessions: [{ id, profileId, profileName, host, connectedAt, consumers }] }
-GET    /api/sessions/:sessionId       → { alive: boolean } — also renews the session's heartbeat lease (BL-11)
+GET    /api/sessions/:sessionId       → { alive: boolean, state?: 'connected' | 'reconnecting' } — also renews the session's heartbeat lease (BL-11); `state` from BL-41
 DELETE /api/sessions/:sessionId       → Disconnect session (closes its shells, SFTP and tunnels)
 ```
 
@@ -1114,6 +1114,8 @@ WS  ws://127.0.0.1:{port}/ws/terminal/:sessionId?token=<JWT>&launch=<per-launch 
 Upgrade refused:  403 — foreign Host or Origin, or missing/wrong launch secret (BL-17)
                   401 — missing, expired or revoked token (BL-18)
 Close code 4001:  "App locked" — the app was locked; the renderer does not reconnect (BL-18)
+Close code 4002:  "SSH connection lost" — the backend gave up reconnecting (or autoReconnect is off); the renderer does not reconnect (BL-41)
+Server → Client status: { type: "status", state: "connected" | "reconnecting" | "disconnected" } — "reconnecting" while the backend re-creates the SSH connection (BL-41)
 
 Client → Server:
   { type: "input",  data: "<base64 of UTF-8 bytes>" }
@@ -2371,11 +2373,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-41 — Automatic SSH Reconnect
+### ~~BL-41 — Automatic SSH Reconnect~~ ✅ Implemented
 
 **Requirements:** FR-02.6, NFR-03
 **Priority:** Medium
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/autoReconnect.test.ts, tests/renderer/components/terminal/TerminalPane.test.tsx, tests/renderer/components/profiles/ProfileForm.test.tsx, tests/renderer/hooks/useSessionHeartbeat.test.tsx
 
 **Problem:** when the SSH connection drops (server restart, network change) the session is removed, every terminal ends, and the user must reconnect and reopen everything by hand, although the profile has an `autoReconnect` setting.
 
@@ -2391,12 +2393,12 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] After the server drops the connection, an open terminal reports reconnecting, then works again on a new shell with the same session id
-- [ ] The audit log shows one disconnect entry and one "Reconnected" entry for it
-- [ ] With `autoReconnect` off, or after three failed attempts, terminals close with 4002 and the session is gone
-- [ ] A changed host key stops the reconnect without sending credentials
-- [ ] Local and dynamic tunnels work again after a reconnect; remote forwards are re-registered
-- [ ] A session closed during a reconnect makes no further attempts
+- [x] After the server drops the connection, an open terminal reports reconnecting, then works again on a new shell with the same session id
+- [x] The audit log shows one disconnect entry and one "Reconnected" entry for it
+- [x] With `autoReconnect` off, or after three failed attempts, terminals close with 4002 and the session is gone
+- [x] A changed host key stops the reconnect without sending credentials
+- [x] Local and dynamic tunnels work again after a reconnect; remote forwards are re-registered
+- [x] A session closed during a reconnect makes no further attempts
 
 ---
 

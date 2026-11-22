@@ -13,11 +13,16 @@ export const SESSION_HEARTBEAT_MS = 15_000
  * lease in the backend, so a Profile Detail tab or SFTP window holds the
  * session even when no terminal is open (FR-03.5).
  */
-export function useSessionHeartbeat(sessionId: string | null, enabled = true): { ended: boolean } {
+export function useSessionHeartbeat(
+  sessionId: string | null,
+  enabled = true
+): { ended: boolean; reconnecting: boolean } {
   const { data } = useQuery({
     queryKey: ['session', sessionId],
     queryFn: async () => {
-      const res = await api.get<{ alive: boolean }>(`/sessions/${sessionId}`)
+      const res = await api.get<{ alive: boolean; state?: 'connected' | 'reconnecting' }>(
+        `/sessions/${sessionId}`
+      )
       return res.data
     },
     enabled: !!sessionId && enabled,
@@ -26,5 +31,5 @@ export function useSessionHeartbeat(sessionId: string | null, enabled = true): {
     refetchIntervalInBackground: true,
     retry: false
   })
-  return { ended: data?.alive === false }
+  return { ended: data?.alive === false, reconnecting: data?.state === 'reconnecting' }
 }

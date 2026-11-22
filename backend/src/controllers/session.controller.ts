@@ -11,7 +11,8 @@ export function getSessions(_req: Request, res: Response): void {
  */
 export function getSessionStatus(req: Request, res: Response): void {
   const sessionId = req.params.sessionId as string
-  res.json({ alive: SSHService.heartbeat(sessionId) })
+  const alive = SSHService.heartbeat(sessionId)
+  res.json({ alive, state: SSHService.getSession(sessionId)?.state })
 }
 
 export function disconnectSession(req: Request, res: Response): void {

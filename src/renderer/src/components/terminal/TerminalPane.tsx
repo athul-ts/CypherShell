@@ -11,6 +11,7 @@ import {
   APP_LOCKED_CLOSE_CODE,
   openTerminalLink,
   shouldReconnect,
+  SSH_LOST_CLOSE_CODE,
   terminalSocketUrl
 } from '../../lib/terminalSocket'
 import '@xterm/xterm/css/xterm.css'
@@ -145,7 +146,9 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
           term.current?.write(
             event.code === 1008
               ? '\r\n\x1b[31mSession no longer exists.\x1b[0m\r\n'
-              : '\r\n\x1b[33mSession ended.\x1b[0m\r\n'
+              : event.code === SSH_LOST_CLOSE_CODE
+                ? '\r\n\x1b[31mConnection lost. Reconnect from the profile.\x1b[0m\r\n'
+                : '\r\n\x1b[33mSession ended.\x1b[0m\r\n'
           )
           return
         }

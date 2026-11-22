@@ -1,4 +1,4 @@
-import { SSHService } from './ssh.service'
+import { SSHService, type SSHSession } from './ssh.service'
 import net from 'net'
 import type { Duplex } from 'stream'
 import { logger } from './logger.service'
@@ -85,6 +85,11 @@ export class TunnelService {
     const server = net.createServer((socket) => {
       // Attach before the channel opens: the client may reset while we wait.
       socket.on('error', () => socket.destroy())
+      // BL-41: no channel can open while the session reconnects.
+      if (session.state !== 'connected') {
+        socket.destroy()
+        return
+      }
       session.client.forwardOut('127.0.0.1', localPort, remoteHost, remotePort, (err, stream) => {
         if (err) {
           socket.destroy()
@@ -137,31 +142,56 @@ export class TunnelService {
           return reject(err)
         }
 
-        // Register a single shared tcp connection dispatcher (lazy, once)
-        if (!session.hasTcpListener) {
-          session.client.on('tcp connection', (details, acceptConnection, rejectConnection) => {
-            const fwd = sessionForwards?.get(details.destPort)
-            if (!fwd) {
-              rejectConnection()
-              return
-            }
-            let accepted = false
-            const socket = net.connect(fwd.localPort, fwd.localHost, () => {
-              accepted = true
-              bridge(socket, acceptConnection())
-            })
-            // Before the bridge exists, a refused local port rejects the channel.
-            socket.on('error', () => {
-              if (!accepted) rejectConnection()
-            })
-          })
-          session.hasTcpListener = true
-        }
+        this.registerTcpDispatcher(session, sessionForwards!)
 
         SSHService.acquire(sessionId)
         resolve()
       })
     })
+  }
+
+  /** Registers a single shared `tcp connection` dispatcher on the session's client (lazy, once). */
+  private static registerTcpDispatcher(
+    session: SSHSession,
+    forwards: Map<number, { localHost: string; localPort: number }>
+  ): void {
+    if (session.hasTcpListener) return
+    session.client.on('tcp connection', (details, acceptConnection, rejectConnection) => {
+      const fwd = forwards.get(details.destPort)
+      if (!fwd) {
+        rejectConnection()
+        return
+      }
+      let accepted = false
+      const socket = net.connect(fwd.localPort, fwd.localHost, () => {
+        accepted = true
+        bridge(socket, acceptConnection())
+      })
+      // Before the bridge exists, a refused local port rejects the channel.
+      socket.on('error', () => {
+        if (!accepted) rejectConnection()
+      })
+    })
+    session.hasTcpListener = true
+  }
+
+  /**
+   * BL-41: after a reconnect the session has a new client with no remote forwards.
+   * Registers the dispatcher and asks the server for every forward again.
+   */
+  static async restoreRemoteForwards(session: SSHSession): Promise<void> {
+    const forwards = this.remoteForwards.get(session.id)
+    if (!forwards || forwards.size === 0) return
+    session.hasTcpListener = false
+    this.registerTcpDispatcher(session, forwards)
+    for (const remotePort of forwards.keys()) {
+      await new Promise<void>((resolve) => {
+        session.client.forwardIn('127.0.0.1', remotePort, (err) => {
+          if (err) logger.error(`Could not restore remote forward ${remotePort}: ${err.message}`)
+          resolve()
+        })
+      })
+    }
   }
 
   static async stopRemoteForward(sessionId: string, remotePort: number): Promise<void> {
@@ -177,8 +207,8 @@ export class TunnelService {
   static async startDynamicForward(sessionId: string, localPort: number): Promise<void> {
     const session = SSHService.getSession(sessionId)
     if (!session) throw new Error('Session not found')
-    // Captured after the null check so the nested SOCKS parser keeps the narrowed type.
-    const sshClient = session.client
+    // Named after the null check: the nested SOCKS parser reads `live.client` for every connection.
+    const live: SSHSession = session
 
     const isFree = await this.checkPort(localPort)
     if (!isFree) throw new PortInUseError(localPort)
@@ -234,7 +264,13 @@ export class TunnelService {
           buf = buf.subarray(headerLen)
           state = 'CONNECTING' // stop parsing; buffer anything sent early
 
-          sshClient.forwardOut('127.0.0.1', localPort, hostStr, port, (err, stream) => {
+          // BL-41: read the current client — it is replaced by a reconnect.
+          if (live.state !== 'connected') {
+            socket.write(Buffer.from([0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
+            socket.end()
+            return
+          }
+          live.client.forwardOut('127.0.0.1', localPort, hostStr, port, (err, stream) => {
             if (err) {
               socket.write(Buffer.from([0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
               return socket.end()

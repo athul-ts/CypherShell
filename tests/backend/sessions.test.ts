@@ -258,7 +258,7 @@ describe('[FR-03.5][BL-11] consumer-aware reaping', () => {
     const res = await request(app)
       .get(`/api/sessions/${sessionId}`)
       .set(...auth())
-    expect(res.body).toEqual({ alive: true })
+    expect(res.body).toEqual({ alive: true, state: 'connected' })
 
     const list = await request(app)
       .get('/api/sessions')

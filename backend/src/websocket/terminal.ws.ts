@@ -15,6 +15,9 @@ import { logger } from '../services/logger.service'
 /** Close code sent to every terminal when the app locks (BL-18). The renderer does not reconnect. */
 export const APP_LOCKED_CLOSE_CODE = 4001
 
+/** Close code sent when the SSH connection was lost and could not be restored (BL-41). */
+export const SSH_LOST_CLOSE_CODE = 4002
+
 export interface TerminalWebSocketOptions {
   /** BL-17: who may open a terminal. Defaults to `LAUNCH_SECRET` / `ALLOWED_CORS_ORIGINS`. */
   callerPolicy?: CallerPolicy
@@ -118,8 +121,13 @@ export function setupTerminalWebSocket(
     // BL-29: messages that arrive before the remote shell is ready are kept, not
     // dropped — the renderer sends its first resize the moment the socket opens.
     let stream: ClientChannel | null = null
-    let pendingResize: { cols: number; rows: number } | null = null
+    let size: { cols: number; rows: number } | null = null
     const pendingInput: Buffer[] = []
+    let hadShell = false
+
+    const send = (data: object): void => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data))
+    }
 
     ws.on('message', (raw) => {
       try {
@@ -127,10 +135,11 @@ export function setupTerminalWebSocket(
         if (msg.type === 'input' && msg.data) {
           const bytes = Buffer.from(msg.data, 'base64')
           if (stream) stream.write(bytes)
-          else pendingInput.push(bytes)
+          // BL-41: input typed while the connection is down is dropped, not replayed on a new shell.
+          else if (session.state === 'connected') pendingInput.push(bytes)
         } else if (msg.type === 'resize' && msg.cols && msg.rows) {
+          size = { cols: msg.cols, rows: msg.rows }
           if (stream) stream.setWindow(msg.rows, msg.cols, 0, 0)
-          else pendingResize = { cols: msg.cols, rows: msg.rows }
         } else if (msg.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }))
         }
@@ -139,52 +148,85 @@ export function setupTerminalWebSocket(
       }
     })
 
-    session.client.shell({ term: 'xterm-256color' }, (err, channel) => {
-      if (err) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'error', message: err.message }))
-          ws.close(1011, 'Failed to start shell')
+    /** Opens a shell on the session's current client — again after a reconnect (BL-41). */
+    const openShell = (): void => {
+      session.client.shell({ term: 'xterm-256color' }, (err, channel) => {
+        if (err) {
+          if (ws.readyState === WebSocket.OPEN) {
+            send({ type: 'error', message: err.message })
+            ws.close(1011, 'Failed to start shell')
+          }
+          return
         }
-        return
-      }
 
-      if (ws.readyState !== WebSocket.OPEN) {
-        channel.end() // the terminal window closed (or the app locked) while the shell was starting
-        return
-      }
-      stream = channel
-      endShell = () => channel.end()
-      if (pendingResize) channel.setWindow(pendingResize.rows, pendingResize.cols, 0, 0)
-      for (const bytes of pendingInput.splice(0)) channel.write(bytes)
-
-      ws.send(JSON.stringify({ type: 'status', state: 'connected' }))
-
-      channel.on('data', (data: Buffer) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'output', data: data.toString('base64') }))
+        if (ws.readyState !== WebSocket.OPEN) {
+          channel.end() // the terminal window closed (or the app locked) while the shell was starting
+          return
         }
-      })
+        const reopened = hadShell
+        hadShell = true
+        stream = channel
+        endShell = () => channel.end()
+        if (size) channel.setWindow(size.rows, size.cols, 0, 0)
+        for (const bytes of pendingInput.splice(0)) channel.write(bytes)
 
-      channel.on('error', (streamErr: Error) => {
-        logger.error('Shell stream error: ' + streamErr.message)
-        channel.end()
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
-          ws.close(1011, 'Shell error')
+        if (reopened) {
+          const note = '\r\n[Connection lost — reconnected]\r\n'
+          send({ type: 'output', data: Buffer.from(note).toString('base64') })
         }
-      })
+        send({ type: 'status', state: 'connected' })
 
-      channel.on('close', () => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'status', state: 'disconnected' }))
-          ws.close(1000, 'Shell closed')
-        }
-      })
+        channel.on('data', (data: Buffer) => {
+          send({ type: 'output', data: data.toString('base64') })
+        })
 
-      ws.on('close', () => {
-        channel.end()
+        channel.on('error', (streamErr: Error) => {
+          logger.error('Shell stream error: ' + streamErr.message)
+          channel.end()
+          if (ws.readyState === WebSocket.OPEN) {
+            send({ type: 'status', state: 'disconnected' })
+            ws.close(1011, 'Shell error')
+          }
+        })
+
+        channel.on('close', () => {
+          if (stream !== channel) return
+          stream = null
+          // ssh2 closes the client before its channels: wait for the decision to reconnect.
+          void Promise.resolve(session.closing).then(() => {
+            if (ws.readyState !== WebSocket.OPEN) return
+            if (session.state === 'reconnecting' || session.lost) return // the session events handle it
+            send({ type: 'status', state: 'disconnected' })
+            ws.close(1000, 'Shell closed')
+          })
+        })
       })
+    }
+
+    // BL-41: follow the session through a reconnect.
+    const onReconnecting = (): void => send({ type: 'status', state: 'reconnecting' })
+    const onReconnected = (): void => openShell()
+    const onLost = (): void => {
+      send({ type: 'status', state: 'disconnected' })
+      if (ws.readyState === WebSocket.OPEN) ws.close(SSH_LOST_CLOSE_CODE, 'SSH connection lost')
+    }
+    const onClosed = (): void => {
+      if (ws.readyState === WebSocket.OPEN) ws.close(1000, 'Session closed')
+    }
+    session.events.on('reconnecting', onReconnecting)
+    session.events.on('reconnected', onReconnected)
+    session.events.on('lost', onLost)
+    session.events.on('closed', onClosed)
+    ws.on('close', () => {
+      session.events.off('reconnecting', onReconnecting)
+      session.events.off('reconnected', onReconnected)
+      session.events.off('lost', onLost)
+      session.events.off('closed', onClosed)
+      stream?.end()
     })
+
+    if (session.state === 'reconnecting') onReconnecting()
+    else openShell()
 
     ws.on('error', (wsErr) => {
       logger.error('WebSocket error: ' + wsErr.message)

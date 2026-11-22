@@ -114,7 +114,10 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
 
   // BL-11: while connected, keep the session leased and notice when it ends
   // (closed by the server, the network, or the backend's idle reaper).
-  const { ended: sessionEnded } = useSessionHeartbeat(sessionId, localStatus === 'connected')
+  const { ended: sessionEnded, reconnecting } = useSessionHeartbeat(
+    sessionId,
+    localStatus === 'connected'
+  )
   const status: ConnectionStatus =
     localStatus === 'connected' && sessionEnded ? 'disconnected' : localStatus
 
@@ -313,7 +316,9 @@ export function ProfileDetailPane({ profileId }: ProfileDetailPaneProps): React.
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 )}
                 {status === 'disconnected' && <Power className="w-3.5 h-3.5" />}
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+                {status === 'connected' && reconnecting
+                  ? 'Reconnecting…'
+                  : status.charAt(0).toUpperCase() + status.slice(1)}
               </span>
             </div>
           </div>

@@ -38,7 +38,7 @@
 
 ### FR-02 — SSH Terminal
 
-**SRS §6.2** | Priority: High | Overall: ⚠️ Partially Implemented (FR-02.6 — BL-41)
+**SRS §6.2** | Priority: High | Overall: ✅ Implemented
 
 | ID       | Requirement                                                    | Status |
 | -------- | -------------------------------------------------------------- | ------ |
@@ -47,7 +47,7 @@
 | FR-02.3  | PTY resizes dynamically (xterm-addon-fit)                      | ✅     |
 | FR-02.4  | Ctrl+Shift+C copy; right-click paste                           | ✅     |
 | FR-02.5  | Full keyboard support (Ctrl+C, arrows, function keys)          | ✅     |
-| FR-02.6  | Auto-reconnect with exponential backoff, max 3 retries         | ⚠️     |
+| FR-02.6  | Auto-reconnect with exponential backoff, max 3 retries         | ✅     |
 | FR-02.7  | Connection status badge                                        | ✅     |
 | FR-02.8  | Closing terminal window closes PTY session                     | ✅     |
 | FR-02.9  | JWT passed via route param — no re-auth in popup windows       | ✅     |
@@ -222,7 +222,7 @@
 | ------ | -------------------------------------------------------------------------------------------- | ------ |
 | NFR-01 | Performance targets (cold start <4s, terminal latency <50ms, etc.) — not yet measured        | ⚠️     |
 | NFR-02 | Security — AES-256-GCM, PBKDF2, context isolation, localhost-only                            | ⚠️     |
-| NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                    | ⚠️     |
+| NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                    | ✅     |
 | NFR-04 | Usability — destructive confirms, loading states, plain-language errors                      | ✅     |
 | NFR-05 | Cross-platform — Windows, macOS, Linux                                                       | ⚠️     |
 | NFR-06 | Maintainability — 100% TypeScript, ESLint, thin controllers, Prisma schema = source of truth | ⚠️     |
@@ -276,7 +276,7 @@
 | ~~BL-38~~ | ~~SSH host-key verification~~ | ~~High~~ | FR-11.1 … FR-11.5 | ✅ Done |
 | ~~BL-39~~ | ~~Change master password~~ | ~~High~~ | FR-07.8 | ✅ Done |
 | ~~BL-40~~ | ~~Keyboard-interactive login~~ | ~~Medium~~ | FR-01.9 | ✅ Done |
-| BL-41     | Automatic SSH reconnect                                             | Medium       | FR-02.6, NFR-03                      | ❌ Open         |
+| ~~BL-41~~ | ~~Automatic SSH reconnect~~ | ~~Medium~~ | FR-02.6, NFR-03 | ✅ Done |
 | BL-42     | Thin controllers                                                    | Medium       | NFR-06                               | ❌ Open         |
 | BL-43     | Logging                                                             | Medium       | NFR-06                               | ❌ Open         |
 | BL-44     | Cleanup and documentation                                           | Low          | NFR-06                               | ❌ Open         |

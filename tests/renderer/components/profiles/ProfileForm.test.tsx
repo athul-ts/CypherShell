@@ -47,6 +47,7 @@ function valuesFrom(
     authMethod: profile.authMethod,
     password: '',
     sshKeyId: profile.sshKeyId ?? '',
+    autoReconnect: profile.autoReconnect ?? true,
     ...overrides
   }
 }
@@ -104,7 +105,8 @@ describe('[FR-01.8.4][BL-13] buildProfilePayload', () => {
       username: 'u',
       authMethod: 'password',
       password: 'pw',
-      sshKeyId: ''
+      sshKeyId: '',
+      autoReconnect: true
     })
     expect(payload).toEqual({
       name: 'New',
@@ -113,8 +115,34 @@ describe('[FR-01.8.4][BL-13] buildProfilePayload', () => {
       port: 2222,
       username: 'u',
       authMethod: 'password',
-      password: 'pw'
+      password: 'pw',
+      autoReconnect: true
     })
+  })
+
+  it('[BL-41] turning "Reconnect automatically" off sends { autoReconnect: false } only', () => {
+    const payload = buildProfilePayload(
+      passwordProfile,
+      valuesFrom(passwordProfile, { autoReconnect: false })
+    )
+    expect(payload).toEqual({ autoReconnect: false })
+  })
+})
+
+describe('[FR-02.6][BL-41] ProfileForm "Reconnect automatically"', () => {
+  it('is on by default and saves the unchecked value', async () => {
+    mockApi.get.mockResolvedValue({ data: [] })
+    mockApi.put.mockResolvedValue({ data: {} })
+    renderWithQuery(<ProfileForm open profile={passwordProfile} onOpenChange={() => {}} />)
+
+    const box = screen.getByLabelText('Reconnect automatically') as HTMLInputElement
+    expect(box.checked).toBe(true)
+    fireEvent.click(box)
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }))
+
+    await waitFor(() =>
+      expect(mockApi.put).toHaveBeenCalledWith('/profiles/p1', { autoReconnect: false })
+    )
   })
 })
 

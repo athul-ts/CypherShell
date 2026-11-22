@@ -6,12 +6,16 @@ export const SHELL_ENDED_CLOSE_CODE = 1000
 /** The SSH session no longer exists; a reconnect cannot succeed (BL-29). */
 export const SESSION_GONE_CLOSE_CODE = 1008
 
+/** The backend could not restore the SSH connection; the session is gone (BL-41). */
+export const SSH_LOST_CLOSE_CODE = 4002
+
 /** Whether an unexpected close should be retried (FR-02.6). Only abnormal drops are. */
 export function shouldReconnect(code: number): boolean {
   return (
     code !== SHELL_ENDED_CLOSE_CODE &&
     code !== SESSION_GONE_CLOSE_CODE &&
-    code !== APP_LOCKED_CLOSE_CODE
+    code !== APP_LOCKED_CLOSE_CODE &&
+    code !== SSH_LOST_CLOSE_CODE
   )
 }
 

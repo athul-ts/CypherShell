@@ -37,7 +37,8 @@ function initialValues(profile?: Profile): ProfileFormValues {
     username: profile?.username || '',
     authMethod: profile?.authMethod || 'password',
     password: '',
-    sshKeyId: profile?.sshKeyId || ''
+    sshKeyId: profile?.sshKeyId || '',
+    autoReconnect: profile?.autoReconnect ?? true
   }
 }
 
@@ -319,6 +320,19 @@ export function ProfileForm({
                 {fieldError('password')}
               </div>
             )}
+
+            <label
+              htmlFor="profile-auto-reconnect"
+              className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer"
+            >
+              <input
+                id="profile-auto-reconnect"
+                type="checkbox"
+                checked={formData.autoReconnect}
+                onChange={(e) => change({ autoReconnect: e.target.checked })}
+              />
+              Reconnect automatically
+            </label>
 
             {mutation.error && (
               <div className="text-red-500 text-sm mt-2">

@@ -136,6 +136,27 @@ describe('[BL-18] after the app locked', () => {
   })
 })
 
+describe('[FR-02.6][BL-41] the backend gave up reconnecting the SSH session', () => {
+  it('does not reconnect after close code 4002 and says so', () => {
+    render(<TerminalPane sessionId="session-1" />)
+    act(() => FakeSocket.instances[0].onclose?.({ code: 4002 }))
+    act(() => vi.advanceTimersByTime(10_000))
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(xterm.written.join('')).toContain('Connection lost. Reconnect from the profile.')
+  })
+
+  it('shows "Reconnecting..." when the backend reports reconnecting, without a new socket', () => {
+    const { container } = render(<TerminalPane sessionId="session-1" />)
+    act(() =>
+      FakeSocket.instances[0].onmessage?.({
+        data: JSON.stringify({ type: 'status', state: 'reconnecting' })
+      })
+    )
+    expect(container.textContent).toContain('Reconnecting...')
+    expect(FakeSocket.instances).toHaveLength(1)
+  })
+})
+
 describe('[FR-02.6][BL-29] when not to reconnect', () => {
   it.each([
     [1000, 'Session ended.'],

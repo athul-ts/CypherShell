@@ -27,6 +27,13 @@ describe('[BL-11] useSessionHeartbeat', () => {
     await waitFor(() => expect(result.current.ended).toBe(true))
   })
 
+  it('[BL-41] reports reconnecting while the backend re-creates the connection', async () => {
+    mockApi.get.mockResolvedValue({ data: { alive: true, state: 'reconnecting' } })
+    const { result } = renderHook(() => useSessionHeartbeat('session-4'), { wrapper })
+    await waitFor(() => expect(result.current.reconnecting).toBe(true))
+    expect(result.current.ended).toBe(false)
+  })
+
   it('does not poll without a session or while disabled', () => {
     renderHook(() => useSessionHeartbeat(null), { wrapper })
     renderHook(() => useSessionHeartbeat('session-3', false), { wrapper })

@@ -96,6 +96,25 @@ export class AuditService {
     })
   }
 
+  /** BL-41 / FR-02.6: the outcome of an automatic reconnect. */
+  static async logReconnect(
+    profile: { id: string; name: string; host: string },
+    success: boolean,
+    errorMessage?: string
+  ): Promise<AuditLog> {
+    return prisma.auditLog.create({
+      data: {
+        type: 'connection',
+        profileId: profile.id,
+        profileName: profile.name,
+        host: profile.host,
+        detail: success ? 'Reconnected after connection loss' : 'Reconnect failed',
+        success,
+        errorMessage
+      }
+    })
+  }
+
   /** BL-38 / FR-11.5: a host-key decision (prompted, trusted, blocked, removed). */
   static async logHostKey(
     profile: { id: string; name: string; host: string } | null,

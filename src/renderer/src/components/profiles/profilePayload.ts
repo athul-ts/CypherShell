@@ -10,6 +10,7 @@ export interface ProfileSnapshot {
   authMethod: AuthMethod
   sshKeyId?: string | null
   hasPassword?: boolean
+  autoReconnect?: boolean
 }
 
 /** Field values held by ProfileForm. `password` is the SSH password or the key passphrase. */
@@ -22,6 +23,7 @@ export interface ProfileFormValues {
   authMethod: AuthMethod
   password: string
   sshKeyId: string
+  autoReconnect: boolean
 }
 
 export type ProfilePayload = Partial<{
@@ -33,6 +35,7 @@ export type ProfilePayload = Partial<{
   authMethod: AuthMethod
   password: string
   sshKeyId: string
+  autoReconnect: boolean
 }>
 
 export type ProfileField = 'name' | 'host' | 'port' | 'username' | 'sshKeyId' | 'password'
@@ -102,7 +105,8 @@ export function buildProfilePayload(
       username: values.username,
       authMethod: values.authMethod,
       ...(needsSecret(values.authMethod) && values.password ? { password: values.password } : {}),
-      ...(sshKeyId ? { sshKeyId } : {})
+      ...(sshKeyId ? { sshKeyId } : {}),
+      autoReconnect: values.autoReconnect
     }
   }
 
@@ -112,6 +116,9 @@ export function buildProfilePayload(
   if (values.host !== original.host) payload.host = values.host
   if (values.port !== original.port) payload.port = values.port
   if (values.username !== original.username) payload.username = values.username
+  if (values.autoReconnect !== (original.autoReconnect ?? true)) {
+    payload.autoReconnect = values.autoReconnect
+  }
 
   const methodChanged = values.authMethod !== original.authMethod
   if (methodChanged) payload.authMethod = values.authMethod
