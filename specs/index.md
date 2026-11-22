@@ -133,7 +133,7 @@
 
 ### FR-07 — Application Lock
 
-**SRS §6.7** | Priority: Medium | Overall: ⚠️ Partially Implemented (FR-07.8 — BL-39)
+**SRS §6.7** | Priority: Medium | Overall: ✅ Implemented
 
 | ID      | Requirement                                                                 | Status |
 | ------- | --------------------------------------------------------------------------- | ------ |
@@ -144,7 +144,7 @@
 | FR-07.5 | Auto-lock after configurable idle timeout (default 15 min)                  | ✅     |
 | FR-07.6 | Lost master password = all encrypted data unrecoverable — shown prominently | ✅     |
 | FR-07.7 | Lock-mode changes re-encrypt all secrets; disabling needs the password      | ✅     |
-| FR-07.8 | Change master password                                                      | ❌     |
+| FR-07.8 | Change master password                                                      | ✅     |
 
 ---
 
@@ -274,7 +274,7 @@
 | ~~BL-36~~ | ~~Dependency security update (Electron 45)~~                        | ~~High~~     | NFR-02, NFR-07                       | ✅ Done         |
 | ~~BL-37~~ | ~~CI on every branch~~ | ~~High~~ | NFR-06, NFR-07 | ✅ Done |
 | ~~BL-38~~ | ~~SSH host-key verification~~ | ~~High~~ | FR-11.1 … FR-11.5 | ✅ Done |
-| BL-39     | Change master password                                              | High         | FR-07.8                              | ❌ Open         |
+| ~~BL-39~~ | ~~Change master password~~ | ~~High~~ | FR-07.8 | ✅ Done |
 | BL-40     | Keyboard-interactive login                                          | Medium       | FR-01.9                              | ❌ Open         |
 | BL-41     | Automatic SSH reconnect                                             | Medium       | FR-02.6, NFR-03                      | ❌ Open         |
 | BL-42     | Thin controllers                                                    | Medium       | NFR-06                               | ❌ Open         |

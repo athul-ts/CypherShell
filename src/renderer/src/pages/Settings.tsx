@@ -16,6 +16,7 @@ import { TERMINAL_THEMES, THEME_LABELS } from '../lib/terminalThemes'
 import { MIN_MASTER_PASSWORD_LENGTH } from '../lib/passwordStrength'
 import { PasswordStrengthHint } from '../components/PasswordStrengthHint'
 import { KnownHostsCard } from '../components/settings/KnownHostsCard'
+import { ChangePasswordDialog } from '../components/settings/ChangePasswordDialog'
 
 interface AppConfig {
   theme: string
@@ -43,6 +44,7 @@ function apiErrorMessage(err: unknown): string | undefined {
 
 export default function Settings(): React.JSX.Element {
   const queryClient = useQueryClient()
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
 
   const { data: config, isLoading } = useQuery({
     queryKey: ['config'],
@@ -297,6 +299,24 @@ export default function Settings(): React.JSX.Element {
             </div>
 
             {lockEnabled && (
+              <div className="flex items-center justify-between p-4 bg-[#1a1c23] rounded-lg border border-slate-800">
+                <div>
+                  <div className="font-medium text-slate-200">Master Password</div>
+                  <div className="text-sm text-slate-500 mt-1">
+                    Re-encrypts your saved passwords and keys with a new password
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setChangePasswordOpen(true)}
+                  className="px-4 py-2 rounded-lg text-sm text-slate-200 bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  Change master password
+                </button>
+              </div>
+            )}
+
+            {lockEnabled && (
               <div className="grid grid-cols-2 gap-6 pt-2">
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">
@@ -365,6 +385,11 @@ export default function Settings(): React.JSX.Element {
           </button>
         </div>
       </form>
+
+      <ChangePasswordDialog
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
 
       {/* FR-07.7: turn app lock on or off. Rendered outside the settings form so
           submitting it never also submits the settings. */}

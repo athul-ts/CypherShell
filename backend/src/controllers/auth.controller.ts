@@ -5,6 +5,8 @@ import { CryptoService } from '../services/crypto.service'
 import { SecretsService, type RekeyResult } from '../services/secrets.service'
 import { TokenStore } from '../services/token-store.service'
 import { AppLockService } from '../services/app-lock.service'
+import { ConfigService } from '../services/config.service'
+import { logger } from '../services/logger.service'
 import { env } from '../config/env'
 import { z } from 'zod'
 
@@ -172,7 +174,7 @@ const SetPasswordSchema = z.object({
  * If a master password is still on record (lock was switched off by the
  * pre-BL-10 Settings toggle, which kept the hash), that password must be
  * given: the request then restores lock with it instead of setting a new one.
- * Changing the master password is FR-07.8 and not implemented.
+ * Changing the master password is FR-07.8 (changeMasterPassword).
  */
 export async function setupMasterPassword(req: Request, res: Response): Promise<void> {
   const result = SetPasswordSchema.safeParse(req.body)
@@ -273,6 +275,66 @@ export async function disableLock(req: Request, res: Response): Promise<void> {
   CryptoService.setActiveKey(newKey)
   await AppLockService.publishPolicy() // BL-18: no auto-lock without a lock
   res.json({ success: true, unreadableSecrets: rekey.unreadable })
+}
+
+const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password required.'),
+  newPassword: z.string().min(MIN_MASTER_PASSWORD_LENGTH, TOO_SHORT)
+})
+
+/**
+ * Changes the master password (FR-07.8, BL-39). Requires the current one, derives the
+ * new key from a new salt and re-encrypts every stored secret in the same transaction
+ * that stores the new hash and salt. The key in memory is replaced only after that
+ * transaction succeeded, so a failure leaves the old password and key working.
+ */
+export async function changeMasterPassword(req: Request, res: Response): Promise<void> {
+  const result = ChangePasswordSchema.safeParse(req.body)
+  if (!result.success) {
+    res.status(400).json({ error: result.error.issues[0].message })
+    return
+  }
+  const { currentPassword, newPassword } = result.data
+  if (newPassword === currentPassword) {
+    res.status(400).json({ error: 'The new password must be different from the current one.' })
+    return
+  }
+
+  const config = await ConfigService.findConfig()
+  if (!config) {
+    res.status(400).json({ error: 'App not configured.' })
+    return
+  }
+  if (!config.lockEnabled || !config.masterPasswordHash) {
+    res.status(400).json({ error: 'App lock is off — set a master password instead.' })
+    return
+  }
+
+  const valid = await CryptoService.verifyPassword(currentPassword, config.masterPasswordHash)
+  if (!valid) {
+    res.status(401).json({ error: 'Incorrect current password.' })
+    return
+  }
+
+  const oldKeys = [await CryptoService.deriveKey(currentPassword, config.encryptionKeySalt)]
+  const active = CryptoService.getActiveKey()
+  if (active && !oldKeys[0].equals(active)) oldKeys.push(active)
+
+  const salt = CryptoService.generateSalt()
+  const hash = await CryptoService.hashPassword(newPassword)
+  const newKey = await CryptoService.deriveKey(newPassword, salt)
+
+  try {
+    const rekey = await SecretsService.rekey(oldKeys, newKey, {
+      masterPasswordHash: hash,
+      encryptionKeySalt: salt
+    })
+    CryptoService.setActiveKey(newKey)
+    res.json({ success: true, unreadableSecrets: rekey.unreadable })
+  } catch (error: unknown) {
+    logger.error('Changing the master password failed: ' + String(error))
+    res.status(500).json({ error: 'Could not change the master password. Nothing was changed.' })
+  }
 }
 
 /**

@@ -73,7 +73,15 @@ export function createApp({
       legacyHeaders: false
     })
     // Every endpoint that verifies the master password shares the 5/min budget
-    app.use(['/api/auth/unlock', '/api/auth/setup-password', '/api/auth/disable-lock'], authLimiter)
+    app.use(
+      [
+        '/api/auth/unlock',
+        '/api/auth/setup-password',
+        '/api/auth/disable-lock',
+        '/api/auth/change-password'
+      ],
+      authLimiter
+    )
     app.use('/api', apiLimiter)
   }
 

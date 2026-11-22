@@ -6,7 +6,8 @@ import {
   unlock,
   lock,
   setupMasterPassword,
-  disableLock
+  disableLock,
+  changeMasterPassword
 } from '../controllers/auth.controller'
 import { requireAuth } from '../middleware/auth.middleware'
 
@@ -19,5 +20,6 @@ router.post('/unlock', unlock)
 router.post('/lock', requireAuth, lock)
 router.post('/setup-password', requireAuth, setupMasterPassword)
 router.post('/disable-lock', requireAuth, disableLock)
+router.post('/change-password', requireAuth, changeMasterPassword)
 
 export default router

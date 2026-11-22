@@ -697,7 +697,7 @@ CypherShell/
 
 ### FR-07: Application Lock
 
-**Priority:** Medium | **Status:** ⚠️ Partially Implemented (FR-07.8 — BL-39)
+**Priority:** Medium | **Status:** ✅ Implemented
 
 - FR-07.1 — First-run setup wizard: set master password or skip ✅ (BL-10 — startup jobs no longer create the config row)
 - FR-07.2 — Lock screen shown on app open if lock is enabled ✅
@@ -706,7 +706,7 @@ CypherShell/
 - FR-07.5 — Auto-lock after configurable idle timeout (default 15 minutes) ✅ (BL-18 — one idle clock in the main process counts input in every window; a lock closes the terminal and SFTP windows and their sockets)
 - FR-07.6 — Lost master password = all encrypted data permanently unrecoverable — shown prominently ✅
 - FR-07.7 — Changing the lock mode never loses data: setting a master password on a skip-lock install, or turning lock off, re-encrypts every stored secret under the new key in a single transaction, and turning lock off requires the current master password ✅ (BL-10 — `SecretsService.rekey`, `POST /api/auth/setup-password`, `POST /api/auth/disable-lock`)
-- FR-07.8 — Change master password (current + new password; all secrets re-encrypted in one transaction) ❌ — not implemented (BL-39)
+- FR-07.8 — Change master password (current + new password; all secrets re-encrypted in one transaction) ✅ (BL-39 — `POST /api/auth/change-password`, Settings → Security)
 
 ---
 
@@ -1075,6 +1075,7 @@ POST  /api/auth/setup/skip                    → First run: skip lock (storage-
 POST  /api/auth/unlock          { password? } → Verify master password → { token }   (5 attempts/min)
 POST  /api/auth/lock                          → Clear the active AES key, revoke all tokens, close terminals and SFTP progress streams (BL-18)   (JWT)
 POST  /api/auth/setup-password  { password }  → Skip-lock install → enable lock; re-encrypts all secrets (FR-07.7); a new password needs ≥ 10 characters (BL-26)   (JWT)
+POST  /api/auth/change-password { currentPassword, newPassword } → Re-encrypts all secrets under the new password in one transaction; 400 lock off / short or unchanged password, 401 wrong current password, 429 rate-limited (FR-07.8)   (JWT)
 POST  /api/auth/disable-lock    { password }  → Verify master password, turn lock off; re-encrypts all secrets (FR-07.7)   (JWT)
 ```
 
@@ -2331,11 +2332,11 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 ---
 
-### BL-39 — Change Master Password
+### ~~BL-39 — Change Master Password~~ ✅ Implemented
 
 **Requirements:** FR-07.8
 **Priority:** High
-**Status:** ❌ Open
+**Status:** ✅ Implemented 2026-11-22 — regression tests: tests/backend/changeMasterPassword.test.ts, tests/renderer/components/settings/ChangePasswordDialog.test.tsx
 
 **Problem:** with app lock on there is no way to change the master password; the user would have to turn lock off and on again.
 
@@ -2345,10 +2346,10 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 **Acceptance Criteria:**
 
-- [ ] A wrong current password returns 401 and the old password still unlocks
-- [ ] After a change the old password no longer unlocks, the new one does, and profile passwords and private keys still decrypt
-- [ ] A failure while re-encrypting changes nothing (old password and key still work)
-- [ ] Too-short or unchanged new passwords return 400; the endpoint is rate-limited and requires a token
+- [x] A wrong current password returns 401 and the old password still unlocks
+- [x] After a change the old password no longer unlocks, the new one does, and profile passwords and private keys still decrypt
+- [x] A failure while re-encrypting changes nothing (old password and key still work)
+- [x] Too-short or unchanged new passwords return 400; the endpoint is rate-limited and requires a token
 
 ---
 
