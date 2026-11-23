@@ -295,3 +295,12 @@ describe('[FR-02.8][BL-11] closing a terminal', () => {
     expect(SSHService.getSession(sessionId)).toBeDefined()
   })
 })
+
+describe('[NFR-01][BL-45] interactive latency', () => {
+  it('turns off Nagle on the SSH socket so a keystroke is never held back', async () => {
+    const { Client } = await import('ssh2')
+    const spy = vi.spyOn(Client.prototype, 'setNoDelay')
+    await connect()
+    expect(spy).toHaveBeenCalledWith(true)
+  })
+})

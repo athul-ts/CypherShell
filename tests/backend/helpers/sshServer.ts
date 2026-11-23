@@ -141,6 +141,7 @@ export async function startTestSshServer(
 
   const server = new Server({ hostKeys: [hostKey] }, (client) => {
     connections.add(client)
+    client.setNoDelay(true) // as OpenSSH does for interactive sessions
     client.on('close', () => connections.delete(client))
     client.on('error', () => {
       /* client disconnects are expected in tests */

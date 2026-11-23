@@ -280,6 +280,11 @@ export class SSHService {
 
       client.on('ready', () => {
         client.off('error', onConnectError)
+        // NFR-01 / BL-45: a terminal sends one small packet per keystroke. With Nagle on, Linux
+        // holds it back for the delayed ACK (~40 ms each way) whenever ssh2 writes a packet in
+        // more than one piece (its JavaScript AES-GCM path, used without the native addon).
+        // OpenSSH sets TCP_NODELAY for interactive sessions too.
+        client.setNoDelay(true)
         resolve(client)
       })
 

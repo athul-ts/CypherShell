@@ -35,7 +35,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -75,7 +77,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -106,7 +110,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -146,7 +152,9 @@ jobs:
         run: npm ci
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
