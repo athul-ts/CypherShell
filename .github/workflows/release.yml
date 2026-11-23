@@ -18,7 +18,7 @@ jobs:
       tag: ${{ steps.ver.outputs.tag }}
       exists: ${{ steps.check.outputs.exists }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: ver
         run: echo "tag=v$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
