@@ -17,13 +17,18 @@ import {
   Shield,
   X,
   Eye,
-  EyeOff
+  EyeOff,
+  RotateCcw
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { useSFTPTransfer } from '../../hooks/useSFTPTransfer'
-import { useTransferStore } from '../../store/transferStore'
+import { useTransferStore, type Transfer } from '../../store/transferStore'
 import { LocalFilePane } from './LocalFilePane'
 import { PathBreadcrumb } from './PathBreadcrumb'
+import { normalizeSftpPath, parentPath } from '../../lib/sftpPaths'
+import { InputDialog } from './InputDialog'
+import { useSessionHeartbeat } from '../../hooks/useSessionHeartbeat'
+import { readLocalFileDrag, type LocalFileRef } from '../../lib/localFiles'
 
 interface SftpPaneProps {
   sessionId: string
@@ -45,23 +50,39 @@ function makeTransferId(prefix: 'up' | 'dn'): string {
   return `${prefix}-${buf[0].toString(36)}${buf[1].toString(36)}`
 }
 
-/** FUN-14: Normalize a remote SFTP path, handling '.', '..', and extra slashes. */
-function normalizeSftpPath(base: string, name: string): string {
-  const joined = !base || base === '.' ? name : `${base}/${name}`
-  const parts = joined.split('/')
-  const result: string[] = []
-  for (const part of parts) {
-    if (part === '..') {
-      if (result.length > 0) result.pop()
-    } else if (part && part !== '.') {
-      result.push(part)
-    }
-  }
-  return result.join('/') || '.'
+/** The server's error text from an Axios failure, if it sent one. */
+function apiError(err: unknown): string | undefined {
+  return (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+}
+
+/** The server's error code from an Axios failure (BL-47: GRANT_UNKNOWN, …), if it sent one. */
+function apiErrorCode(err: unknown): string | undefined {
+  return (err as { response?: { data?: { code?: string } } })?.response?.data?.code
+}
+
+/** Octal permission bits as shown in the listing, e.g. "755". */
+function permissionString(file: RemoteFileEntry): string {
+  return file.permissions.toString(8).slice(-3)
+}
+
+/** Validates a single path component for rename / new folder. */
+function validateName(value: string): string | null {
+  if (value.includes('/')) return 'The name cannot contain "/".'
+  if (value === '.' || value === '..') return 'Choose a different name.'
+  return null
+}
+
+interface InputRequest {
+  /** Changes on every request so the dialog remounts with fresh state. */
+  id: number
+  kind: 'mkdir' | 'rename' | 'chmod'
+  file?: RemoteFileEntry
 }
 
 export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
   const [currentPath, setCurrentPath] = useState('.')
+  // BL-30: browse absolute paths — resolve the login directory once before the first listing.
+  const [pathReady, setPathReady] = useState(false)
   const [selectedFile, setSelectedFile] = useState<RemoteFileEntry | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -75,6 +96,7 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     error
   } = useQuery({
     queryKey: ['sftp', sessionId, currentPath, showHidden],
+    enabled: pathReady,
     queryFn: async (): Promise<RemoteFileEntry[]> => {
       const res = await api.get<{ files: RemoteFileEntry[] }>(`/sftp/${sessionId}/list`, {
         params: { path: currentPath, showHidden: String(showHidden) }
@@ -83,10 +105,32 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     }
   })
 
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get<{ path: string }>(`/sftp/${sessionId}/realpath`, { params: { path: '.' } })
+      .then((res) => {
+        if (!cancelled && typeof res.data?.path === 'string') setCurrentPath(res.data.path)
+      })
+      .catch(() => undefined) // keep browsing relative to the login directory
+      .finally(() => {
+        if (!cancelled) setPathReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId])
+
+  // BL-11: an open SFTP window keeps its session leased, and shows when it ends.
+  const { ended: sessionEnded } = useSessionHeartbeat(sessionId)
+
   const { listenToTransfer, addTransfer } = useSFTPTransfer(sessionId)
   const transfers = useTransferStore((s) => s.transfers)
   const clearCompleted = useTransferStore((s) => s.clearCompleted)
   const cancelTransferStore = useTransferStore((s) => s.cancelTransfer)
+  const removeTransfer = useTransferStore((s) => s.removeTransfer)
+  const forgetLocal = useTransferStore((s) => s.forgetLocal)
+  const updateProgress = useTransferStore((s) => s.updateProgress)
 
   const handleCancel = async (transferId: string): Promise<void> => {
     cancelTransferStore(transferId)
@@ -103,15 +147,30 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     }
   }
 
+  /** BL-47: the native Open dialog; main returns a grant and the name, never the path. */
   const handleUpload = async (): Promise<void> => {
-    const files = await window.api.openFileDialog()
-    if (!files || files.length === 0) return
-    await executeUpload(files[0])
+    const picked = await window.api.pickUploadFile()
+    if (!picked) return
+    await executeUpload({ grant: picked.grant }, picked.name)
   }
 
-  const executeUpload = async (localPath: string): Promise<void> => {
-    const filename = localPath.split('\\').pop() || localPath.split('/').pop() || 'unknown'
-    const remotePath = normalizeSftpPath(currentPath, filename)
+  /** A request the backend refused never reaches the SSE stream, so fail the transfer here. */
+  const failTransfer = (transferId: string, err: unknown): void => {
+    updateProgress({
+      transferId,
+      status: 'error',
+      message: apiError(err) ?? (err instanceof Error ? err.message : 'Transfer failed')
+    })
+    // BL-47: a grant that is gone cannot be retried — the user has to pick the file again.
+    if (apiErrorCode(err) === 'GRANT_UNKNOWN') forgetLocal(transferId)
+  }
+
+  const executeUpload = async (
+    local: LocalFileRef,
+    filename: string,
+    targetPath?: string
+  ): Promise<void> => {
+    const remotePath = targetPath ?? normalizeSftpPath(currentPath, filename)
     const transferId = makeTransferId('up')
 
     addTransfer({
@@ -121,29 +180,35 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       status: 'progress',
       bytesTransferred: 0,
       totalBytes: 0,
-      percent: 0
+      percent: 0,
+      local,
+      remotePath
     })
 
     try {
       // Open SSE listener FIRST so we don't miss events from fast transfers
       await listenToTransfer(transferId)
       api
-        .post(`/sftp/${sessionId}/upload`, { localPath, remotePath, transferId })
-        .catch(console.error)
+        .post(`/sftp/${sessionId}/upload`, { local, remotePath, transferId })
+        .catch((err) => failTransfer(transferId, err))
     } catch (err) {
-      console.error(err)
+      failTransfer(transferId, err)
     }
   }
 
   const handleDropToRemote = async (e: React.DragEvent): Promise<void> => {
     e.preventDefault()
     setDragOver(false)
-    const localPath = e.dataTransfer.getData('text/plain')
-    if (localPath) {
-      await executeUpload(localPath)
+    // BL-47: a file dragged out of the local pane carries a grant and a name. text/plain is
+    // never read: any drag from anywhere could put a path there.
+    const fromPane = readLocalFileDrag(e.dataTransfer)
+    if (fromPane) {
+      await executeUpload({ grant: fromPane.grant, name: fromPane.name }, fromPane.name)
     } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      // Electron exposes the absolute path on dropped File objects via a non-standard `path` field
-      await executeUpload((e.dataTransfer.files[0] as File & { path: string }).path)
+      // BL-30 / BL-47: the preload reads the dropped file's path and main grants it
+      const granted = await window.api.grantDroppedFile(e.dataTransfer.files[0])
+      if (granted) await executeUpload({ grant: granted.grant }, granted.name)
+      else toast.error('Could not read the dropped file')
     }
   }
 
@@ -154,16 +219,30 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       return
     }
 
-    const localPath = await window.api.saveFileDialog(file.name)
-    if (!localPath) return
+    // BL-47: the native Save dialog; main returns a grant for the file the user chose
+    const picked = await window.api.pickDownloadTarget({ name: file.name })
+    if (!picked) return
 
     const remotePath = normalizeSftpPath(currentPath, file.name)
-    await executeDownload(remotePath, localPath, file.name, file.size)
+    await executeDownload(remotePath, { grant: picked.grant }, picked.name, file.size)
+  }
+
+  /** A remote file dropped on the local pane: the Save dialog opens in that folder (BL-47). */
+  const handleDropOnLocal = async (
+    remote: { filename: string; remotePath: string; size: number },
+    folderGrant: string
+  ): Promise<void> => {
+    const picked = await window.api.pickDownloadTarget({
+      name: remote.filename,
+      folder: folderGrant
+    })
+    if (!picked) return
+    await executeDownload(remote.remotePath, { grant: picked.grant }, picked.name, remote.size)
   }
 
   const executeDownload = async (
     remotePath: string,
-    localPath: string,
+    local: LocalFileRef,
     filename: string,
     size: number
   ): Promise<void> => {
@@ -175,17 +254,27 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
       status: 'progress',
       bytesTransferred: 0,
       totalBytes: size,
-      percent: 0
+      percent: 0,
+      local,
+      remotePath
     })
     try {
       // Open SSE listener FIRST so we don't miss events from fast transfers
       await listenToTransfer(transferId)
       api
-        .post(`/sftp/${sessionId}/download`, { remotePath, localPath, transferId })
-        .catch(console.error)
+        .post(`/sftp/${sessionId}/download`, { remotePath, local, transferId })
+        .catch((err) => failTransfer(transferId, err))
     } catch (err) {
-      console.error(err)
+      failTransfer(transferId, err)
     }
+  }
+
+  /** BL-30: start a failed transfer again from the same source to the same target. */
+  const handleRetry = (t: Transfer): void => {
+    if (!t.local || !t.remotePath) return
+    removeTransfer(t.id)
+    if (t.type === 'upload') void executeUpload(t.local, t.filename, t.remotePath)
+    else void executeDownload(t.remotePath, t.local, t.filename, t.totalBytes)
   }
 
   const handleDelete = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
@@ -196,32 +285,63 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
     try {
       await api.post(`/sftp/${sessionId}/delete`, { remotePath })
       refetch()
-    } catch {
-      toast.error('Delete failed')
+    } catch (err) {
+      toast.error(apiError(err) ?? 'Delete failed')
     }
   }
 
   const handleUp = (): void => {
-    if (currentPath === '.' || currentPath === '') return
-    const parts = currentPath.split('/')
-    parts.pop()
-    setCurrentPath(parts.length ? parts.join('/') : '.')
+    setCurrentPath(parentPath(currentPath))
   }
 
-  const handleMkdir = async (): Promise<void> => {
-    const name = prompt('New folder name:')
-    if (!name) return
-    const remotePath = normalizeSftpPath(currentPath, name)
+  // BL-14: rename, new folder and chmod collect their input through an in-app
+  // dialog — Electron does not implement window.prompt().
+  const [inputRequest, setInputRequest] = useState<InputRequest | null>(null)
+  const requestCounter = useRef(0)
+  const openInput = (request: Omit<InputRequest, 'id'>): void => {
+    requestCounter.current += 1
+    setInputRequest({ ...request, id: requestCounter.current })
+  }
+
+  const handleMkdir = (): void => openInput({ kind: 'mkdir' })
+
+  const startRename = (file: RemoteFileEntry): void => openInput({ kind: 'rename', file })
+
+  const handleInputSubmit = async (value: string): Promise<void> => {
+    if (!inputRequest) return
+    const { kind, file } = inputRequest
     try {
-      await api.post(`/sftp/${sessionId}/mkdir`, { remotePath })
+      if (kind === 'mkdir') {
+        await api.post(`/sftp/${sessionId}/mkdir`, {
+          remotePath: normalizeSftpPath(currentPath, value)
+        })
+      } else if (kind === 'rename' && file && value !== file.name) {
+        await api.post(`/sftp/${sessionId}/rename`, {
+          oldPath: normalizeSftpPath(currentPath, file.name),
+          newPath: normalizeSftpPath(currentPath, value)
+        })
+      } else if (kind === 'chmod' && file && value !== permissionString(file)) {
+        await api.post(`/sftp/${sessionId}/chmod`, {
+          remotePath: normalizeSftpPath(currentPath, file.name),
+          mode: value
+        })
+      }
+      setInputRequest(null)
       refetch()
     } catch {
-      toast.error('Failed to create folder')
+      toast.error(
+        kind === 'mkdir'
+          ? 'Failed to create folder'
+          : kind === 'rename'
+            ? 'Rename failed'
+            : 'Chmod failed'
+      )
     }
   }
 
   useEffect(() => {
-    const onKey = async (e: KeyboardEvent): Promise<void> => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (inputRequest) return // a dialog is already open
       if (
         !remoteRef.current?.contains(document.activeElement) &&
         document.activeElement !== document.body
@@ -229,52 +349,25 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
         return
       if (e.key === 'F2' && selectedFile) {
         e.preventDefault()
-        const newName = prompt('Rename to:', selectedFile.name)
-        if (!newName || newName === selectedFile.name) return
-        const oldPath = normalizeSftpPath(currentPath, selectedFile.name)
-        const newPath = normalizeSftpPath(currentPath, newName)
-        try {
-          await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
-          refetch()
-        } catch {
-          toast.error('Rename failed')
-        }
+        startRename(selectedFile)
       }
-      if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'N' || e.key === 'n')) {
         e.preventDefault()
         handleMkdir()
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [selectedFile, currentPath])
+  })
 
-  const handleRename = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
+  const handleRename = (file: RemoteFileEntry, e: React.MouseEvent): void => {
     e.stopPropagation()
-    const newName = prompt('Rename to:', file.name)
-    if (!newName || newName === file.name) return
-    const oldPath = normalizeSftpPath(currentPath, file.name)
-    const newPath = normalizeSftpPath(currentPath, newName)
-    try {
-      await api.post(`/sftp/${sessionId}/rename`, { oldPath, newPath })
-      refetch()
-    } catch {
-      toast.error('Rename failed')
-    }
+    startRename(file)
   }
 
-  const handleChmod = async (file: RemoteFileEntry, e: React.MouseEvent): Promise<void> => {
+  const handleChmod = (file: RemoteFileEntry, e: React.MouseEvent): void => {
     e.stopPropagation()
-    const currentMode = file.permissions.toString(8).slice(-3)
-    const newMode = prompt('New permissions (octal, e.g. 755):', currentMode)
-    if (!newMode || newMode === currentMode || !/^[0-7]{3,4}$/.test(newMode)) return
-    const remotePath = normalizeSftpPath(currentPath, file.name)
-    try {
-      await api.post(`/sftp/${sessionId}/chmod`, { remotePath, mode: newMode })
-      refetch()
-    } catch {
-      toast.error('Chmod failed')
-    }
+    openInput({ kind: 'chmod', file })
   }
 
   const handleRemoteDragStart = (e: React.DragEvent, file: RemoteFileEntry): void => {
@@ -293,15 +386,15 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
 
   return (
     <div className="flex flex-col h-full bg-[#0f1117]">
+      {sessionEnded && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+          The SSH session has ended. Close this window and connect again from the profile tab.
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Pane: Local File System */}
         <div className="w-1/2 min-w-[300px]">
-          <LocalFilePane
-            sessionId={sessionId}
-            showHidden={showHidden}
-            onUpload={executeUpload}
-            onDownload={executeDownload}
-          />
+          <LocalFilePane showHidden={showHidden} onDownload={handleDropOnLocal} />
         </div>
 
         {/* Right Pane: Remote File System */}
@@ -446,6 +539,54 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
         </div>
       </div>
 
+      {inputRequest && (
+        <InputDialog
+          key={inputRequest.id}
+          open
+          title={
+            inputRequest.kind === 'mkdir'
+              ? 'New Folder'
+              : inputRequest.kind === 'rename'
+                ? 'Rename'
+                : 'Change Permissions'
+          }
+          description={
+            inputRequest.kind === 'chmod'
+              ? `Octal mode for ${inputRequest.file?.name}, e.g. 755 or 0644.`
+              : undefined
+          }
+          label={
+            inputRequest.kind === 'mkdir'
+              ? 'Folder name'
+              : inputRequest.kind === 'rename'
+                ? 'New name'
+                : 'Permissions'
+          }
+          initialValue={
+            inputRequest.kind === 'rename'
+              ? inputRequest.file?.name
+              : inputRequest.kind === 'chmod' && inputRequest.file
+                ? permissionString(inputRequest.file)
+                : ''
+          }
+          confirmLabel={
+            inputRequest.kind === 'mkdir'
+              ? 'Create'
+              : inputRequest.kind === 'rename'
+                ? 'Rename'
+                : 'Apply'
+          }
+          validate={
+            inputRequest.kind === 'chmod'
+              ? (value) =>
+                  /^[0-7]{3,4}$/.test(value) ? null : 'Use 3 or 4 octal digits, e.g. 755.'
+              : validateName
+          }
+          onSubmit={handleInputSubmit}
+          onCancel={() => setInputRequest(null)}
+        />
+      )}
+
       {/* Transfer Queue Panel */}
       {transfers.length > 0 && (
         <div className="h-48 border-t border-slate-800 bg-[#151821] flex flex-col">
@@ -533,9 +674,20 @@ export function SftpPane({ sessionId }: SftpPaneProps): React.JSX.Element {
                         <XCircle className="w-3 h-3" /> Cancelled
                       </span>
                     ) : (
-                      <span className="text-red-500 flex items-center gap-1">
-                        <XCircle className="w-3 h-3" /> Error
-                      </span>
+                      <>
+                        <span className="text-red-500 flex items-center gap-1">
+                          <XCircle className="w-3 h-3" /> Error
+                        </span>
+                        {t.local && t.remotePath && (
+                          <button
+                            onClick={() => handleRetry(t)}
+                            title="Retry transfer"
+                            className="ml-1 p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-emerald-400 transition-colors"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

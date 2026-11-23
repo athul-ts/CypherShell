@@ -96,3 +96,19 @@ model AppConfig {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
+
+// ─── KnownHost (BL-38) ────────────────────────────────────────────────────
+// One trusted SSH host key per host:port. `publicKey` is the base64 wire blob.
+
+model KnownHost {
+  id          String   @id @default(cuid())
+  host        String                          // trimmed, lower-case
+  port        Int
+  keyType     String                          // e.g. "ssh-ed25519"
+  fingerprint String                          // "SHA256:" + base64 (no padding)
+  publicKey   String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([host, port])
+}

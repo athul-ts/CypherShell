@@ -7,8 +7,33 @@ const BASE_URL = `http://127.0.0.1:${window.api?.backendPort ?? 4000}/api`
 
 export const api = axios.create({ baseURL: BASE_URL })
 
+/** BL-17: header that proves a request comes from CypherShell's own renderer. */
+export const LAUNCH_SECRET_HEADER = 'X-CypherShell-Launch'
+
 api.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('jwt')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // BL-17: required on /api/auth/*; sent everywhere so no call can forget it
+  const launchSecret = window.api?.launchSecret
+  if (launchSecret) config.headers[LAUNCH_SECRET_HEADER] = launchSecret
   return config
+})
+
+type UnauthorizedHandler = () => void
+let onUnauthorized: UnauthorizedHandler | null = null
+
+/**
+ * Registers what happens when the backend rejects the session token — it
+ * expired (1 h), was revoked by a lock, or the backend restarted (BL-16).
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  onUnauthorized = handler
+}
+
+api.interceptors.response.use(undefined, (error) => {
+  const status: number | undefined = error?.response?.status
+  const url: string = error?.config?.url ?? ''
+  // A 401 from an /auth endpoint is a wrong password, not an expired session.
+  if (status === 401 && !url.startsWith('/auth/')) onUnauthorized?.()
+  return Promise.reject(error)
 })

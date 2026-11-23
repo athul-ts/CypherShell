@@ -23,10 +23,6 @@ interface ApiError {
   }
 }
 
-type LocalFileOpApi = {
-  executeLocalFileOp: (op: string, args: { path: string }) => Promise<string>
-}
-
 export function ImportKeyBundleDialog({ open, onOpenChange }: Props): React.JSX.Element | null {
   const queryClient = useQueryClient()
   const [bundle, setBundle] = useState<object | null>(null)
@@ -52,13 +48,12 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props): React.JSX.
   }
 
   const handlePickFile = async (): Promise<void> => {
-    const paths = await window.api.openCskbFileDialog()
-    if (!paths || paths.length === 0) return
     try {
-      const localApi = (window as unknown as { api: LocalFileOpApi }).api
-      const content = await localApi.executeLocalFileOp('readFile', { path: paths[0] })
-      setBundle(JSON.parse(content))
-      setBundleFileName(paths[0].split(/[\\/]/).pop() ?? paths[0])
+      // FR-10.4 / BL-22: main shows the open dialog and reads the chosen file
+      const file = await window.api.openTextFile({ kind: 'cskb' })
+      if (!file) return
+      setBundle(JSON.parse(file.content))
+      setBundleFileName(file.name)
       setError('')
     } catch {
       setError('Failed to read or parse the selected file. Make sure it is a valid .cskb bundle.')
@@ -147,9 +142,9 @@ export function ImportKeyBundleDialog({ open, onOpenChange }: Props): React.JSX.
             </div>
             {resolution === 'overwrite' && (
               <p className="text-xs text-red-400">
-                The existing key will be permanently deleted.
+                The existing key will be replaced by the imported one and cannot be recovered.
                 {conflictProfileCount > 0 &&
-                  ` ${conflictProfileCount} profile${conflictProfileCount === 1 ? '' : 's'} using it will lose their key assignment.`}
+                  ` ${conflictProfileCount} profile${conflictProfileCount === 1 ? '' : 's'} using it will keep their assignment and connect with the new key.`}
               </p>
             )}
             <div className="flex justify-end gap-3 pt-2 border-t border-slate-800 mt-2">

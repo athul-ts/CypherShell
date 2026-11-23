@@ -10,9 +10,13 @@ import {
   Download,
   Upload,
   FileDown,
-  Pencil
+  Pencil,
+  ShieldAlert,
+  X
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { formatDistanceToNow } from 'date-fns'
 import { ProfileForm } from '../components/profiles/ProfileForm'
 import { useTabStore } from '../store/tabStore'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -27,13 +31,10 @@ interface Profile {
   host: string
   port: number
   username: string
-  authMethod: 'password' | 'key'
+  authMethod: 'password' | 'key' | 'key+passphrase'
   sshKeyId?: string | null
   hasPassword?: boolean
-}
-
-interface LocalFileOpApi {
-  executeLocalFileOp: (op: string, args: { path: string; content?: string }) => Promise<string>
+  lastConnectedAt?: string | null
 }
 
 interface ImportResult {
@@ -58,17 +59,31 @@ function getErrorMessage(err: unknown): string | undefined {
   return undefined
 }
 
+const LOCK_BANNER_DISMISSED_KEY = 'cyphershell.lockOffBannerDismissed'
+
+function readBannerDismissed(): boolean {
+  try {
+    return localStorage.getItem(LOCK_BANNER_DISMISSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** FR-09.1 / BL-22: main shows the save dialog and writes the export. */
 async function handleExportProfiles(ids?: string[]): Promise<void> {
-  const params = ids && ids.length > 0 ? { ids: ids.join(',') } : {}
-  const { data } = await api.get('/profiles/export', { params })
-  const json = JSON.stringify(data, null, 2)
-  const defaultName = ids?.length === 1 ? `profile-export.json` : 'profiles-export.json'
-  const savePath = await window.api.saveFileDialog(defaultName)
-  if (!savePath) return
-  await (window.api as unknown as LocalFileOpApi).executeLocalFileOp('writeFile', {
-    path: savePath,
-    content: json
-  })
+  try {
+    const params = ids && ids.length > 0 ? { ids: ids.join(',') } : {}
+    const { data } = await api.get('/profiles/export', { params })
+    const defaultName = ids?.length === 1 ? `profile-export.json` : 'profiles-export.json'
+    const savedTo = await window.api.saveTextFile({
+      kind: 'json',
+      defaultName,
+      content: JSON.stringify(data, null, 2)
+    })
+    if (savedTo) toast.success('Profiles exported.')
+  } catch (err) {
+    toast.error(getErrorMessage(err) ?? 'Export failed.')
+  }
 }
 
 export default function Home(): React.JSX.Element {
@@ -79,6 +94,27 @@ export default function Home(): React.JSX.Element {
       return res.data
     }
   })
+
+  // BL-10: installs that skipped (or never saw) the setup wizard run without a
+  // master password; point them at Settings until they dismiss the hint.
+  const { data: lockConfig } = useQuery<{ lockEnabled: boolean }>({
+    queryKey: ['config'],
+    queryFn: async () => {
+      const res = await api.get('/config')
+      return res.data
+    }
+  })
+  const [lockBannerDismissed, setLockBannerDismissed] = useState(readBannerDismissed)
+  const navigate = useNavigate()
+
+  const dismissLockBanner = (): void => {
+    setLockBannerDismissed(true)
+    try {
+      localStorage.setItem(LOCK_BANNER_DISMISSED_KEY, '1')
+    } catch {
+      // Storage unavailable — the banner simply returns next launch.
+    }
+  }
 
   const [formOpen, setFormOpen] = useState(false)
   const [editProfile, setEditProfile] = useState<Profile | null>(null)
@@ -122,20 +158,18 @@ export default function Home(): React.JSX.Element {
   }
 
   const handleImport = async (): Promise<void> => {
-    const paths = await window.api.openJsonFileDialog()
-    if (!paths || paths.length === 0) return
-    let content: string
+    // FR-09.4 / BL-22: main shows the open dialog and reads the chosen file
+    let file: { name: string; content: string } | null
     try {
-      content = await (window.api as unknown as LocalFileOpApi).executeLocalFileOp('readFile', {
-        path: paths[0]
-      })
+      file = await window.api.openTextFile({ kind: 'json' })
     } catch {
       toast.error('Failed to read the selected file.')
       return
     }
+    if (!file) return
     let bundle: { profiles?: unknown[] }
     try {
-      bundle = JSON.parse(content)
+      bundle = JSON.parse(file.content)
     } catch {
       toast.error('Invalid JSON file. Please select a valid CypherShell profile export.')
       return
@@ -218,6 +252,30 @@ export default function Home(): React.JSX.Element {
         </div>
       </div>
 
+      {lockConfig && !lockConfig.lockEnabled && !lockBannerDismissed && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <ShieldAlert className="w-4 h-4 shrink-0" />
+          <span className="flex-1">
+            App lock is off. Your saved passwords and keys are protected only by your
+            operating-system account — set a master password to require it when the app opens.
+          </span>
+          <button
+            onClick={() => navigate('/settings')}
+            className="rounded-lg bg-amber-500/20 px-3 py-1.5 font-medium text-amber-200 hover:bg-amber-500/30 transition-colors"
+          >
+            Set master password
+          </button>
+          <button
+            onClick={dismissLockBanner}
+            title="Dismiss"
+            aria-label="Dismiss"
+            className="p-1 text-amber-300/70 hover:text-amber-200"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <ProfileForm open={formOpen} onOpenChange={setFormOpen} />
       <ProfileForm
         key={editProfile?.id}
@@ -283,6 +341,11 @@ export default function Home(): React.JSX.Element {
                     </div>
                     <p className="text-sm text-slate-500">
                       {profile.username}@{profile.host}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {profile.lastConnectedAt
+                        ? `Last connected ${formatDistanceToNow(new Date(profile.lastConnectedAt), { addSuffix: true })}`
+                        : 'Never connected'}
                     </p>
                   </div>
                 </div>

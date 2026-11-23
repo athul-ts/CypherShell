@@ -36,7 +36,7 @@ The security concern — "an external process means an open network port" — is
 - **Positive:** Clean separation: renderer calls HTTP APIs; Electron IPC is only used for native OS features (file dialogs, window management, auto-updater)
 - **Negative:** App startup requires spawning the child process and waiting for it to be ready (health-check poll on `GET /api/health`)
 - **Negative:** The port must be communicated from main → renderer via IPC (`get-backend-port` channel)
-- **Negative:** Native modules (`better-sqlite3`) must be rebuilt for the Electron Node.js ABI via `npm run rebuild:native`
+- **Negative:** Native modules (`better-sqlite3`) must load under Electron's Node.js. Until BL-36 they were rebuilt for its ABI (`npm run rebuild:native`); from BL-36 `better-sqlite3` ships N-API prebuilds that need no rebuild (ADR-003 update, 2026-11-20)
 
 ## Related
 

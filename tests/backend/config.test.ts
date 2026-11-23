@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
-import { createApp } from './helpers/createApp'
+import { createApp, launch } from './helpers/createApp'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
 
@@ -17,7 +17,9 @@ beforeAll(async () => {
   app = createApp()
   await prisma.appConfig.deleteMany()
   CryptoService.clearActiveKey()
-  const res = await request(app).post('/api/auth/setup/skip')
+  const res = await request(app)
+    .post('/api/auth/setup/skip')
+    .set(...launch())
   token = res.body.token
 })
 

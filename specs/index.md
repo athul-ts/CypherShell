@@ -1,6 +1,6 @@
 # CypherShell — Spec Index
 
-**SRS Version:** 3.2 | **Last Updated:** 2026-06-13
+**SRS Version:** 3.7 | **Last Updated:** 2026-11-22
 **Source of Truth:** `SRS_SSH_Desktop_App.md`
 
 > This file is the fast-lookup reference for all requirement IDs. For full text, acceptance criteria, and implementation notes, read the corresponding section in `SRS_SSH_Desktop_App.md`.
@@ -12,6 +12,7 @@
 - Before implementing anything, find the spec ID here and read its full section in the SRS.
 - Every commit must reference at least one ID from this index (e.g. `feat(sftp): implement transfer cancel [BL-01]`).
 - When a requirement is completed, update **Status** here AND the corresponding ✅/⚠️/❌ badge in the SRS.
+- A ✅ means the behaviour was verified, not just that code exists. The 2026-11-10 audit downgraded requirements whose implementation did not work; each ⚠️ names its backlog item or is marked "tracked" in the SRS.
 
 ---
 
@@ -31,6 +32,7 @@
 | FR-01.6 | Profile tagging/grouping                                                     | ✅     |
 | FR-01.7 | Real-time search and filter                                                  | ✅     |
 | FR-01.8 | Edit existing profile fields from Profile Detail tab and Home page card menu | ✅     |
+| FR-01.9 | Keyboard-interactive login for password profiles                             | ✅     |
 
 ---
 
@@ -70,7 +72,7 @@
 
 ### FR-04 — SFTP File Manager
 
-**SRS §6.4** | Priority: High | Overall: ✅ Mostly Implemented
+**SRS §6.4** | Priority: High | Overall: ⚠️ Partially Implemented (FR-04.15 local pane tracked)
 
 | ID       | Requirement                                                        | Status |
 | -------- | ------------------------------------------------------------------ | ------ |
@@ -88,14 +90,14 @@
 | FR-04.12 | Transfer history: completed, active, failed                        | ✅     |
 | FR-04.13 | Failed transfer one-click retry with error reason                  | ✅     |
 | FR-04.14 | Toggle hidden files (dotfiles)                                     | ✅     |
-| FR-04.15 | Breadcrumb path bar with click-to-navigate in both panes           | ✅     |
+| FR-04.15 | Breadcrumb path bar with click-to-navigate in both panes           | ⚠️     |
 | FR-04.16 | Cancel an in-progress transfer                                     | ✅     |
 
 ---
 
 ### FR-05 — SSH Key Management
 
-**SRS §6.5** | Priority: High | Overall: ✅ Mostly Implemented
+**SRS §6.5** | Priority: High | Overall: ✅ Implemented
 
 | ID       | Requirement                                              | Status |
 | -------- | -------------------------------------------------------- | ------ |
@@ -116,7 +118,7 @@
 
 ### FR-06 — Port Forwarding (Tunnels)
 
-**SRS §6.6** | Priority: High | Overall: ✅ Mostly Implemented
+**SRS §6.6** | Priority: High | Overall: ✅ Implemented
 
 | ID      | Requirement                                                    | Status |
 | ------- | -------------------------------------------------------------- | ------ |
@@ -131,7 +133,7 @@
 
 ### FR-07 — Application Lock
 
-**SRS §6.7** | Priority: Medium | Overall: ✅ Fully Implemented
+**SRS §6.7** | Priority: Medium | Overall: ✅ Implemented
 
 | ID      | Requirement                                                                 | Status |
 | ------- | --------------------------------------------------------------------------- | ------ |
@@ -141,12 +143,14 @@
 | FR-07.4 | PBKDF2-SHA512 derives AES key at unlock — memory only, never persisted      | ✅     |
 | FR-07.5 | Auto-lock after configurable idle timeout (default 15 min)                  | ✅     |
 | FR-07.6 | Lost master password = all encrypted data unrecoverable — shown prominently | ✅     |
+| FR-07.7 | Lock-mode changes re-encrypt all secrets; disabling needs the password      | ✅     |
+| FR-07.8 | Change master password                                                      | ✅     |
 
 ---
 
 ### FR-08 — Audit Logs
 
-**SRS §6.8** | Priority: Medium | Overall: ✅ Mostly Implemented
+**SRS §6.8** | Priority: Medium | Overall: ✅ Implemented
 
 | ID      | Requirement                                               | Status |
 | ------- | --------------------------------------------------------- | ------ |
@@ -165,17 +169,17 @@
 
 **SRS §6.9** | Priority: Medium | Overall: ✅ Implemented
 
-| ID      | Requirement                                                                                                 | Status |
-| ------- | ----------------------------------------------------------------------------------------------------------- | ------ |
-| FR-09.1 | Export selected/all profiles as `.json` via native save dialog                                              | ✅     |
-| FR-09.2 | Export includes metadata: name, host, port, username, authMethod, group, description, port-forwarding rules | ✅     |
-| FR-09.3 | Export explicitly excludes all SSH key material; `linkedKeyName` included as hint only                      | ✅     |
-| FR-09.4 | Import profiles from a CypherShell profile export `.json` file                                              | ✅     |
-| FR-09.5 | On import, profiles with `linkedKeyName` resolve to existing SSH key by name and link automatically         | ✅     |
-| FR-09.6 | Single export file may contain multiple profiles; all imported in one operation                             | ✅     |
-| FR-09.7 | Import conflict (name exists): user chooses Skip / Rename / Overwrite per profile                           | ✅     |
-| FR-09.8 | Export action in Profiles list page (global "Export All" + per-profile context menu)                        | ✅     |
-| FR-09.9 | Import action in Profiles list page                                                                         | ✅     |
+| ID      | Requirement                                                                                              | Status |
+| ------- | -------------------------------------------------------------------------------------------------------- | ------ |
+| FR-09.1 | Export selected/all profiles as `.json` via native save dialog                                           | ✅     |
+| FR-09.2 | Export includes metadata: name, host, port, username, authMethod, group, terminal settings, tunnel rules | ✅     |
+| FR-09.3 | Export explicitly excludes all SSH key material; `linkedKeyName` included as hint only                   | ✅     |
+| FR-09.4 | Import profiles from a CypherShell profile export `.json` file                                           | ✅     |
+| FR-09.5 | On import, profiles with `linkedKeyName` resolve to existing SSH key by name and link automatically      | ✅     |
+| FR-09.6 | Single export file may contain multiple profiles; all imported in one operation                          | ✅     |
+| FR-09.7 | Import conflict (name exists): user chooses Skip / Rename / Overwrite per profile                        | ✅     |
+| FR-09.8 | Export action in Profiles list page (global "Export All" + per-profile context menu)                     | ✅     |
+| FR-09.9 | Import action in Profiles list page                                                                      | ✅     |
 
 ---
 
@@ -196,55 +200,109 @@
 
 ---
 
+### FR-11 — SSH Host-Key Verification
+
+**SRS §6.11** | Priority: High | Overall: ❌ Not Implemented (BL-38)
+
+| ID      | Requirement                                                          | Status |
+| ------- | -------------------------------------------------------------------- | ------ |
+| FR-11.1 | First connect shows key type + SHA-256 fingerprint; user must accept | ✅     |
+| FR-11.2 | Accepted host keys stored per host:port in a `KnownHost` table       | ✅     |
+| FR-11.3 | Changed host key aborts before credentials are sent, with a warning  | ✅     |
+| FR-11.4 | Known hosts can be listed and removed in Settings                    | ✅     |
+| FR-11.5 | Host-key decisions the backend observes written to the audit log     | ✅     |
+
+---
+
 ## Non-Functional Requirements
 
-**SRS §7** | All NFRs verified against current implementation
+**SRS §7** | Re-verified against the implementation in the 2026-11-10 audit
 
-| ID     | Requirement                                                                                  | Status |
-| ------ | -------------------------------------------------------------------------------------------- | ------ |
-| NFR-01 | Performance targets (cold start <4s, terminal latency <50ms, etc.)                           | ✅     |
-| NFR-02 | Security — AES-256-GCM, PBKDF2, context isolation, localhost-only                            | ✅     |
-| NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                    | ✅     |
-| NFR-04 | Usability — destructive confirms, loading states, plain-language errors                      | ✅     |
-| NFR-05 | Cross-platform — Windows, macOS, Linux                                                       | ✅     |
-| NFR-06 | Maintainability — 100% TypeScript, ESLint, thin controllers, Prisma schema = source of truth | ✅     |
-| NFR-07 | Release & distribution — Win/Linux/macOS installers, CI matrix, auto-update metadata         | ✅     |
+| ID     | Requirement                                                                                                | Status |
+| ------ | ---------------------------------------------------------------------------------------------------------- | ------ |
+| NFR-01 | Performance targets — measured by BL-45; cold start 5.4 s (launch to window shown) is above the 4 s target | ⚠️     |
+| NFR-02 | Security — AES-256-GCM, PBKDF2, context isolation, localhost-only                                          | ⚠️     |
+| NFR-03 | Reliability — session isolation, auto-reconnect, WAL mode                                                  | ✅     |
+| NFR-04 | Usability — destructive confirms, loading states, plain-language errors                                    | ✅     |
+| NFR-05 | Cross-platform — Windows, macOS, Linux                                                                     | ⚠️     |
+| NFR-06 | Maintainability — 100% TypeScript, ESLint, thin controllers, Prisma schema = source of truth               | ⚠️     |
+| NFR-07 | Release & distribution — Win/Linux/macOS installers, CI matrix, auto-update metadata                       | ✅     |
 
 ---
 
 ## v1.1 Backlog
 
-**SRS §17** | All unimplemented requirements from v1.0
+**SRS §17** | BL-01 … BL-09: v1.0 gaps. BL-10 … BL-16: defects found by the 2026-11-10 audit in requirements that were marked ✅ — all implemented the same day. BL-17 … BL-26: the audit's Phase 2, security hardening (NFR-02 additions) — all implemented 2026-11-11. BL-27: e2e tests on a throwaway profile (test-only). BL-28: audit-log CSV export (FR-08.6). BL-29 … BL-35: Phase 3, remaining functional gaps (specified 2026-11-18)
 
-| ID        | Feature                                                      | Priority   | Linked FR        | Est. Complexity |
-| --------- | ------------------------------------------------------------ | ---------- | ---------------- | --------------- |
-| ~~BL-01~~ | ~~Cancel in-progress SFTP transfer~~                         | ~~High~~   | FR-04.16         | ✅ Done         |
-| ~~BL-02~~ | ~~Port conflict detection before tunnel bind~~               | ~~Medium~~ | FR-06.6          | ✅ Done         |
-| ~~BL-03~~ | ~~Warn when deleting SSH key in use by profiles~~            | ~~Medium~~ | FR-05.11         | ✅ Done         |
-| ~~BL-04~~ | ~~Audit log auto-purge scheduler~~                           | ~~Medium~~ | FR-08.7          | ✅ Done         |
-| ~~BL-05~~ | ~~SSH disconnect reason logging~~                            | ~~Low~~    | FR-08.2          | ✅ Done         |
-| ~~BL-06~~ | ~~DELETE /api/logs clear-all endpoint + UI button~~          | ~~Low~~    | FR-08.8          | ✅ Done         |
-| ~~BL-07~~ | ~~SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder)~~ | ~~Low~~    | FR-04.6, FR-04.8 | ✅ Done         |
-| ~~BL-08~~ | ~~Terminal right-click paste~~                               | ~~Low~~    | FR-02.4          | ✅ Done         |
-| ~~BL-09~~ | ~~Terminal auto-copy on text selection~~                     | ~~Medium~~ | FR-02.11         | ✅ Done         |
+| ID        | Feature                                                             | Priority     | Linked FR                            | Est. Complexity |
+| --------- | ------------------------------------------------------------------- | ------------ | ------------------------------------ | --------------- |
+| ~~BL-01~~ | ~~Cancel in-progress SFTP transfer~~                                | ~~High~~     | FR-04.16                             | ✅ Done         |
+| ~~BL-02~~ | ~~Port conflict detection before tunnel bind~~                      | ~~Medium~~   | FR-06.6                              | ✅ Done         |
+| ~~BL-03~~ | ~~Warn when deleting SSH key in use by profiles~~                   | ~~Medium~~   | FR-05.11                             | ✅ Done         |
+| ~~BL-04~~ | ~~Audit log auto-purge scheduler~~                                  | ~~Medium~~   | FR-08.7                              | ✅ Done         |
+| ~~BL-05~~ | ~~SSH disconnect reason logging~~                                   | ~~Low~~      | FR-08.2                              | ✅ Done         |
+| ~~BL-06~~ | ~~DELETE /api/logs clear-all endpoint + UI button~~                 | ~~Low~~      | FR-08.8                              | ✅ Done         |
+| ~~BL-07~~ | ~~SFTP keyboard shortcuts (F2 rename, Ctrl+Shift+N folder)~~        | ~~Low~~      | FR-04.6, FR-04.8                     | ✅ Done         |
+| ~~BL-08~~ | ~~Terminal right-click paste~~                                      | ~~Low~~      | FR-02.4                              | ✅ Done         |
+| ~~BL-09~~ | ~~Terminal auto-copy on text selection~~                            | ~~Medium~~   | FR-02.11                             | ✅ Done         |
+| ~~BL-10~~ | ~~Auth & lock lifecycle (first-run wizard, safe lock switch)~~      | ~~Critical~~ | FR-07.1, FR-07.7, FR-08.7            | ✅ Done         |
+| ~~BL-11~~ | ~~SSH session lifecycle (consumer-aware reaper, heartbeat)~~        | ~~Critical~~ | FR-02.8, FR-03.5, FR-06.5            | ✅ Done         |
+| ~~BL-12~~ | ~~SSH key formats (OpenSSH generation, import conversion)~~         | ~~Critical~~ | FR-05.1, FR-05.4, FR-05.6            | ✅ Done         |
+| ~~BL-13~~ | ~~Profile form edits (keep password, Key + Passphrase option)~~     | ~~Critical~~ | FR-01.1, FR-01.8                     | ✅ Done         |
+| ~~BL-14~~ | ~~SFTP reliability (in-app dialogs, per-transfer channels)~~        | ~~Critical~~ | FR-04.6–FR-04.9, FR-04.16            | ✅ Done         |
+| ~~BL-15~~ | ~~Terminal text encoding (UTF-8 in and out)~~                       | ~~Critical~~ | FR-02.2                              | ✅ Done         |
+| ~~BL-16~~ | ~~Tunnel stability & backend auto-restart~~                         | ~~Critical~~ | FR-06.1, NFR-03                      | ✅ Done         |
+| ~~BL-17~~ | ~~Local API caller auth (launch secret, Origin, Host)~~             | ~~Critical~~ | NFR-02                               | ✅ Done         |
+| ~~BL-18~~ | ~~Lock enforcement (WebSocket revocation, close windows, idle)~~    | ~~Critical~~ | FR-07.5, NFR-02                      | ✅ Done         |
+| ~~BL-19~~ | ~~Token & secret hygiene (in-memory JWT secret, `jti`, 0600)~~      | ~~High~~     | NFR-02                               | ✅ Done         |
+| ~~BL-20~~ | ~~Connection window token hand-off only (no token in URL)~~         | ~~High~~     | FR-02.9                              | ✅ Done         |
+| ~~BL-21~~ | ~~Electron window hardening (window.open, navigation, IPC sender)~~ | ~~High~~     | NFR-02                               | ✅ Done         |
+| ~~BL-22~~ | ~~Dialog-bound file IPC (`saveTextFile` / `openTextFile`)~~         | ~~High~~     | FR-09.1, FR-09.4, FR-10.1            | ✅ Done         |
+| ~~BL-23~~ | ~~Request validation for SFTP, tunnel and config APIs~~             | ~~High~~     | NFR-02, FR-04.16, FR-06              | ✅ Done         |
+| ~~BL-24~~ | ~~macOS update notice (no unsigned auto-install)~~                  | ~~Medium~~   | NFR-07                               | ✅ Done         |
+| ~~BL-25~~ | ~~Single app instance~~                                             | ~~Medium~~   | NFR-03                               | ✅ Done         |
+| ~~BL-26~~ | ~~Master password policy (10 characters, strength hint)~~           | ~~Medium~~   | FR-07.1, FR-07.7                     | ✅ Done         |
+| ~~BL-27~~ | ~~E2E tests on a throwaway profile (`--user-data-dir`)~~            | ~~Medium~~   | NFR-06                               | ✅ Done         |
+| ~~BL-28~~ | ~~Audit log CSV export (API client + `saveTextFile`, quoting)~~     | ~~Medium~~   | FR-08.6                              | ✅ Done         |
+| ~~BL-29~~ | ~~Terminal resize and reconnect~~                                   | ~~Medium~~   | FR-02.3, FR-02.6, FR-02.7            | ✅ Done         |
+| ~~BL-30~~ | ~~SFTP drag-in, retry, folder delete, paths~~                       | ~~Medium~~   | FR-04.4, FR-04.7, FR-04.13, FR-04.15 | ✅ Done         |
+| ~~BL-31~~ | ~~Last connected, form validation, port error~~                     | ~~Medium~~   | FR-01.2, FR-01.8.7, FR-06.6          | ✅ Done         |
+| ~~BL-32~~ | ~~Audit reasons, paging, filters, CSV safety~~                      | ~~Medium~~   | FR-08.2, FR-08.5, FR-08.6            | ✅ Done         |
+| ~~BL-33~~ | ~~Key bundle overwrite in place~~                                   | ~~Low~~      | FR-10.6                              | ✅ Done         |
+| ~~BL-34~~ | ~~Saved tunnel rules~~                                              | ~~Medium~~   | FR-06.4, FR-09.2                     | ✅ Done         |
+| ~~BL-35~~ | ~~Light theme and bundled font~~                                    | ~~Low~~      | §11.2, §11.3                         | ✅ Done         |
+| ~~BL-36~~ | ~~Dependency security update (Electron 45)~~                        | ~~High~~     | NFR-02, NFR-07                       | ✅ Done         |
+| ~~BL-37~~ | ~~CI on every branch~~                                              | ~~High~~     | NFR-06, NFR-07                       | ✅ Done         |
+| ~~BL-38~~ | ~~SSH host-key verification~~                                       | ~~High~~     | FR-11.1 … FR-11.5                    | ✅ Done         |
+| ~~BL-39~~ | ~~Change master password~~                                          | ~~High~~     | FR-07.8                              | ✅ Done         |
+| ~~BL-40~~ | ~~Keyboard-interactive login~~                                      | ~~Medium~~   | FR-01.9                              | ✅ Done         |
+| ~~BL-41~~ | ~~Automatic SSH reconnect~~                                         | ~~Medium~~   | FR-02.6, NFR-03                      | ✅ Done         |
+| ~~BL-42~~ | ~~Thin controllers~~                                                | ~~Medium~~   | NFR-06                               | ✅ Done         |
+| ~~BL-43~~ | ~~Logging~~                                                         | ~~Medium~~   | NFR-06                               | ✅ Done         |
+| ~~BL-44~~ | ~~Cleanup and documentation~~                                       | ~~Low~~      | NFR-06                               | ✅ Done         |
+| ~~BL-45~~ | ~~Performance checks~~                                              | ~~Medium~~   | NFR-01                               | ✅ Done         |
+| ~~BL-46~~ | ~~Backend in utilityProcess + fuses (needs ADR-005)~~               | ~~Medium~~   | NFR-02                               | ✅ Done         |
+| ~~BL-47~~ | ~~Local files by grant (ADR-006)~~ | ~~High~~ | NFR-02, FR-04.4, FR-04.5, FR-04.13 | ✅ Done |
 
 ---
 
 ## Architecture Decisions
 
-| ID      | Decision                                                | Record                                                                               |
-| ------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| ADR-001 | Use electron-vite over Next.js/CRA                      | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)       |
-| ADR-002 | Spawn Express as child process over direct Electron IPC | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)   |
-| ADR-003 | SQLite + Prisma over cloud/external database            | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)       |
-| ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1  | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md) |
+| ID      | Decision                                                            | Record                                                                                             |
+| ------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| ADR-001 | Use electron-vite over Next.js/CRA                                  | [specs/decisions/ADR-001-electron-vite.md](decisions/ADR-001-electron-vite.md)                     |
+| ADR-002 | Spawn Express as child process over direct Electron IPC             | [specs/decisions/ADR-002-express-backend.md](decisions/ADR-002-express-backend.md)                 |
+| ADR-003 | SQLite + Prisma over cloud/external database                        | [specs/decisions/ADR-003-sqlite-prisma.md](decisions/ADR-003-sqlite-prisma.md)                     |
+| ADR-004 | Reusable matrix release pipeline; unsigned macOS in v1              | [specs/decisions/ADR-004-release-pipeline.md](decisions/ADR-004-release-pipeline.md)               |
+| ADR-005 | Backend in a utility process + Electron fuses (accepted 2026-11-22) | [specs/decisions/ADR-005-backend-utility-process.md](decisions/ADR-005-backend-utility-process.md) |
+| ADR-006 | Local files by grant from the main process (accepted 2026-11-22)               | [specs/decisions/ADR-006-local-file-grants.md](decisions/ADR-006-local-file-grants.md)             |
 
 ---
 
 ## Status Legend
 
-| Symbol | Meaning                                                        |
-| ------ | -------------------------------------------------------------- |
-| ✅     | Fully implemented and verified                                 |
-| ⚠️     | Partially implemented — see linked BL item for what is missing |
-| ❌     | Not implemented — backlog item exists                          |
+| Symbol | Meaning                                                                                            |
+| ------ | -------------------------------------------------------------------------------------------------- |
+| ✅     | Fully implemented and verified                                                                     |
+| ⚠️     | Partially implemented — see the linked BL item, or the SRS note for gaps tracked but not scheduled |
+| ❌     | Not implemented — backlog item exists or the SRS marks it "not scheduled"                          |

@@ -4,7 +4,7 @@ The user will specify what to review: **$ARGUMENTS** (e.g. "SFTP file operations
 
 Check for all of the following:
 
-1. **Path traversal** — any `fs` call using a user-supplied path must be validated against an allowed base directory
+1. **Path traversal** — the backend must not take a local path from a request (BL-47: grants resolved by main only; see ADR-006 for the rules that keep CodeQL js/path-injection closed); any `fs` call in main using a page-supplied path must be realpath'd and validated against an allowed base directory
 2. **JWT bypass** — every route except `POST /api/auth/unlock` and `POST /api/auth/setup` must have `authMiddleware`
 3. **Input validation** — all request bodies must be validated with Zod before use
 4. **Crypto misuse** — passwords/keys must only be encrypted/decrypted via `crypto.service.ts`; no raw `crypto` calls elsewhere

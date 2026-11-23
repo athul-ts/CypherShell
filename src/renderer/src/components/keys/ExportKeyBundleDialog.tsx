@@ -14,11 +14,6 @@ interface ApiErrorResponse {
   response?: { data?: { error?: string } }
 }
 
-type LocalFileOpApi = {
-  saveFileDialog: (defaultName: string) => Promise<string | null>
-  executeLocalFileOp: (op: string, args: { path: string; content: string }) => Promise<void>
-}
-
 export function ExportKeyBundleDialog({
   open,
   keyId,
@@ -55,13 +50,13 @@ export function ExportKeyBundleDialog({
         confirmPassphrase
       })
       const defaultName = `${keyName.replace(/[^a-zA-Z0-9_-]/g, '_')}.cskb`
-      const localApi = (window as unknown as { api: LocalFileOpApi }).api
-      const savePath = await localApi.saveFileDialog(defaultName)
-      if (!savePath) return
-      await localApi.executeLocalFileOp('writeFile', {
-        path: savePath,
+      // FR-10.1 / BL-22: main shows the save dialog and writes the bundle
+      const savedTo = await window.api.saveTextFile({
+        kind: 'cskb',
+        defaultName,
         content: JSON.stringify(bundle, null, 2)
       })
+      if (!savedTo) return
       handleClose()
     } catch (err) {
       const error = err as ApiErrorResponse

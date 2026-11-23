@@ -10,6 +10,8 @@ interface TerminalThemeStore {
   setFontFamily: (family: string) => void
 }
 
+const STORAGE_KEY = 'terminal-theme'
+
 export const useTerminalThemeStore = create<TerminalThemeStore>()(
   persist(
     (set) => ({
@@ -20,6 +22,14 @@ export const useTerminalThemeStore = create<TerminalThemeStore>()(
       setFontSize: (fontSize) => set({ fontSize }),
       setFontFamily: (fontFamily) => set({ fontFamily })
     }),
-    { name: 'terminal-theme' }
+    { name: STORAGE_KEY }
   )
 )
+
+// BL-35: terminals open in their own windows, so a change made in Settings arrives as a
+// `storage` event there; re-read the saved state so open terminals follow it.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY) void useTerminalThemeStore.persist.rehydrate()
+  })
+}

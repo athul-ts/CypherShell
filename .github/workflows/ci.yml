@@ -1,12 +1,25 @@
 name: CI
 
+# BL-37: runs for every branch that feeds the release line. Also called by
+# release.yml, so a Release cannot start unless these jobs pass.
 on:
+  push:
+    branches: [ats]
   pull_request:
-    branches: [features]
+    branches: [ats, features, dev, qa, main]
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   check:
-    name: Typecheck & Lint
+    name: Typecheck, Lint & Audit
     runs-on: ubuntu-latest
 
     steps:
@@ -14,14 +27,21 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
-      - name: Install root dependencies (skip native rebuilds)
+      # --ignore-scripts: typecheck and lint do not need the Electron binary.
+      - name: Install root dependencies
         run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
 
       - name: Typecheck
         run: npm run typecheck
@@ -29,27 +49,37 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Audit backend (production, high and above)
+        run: npm audit --omit=dev --audit-level=high --prefix backend
+
+      - name: Audit root (critical)
+        run: npm audit --audit-level=critical
+
   test:
-    name: Unit & Integration Tests
-    runs-on: ubuntu-latest
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
-      - name: Install root dependencies (with native rebuild for better-sqlite3)
-        run: npm ci
-
-      - name: Rebuild better-sqlite3 for current Node version
-        run: npm rebuild better-sqlite3 --prefix backend
+      # better-sqlite3 ships a prebuilt binary (ADR-003): no rebuild step.
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -60,3 +90,94 @@ jobs:
 
       - name: Run renderer tests
         run: npm run test:renderer
+
+  # BL-45 / NFR-01: backend performance against the in-process SSH server. Hard gates fail
+  # the job; every value is listed in the job summary and uploaded.
+  perf:
+    name: Performance
+    runs-on: ubuntu-latest
+    needs: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install backend dependencies
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+
+      - name: Run performance checks
+        run: npm run test:perf
+
+      - name: Summarize
+        if: always()
+        run: node scripts/perf-summary.cjs
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: perf-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e:
+    name: End-to-end (Electron)
+    runs-on: ubuntu-latest
+    needs: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Plain `npm ci`: postinstall runs install-electron, which downloads the binary.
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        # No install scripts: better-sqlite3 ships a prebuilt binary (ADR-003), so nothing compiles
+        # on the runner, and the tests run ssh2 without its optional native addon (the slower case).
+        run: npm ci --ignore-scripts --prefix backend
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+
+      - name: Build the app
+        run: npm run build:e2e
+
+      - name: Run e2e tests
+        run: xvfb-run -a npm run test:e2e
+
+      # BL-45: tests/e2e/perf.spec.ts writes the cold-start and renderer-ready timings.
+      - name: Summarize timings
+        if: always()
+        run: node scripts/perf-summary.cjs
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            test-results/
+            tests/e2e/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7

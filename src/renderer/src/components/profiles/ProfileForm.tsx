@@ -2,19 +2,18 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { Server, Save, X } from 'lucide-react'
+import {
+  buildProfilePayload,
+  validateProfile,
+  type ProfileField,
+  type AuthMethod,
+  type ProfileFormValues,
+  type ProfilePayload,
+  type ProfileSnapshot
+} from './profilePayload'
 
-export type AuthMethod = 'password' | 'key' | 'key+passphrase'
-
-interface Profile {
+interface Profile extends ProfileSnapshot {
   id: string
-  name: string
-  group?: string | null
-  host: string
-  port: number
-  username: string
-  authMethod: AuthMethod
-  sshKeyId?: string | null
-  hasPassword?: boolean
 }
 
 interface SshKeySummary {
@@ -23,21 +22,24 @@ interface SshKeySummary {
   keyType: string
 }
 
-interface ProfilePayload {
-  name: string
-  group: string
-  host: string
-  port: number
-  username: string
-  authMethod: AuthMethod
-  password: string
-  sshKeyId: string | undefined
-}
-
 interface ProfileFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   profile?: Profile
+}
+
+function initialValues(profile?: Profile): ProfileFormValues {
+  return {
+    name: profile?.name || '',
+    group: profile?.group || '',
+    host: profile?.host || '',
+    port: profile?.port || 22,
+    username: profile?.username || '',
+    authMethod: profile?.authMethod || 'password',
+    password: '',
+    sshKeyId: profile?.sshKeyId || '',
+    autoReconnect: profile?.autoReconnect ?? true
+  }
 }
 
 export function ProfileForm({
@@ -55,16 +57,17 @@ export function ProfileForm({
     }
   })
 
-  const [formData, setFormData] = useState({
-    name: profile?.name || '',
-    group: profile?.group || '',
-    host: profile?.host || '',
-    port: profile?.port || 22,
-    username: profile?.username || '',
-    authMethod: profile?.authMethod || 'password',
-    password: '',
-    sshKeyId: profile?.sshKeyId || ''
-  })
+  const [formData, setFormData] = useState<ProfileFormValues>(() => initialValues(profile))
+  // FR-01.8.7: field errors, shown after the first submit and cleared as each field is edited
+  const [errors, setErrors] = useState<Partial<Record<ProfileField, string>>>({})
+  const change = (patch: Partial<ProfileFormValues>): void => {
+    setFormData((current) => ({ ...current, ...patch }))
+    setErrors((current) => {
+      const next = { ...current }
+      for (const key of Object.keys(patch) as (keyof ProfileFormValues)[]) delete next[key]
+      return next
+    })
+  }
 
   const mutation = useMutation({
     mutationFn: async (data: ProfilePayload) => {
@@ -78,21 +81,47 @@ export function ProfileForm({
       if (profile?.id) {
         queryClient.invalidateQueries({ queryKey: ['profile', profile.id] })
       }
+      // Clear the typed secret so a reopened form never resubmits it.
+      setFormData((current) => ({ ...current, password: '' }))
       onOpenChange(false)
     }
   })
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
-    const submitData = {
-      ...formData,
-      sshKeyId:
-        formData.authMethod === 'password' || !formData.sshKeyId ? undefined : formData.sshKeyId
+    const found = validateProfile(profile, formData)
+    setErrors(found)
+    if (Object.keys(found).length > 0) return // nothing is sent until the form is valid
+    // FR-01.8.4: on edit, send only the changed fields — never an empty password.
+    const payload = buildProfilePayload(profile, formData)
+    if (profile && Object.keys(payload).length === 0) {
+      onOpenChange(false)
+      return
     }
-    mutation.mutate(submitData)
+    mutation.mutate(payload)
+  }
+
+  const handleCancel = (): void => {
+    setFormData(initialValues(profile))
+    setErrors({})
+    mutation.reset()
+    onOpenChange(false)
   }
 
   if (!open) return null
+
+  const fieldError = (key: ProfileField): React.JSX.Element | null =>
+    errors[key] ? (
+      <p role="alert" className="mt-1 text-xs text-red-400">
+        {errors[key]}
+      </p>
+    ) : null
+
+  const usesKey = formData.authMethod !== 'password'
+  const needsSecret = formData.authMethod !== 'key'
+  const keepsStoredSecret =
+    !!profile?.hasPassword && profile.authMethod === formData.authMethod && needsSecret
+  const secretLabel = formData.authMethod === 'password' ? 'Password' : 'Key Passphrase'
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -107,30 +136,45 @@ export function ProfileForm({
             </h2>
           </div>
           <button
-            onClick={() => onOpenChange(false)}
+            type="button"
+            onClick={handleCancel}
+            aria-label="Close"
             className="text-slate-500 hover:text-slate-300"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        <form onSubmit={handleSubmit} noValidate className="p-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Name</label>
+              <label
+                htmlFor="profile-name"
+                className="block text-sm font-medium text-slate-400 mb-1"
+              >
+                Name
+              </label>
               <input
-                required
+                id="profile-name"
+                aria-invalid={!!errors.name}
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => change({ name: e.target.value })}
                 className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 placeholder="e.g. Production Web Server"
               />
+              {fieldError('name')}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Group Tag</label>
+              <label
+                htmlFor="profile-group"
+                className="block text-sm font-medium text-slate-400 mb-1"
+              >
+                Group Tag
+              </label>
               <input
+                id="profile-group"
                 type="text"
                 value={formData.group}
                 onChange={(e) => setFormData({ ...formData, group: e.target.value })}
@@ -141,79 +185,102 @@ export function ProfileForm({
 
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-slate-400 mb-1">Host</label>
+                <label
+                  htmlFor="profile-host"
+                  className="block text-sm font-medium text-slate-400 mb-1"
+                >
+                  Host
+                </label>
                 <input
-                  required
+                  id="profile-host"
+                  aria-invalid={!!errors.host}
                   type="text"
                   value={formData.host}
-                  onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                  onChange={(e) => change({ host: e.target.value })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                   placeholder="192.168.1.10"
                 />
+                {fieldError('host')}
               </div>
               <div className="w-24">
-                <label className="block text-sm font-medium text-slate-400 mb-1">Port</label>
+                <label
+                  htmlFor="profile-port"
+                  className="block text-sm font-medium text-slate-400 mb-1"
+                >
+                  Port
+                </label>
                 <input
-                  required
+                  id="profile-port"
+                  aria-invalid={!!errors.port}
                   type="number"
-                  value={formData.port}
-                  onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) })}
+                  min={1}
+                  max={65535}
+                  value={Number.isNaN(formData.port) ? '' : formData.port}
+                  onChange={(e) => change({ port: parseInt(e.target.value) })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 />
+                {fieldError('port')}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Username</label>
+              <label
+                htmlFor="profile-username"
+                className="block text-sm font-medium text-slate-400 mb-1"
+              >
+                Username
+              </label>
               <input
-                required
+                id="profile-username"
+                aria-invalid={!!errors.username}
                 type="text"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) => change({ username: e.target.value })}
                 className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 placeholder="root"
               />
+              {fieldError('username')}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1">Auth Method</label>
+              <label
+                htmlFor="profile-auth-method"
+                className="block text-sm font-medium text-slate-400 mb-1"
+              >
+                Auth Method
+              </label>
               <select
+                id="profile-auth-method"
                 value={formData.authMethod}
                 onChange={(e) =>
-                  setFormData({ ...formData, authMethod: e.target.value as AuthMethod })
+                  setFormData({
+                    ...formData,
+                    authMethod: e.target.value as AuthMethod,
+                    // A secret typed for the previous method must not carry over.
+                    password: ''
+                  })
                 }
                 className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
               >
                 <option value="password">Password</option>
                 <option value="key">SSH Key</option>
+                <option value="key+passphrase">SSH Key + Passphrase</option>
               </select>
             </div>
 
-            {formData.authMethod === 'password' ? (
+            {usesKey && (
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">Password</label>
-                <input
-                  required={!profile && formData.authMethod === 'password'}
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
-                  placeholder={
-                    profile?.hasPassword
-                      ? '•••••••• (Leave blank to keep existing)'
-                      : 'Secret password'
-                  }
-                />
-              </div>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">
+                <label
+                  htmlFor="profile-ssh-key"
+                  className="block text-sm font-medium text-slate-400 mb-1"
+                >
                   Select SSH Key
                 </label>
                 <select
-                  required
+                  id="profile-ssh-key"
+                  aria-invalid={!!errors.sshKeyId}
                   value={formData.sshKeyId || ''}
-                  onChange={(e) => setFormData({ ...formData, sshKeyId: e.target.value })}
+                  onChange={(e) => change({ sshKeyId: e.target.value })}
                   className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                 >
                   <option value="">Select a key...</option>
@@ -223,8 +290,49 @@ export function ProfileForm({
                     </option>
                   ))}
                 </select>
+                {fieldError('sshKeyId')}
               </div>
             )}
+
+            {needsSecret && (
+              <div>
+                <label
+                  htmlFor="profile-secret"
+                  className="block text-sm font-medium text-slate-400 mb-1"
+                >
+                  {secretLabel}
+                </label>
+                <input
+                  id="profile-secret"
+                  aria-invalid={!!errors.password}
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => change({ password: e.target.value })}
+                  className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
+                  placeholder={
+                    keepsStoredSecret
+                      ? '•••••••• (Leave blank to keep existing)'
+                      : formData.authMethod === 'password'
+                        ? 'Secret password'
+                        : 'Passphrase for the selected key'
+                  }
+                />
+                {fieldError('password')}
+              </div>
+            )}
+
+            <label
+              htmlFor="profile-auto-reconnect"
+              className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer"
+            >
+              <input
+                id="profile-auto-reconnect"
+                type="checkbox"
+                checked={formData.autoReconnect}
+                onChange={(e) => change({ autoReconnect: e.target.checked })}
+              />
+              Reconnect automatically
+            </label>
 
             {mutation.error && (
               <div className="text-red-500 text-sm mt-2">
@@ -236,7 +344,7 @@ export function ProfileForm({
           <div className="mt-8 flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => onOpenChange(false)}
+              onClick={handleCancel}
               className="px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition-colors"
             >
               Cancel

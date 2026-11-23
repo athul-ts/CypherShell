@@ -42,7 +42,7 @@ Every commit message must include the spec ID (e.g. `feat(sftp): cancel transfer
 
 ## Project Overview
 
-CypherShell is a cross-platform SSH desktop client built with Electron 39, React 19, TypeScript, and an Express 4 backend. It supports SSH terminal sessions, SFTP file management, SSH key management, port forwarding, and a master-password-based app lock.
+CypherShell is a cross-platform SSH desktop client built with Electron 45, React 19, TypeScript, and an Express 5 backend. It supports SSH terminal sessions, SFTP file management, SSH key management, port forwarding, and a master-password-based app lock.
 
 ## Architecture — Three Processes
 
@@ -77,13 +77,13 @@ Electron Main (src/main/index.ts)
 
 ## Tech Stack (exact versions)
 
-- Electron 39, electron-vite 5, electron-builder 26, electron-updater 6.8
+- Electron 45 (Node 24), electron-vite 5, electron-builder 26, electron-updater 6.8
 - React 19, React Router v7 (HashRouter — required for `file://`)
 - Tailwind CSS 3.4, shadcn/ui (Radix primitives, copy-owned in `components/ui/`)
 - Zustand 5, TanStack Query v5, xterm.js v6
-- Express 4, Prisma ORM + better-sqlite3 (WAL mode)
+- Express 5, Prisma 7 ORM + better-sqlite3 (WAL mode)
 - ssh2 + ssh2-sftp-client, node-forge + sshpk
-- AES-256-GCM encryption at rest, PBKDF2-SHA512 (200k iterations), bcrypt cost 12, JWT 8h
+- AES-256-GCM encryption at rest, PBKDF2-SHA512 (200k iterations), bcrypt (`bcryptjs`) cost 12, JWT 1h
 
 ## Development Commands
 
@@ -136,28 +136,20 @@ npm run build                                     # compile backend TS → dist/
 - Never bind the Express server to `0.0.0.0`.
 - Never expose the raw master password or derived key beyond the auth unlock flow in `backend/src/controllers/auth.controller.ts`.
 - Never store decrypted private keys anywhere — decrypt in memory on use only.
-- Never pass user-supplied paths directly to `fs` without normalizing and validating against allowed base directories.
+- The backend accepts no local path from the renderer: SFTP transfers name a grant that the main process issued and resolves (BL-47, ADR-006). In main, a path the page names (local-pane listing) is realpath'd and checked against the home folder and the refused app-data folders; only native dialogs and OS drops grant files elsewhere. Never pass any other user-supplied path to `fs`.
 - Never skip JWT middleware on any route except `POST /api/auth/unlock` and `POST /api/auth/setup`.
 - Context isolation is ON — never set `contextIsolation: false` or `nodeIntegration: true` in webPreferences.
 
-## v1.1 Backlog (features not yet implemented)
+## Backlog Status
 
-See `SRS_SSH_Desktop_App.md §17` for full details with implementation notes.
-| ID | Feature | Priority |
-|---|---|---|
-| BL-01 | Cancel in-progress SFTP transfer | High |
-| BL-02 | Port conflict detection before tunnel bind | Medium |
-| BL-03 | Warn before deleting SSH key used by profiles | Medium |
-| BL-04 | Audit log auto-purge scheduler | Medium |
-| BL-05 | SSH disconnect reason in audit log | Low |
-| BL-06 | DELETE /api/logs clear-all endpoint | Low |
-| BL-07 | SFTP keyboard shortcuts (F2, Ctrl+Shift+N) | Low |
-| BL-08 | Terminal right-click paste | Low |
+BL-01 … BL-47 are done (`npm run test:perf` measures NFR-01; BL-46 runs the backend in a `utilityProcess` with Electron fuses set, ADR-005) — see `specs/index.md`. Remaining gaps are recorded in `SRS_SSH_Desktop_App.md` as ⚠️ notes marked "tracked, not scheduled". Spec any new requirement as a BL item before implementing it.
 
 ## Common Pitfalls
 
-- **Native module rebuild**: If you get `NODE_MODULE_VERSION` errors, run `npm run rebuild:native` from the project root.
+- **Native modules**: `better-sqlite3` 13 is N-API with prebuilt binaries inside the package. The same binary runs under system Node (tests, dev) and Electron — there is no rebuild step. Never run `@electron/rebuild` or `node-gyp` on it: a compiled `build/` directory takes precedence over the prebuild (ADR-003).
+- **Electron binary**: since Electron 42 `npm install` does not download it; `postinstall` runs `install-electron`. After `npm ci --ignore-scripts`, run `npx install-electron` before `npm run dev` or the e2e tests.
+- **Linux**: Ubuntu 22.04+ (glibc 2.34) is required by the `better-sqlite3` prebuild.
 - **Prisma client out of sync**: Run `npx prisma generate` inside `backend/` after any schema change.
-- **Port already in use**: The backend port is auto-selected by `portfinder` starting at 3000 — kill any stale process if needed.
+- **Port already in use**: The backend port is auto-selected by `portfinder` starting at 4000 — kill any stale process if needed.
 - **HashRouter is intentional**: React Router uses `HashRouter` (not `BrowserRouter`) because the renderer loads via `file://`. Never change this.
 - **electron-vite aliases**: Path alias `@renderer` maps to `src/renderer/src/` — use it in renderer imports.

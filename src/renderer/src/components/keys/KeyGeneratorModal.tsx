@@ -8,11 +8,30 @@ interface KeyGeneratorModalProps {
   onOpenChange: (open: boolean) => void
 }
 
+type Algorithm = 'ed25519' | 'rsa-2048' | 'rsa-4096'
+
 interface GenerateKeyData {
   name: string
   description: string
-  type: string
+  algorithm: Algorithm
   passphrase: string
+}
+
+/** Maps the form choice to the API body: `{ type, bits? }` (BL-12). */
+function toRequestBody(data: GenerateKeyData): Record<string, unknown> {
+  const { algorithm, ...rest } = data
+  const algo =
+    algorithm === 'ed25519'
+      ? { type: 'ed25519' }
+      : { type: 'rsa', bits: algorithm === 'rsa-4096' ? 4096 : 2048 }
+  return { ...rest, ...algo }
+}
+
+const EMPTY_FORM: GenerateKeyData = {
+  name: '',
+  description: '',
+  algorithm: 'ed25519',
+  passphrase: ''
 }
 
 export function KeyGeneratorModal({
@@ -20,21 +39,16 @@ export function KeyGeneratorModal({
   onOpenChange
 }: KeyGeneratorModalProps): React.JSX.Element | null {
   const queryClient = useQueryClient()
-  const [formData, setFormData] = useState<GenerateKeyData>({
-    name: '',
-    description: '',
-    type: 'ed25519',
-    passphrase: ''
-  })
+  const [formData, setFormData] = useState<GenerateKeyData>(EMPTY_FORM)
 
   const mutation = useMutation({
     mutationFn: async (data: GenerateKeyData) => {
-      return api.post('/keys/generate', data)
+      return api.post('/keys/generate', toRequestBody(data))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['keys'] })
       onOpenChange(false)
-      setFormData({ name: '', description: '', type: 'ed25519', passphrase: '' })
+      setFormData(EMPTY_FORM)
     }
   })
 
@@ -77,14 +91,21 @@ export function KeyGeneratorModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">Algorithm</label>
+            <label
+              htmlFor="key-algorithm"
+              className="block text-sm font-medium text-slate-400 mb-1"
+            >
+              Algorithm
+            </label>
             <select
-              value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              id="key-algorithm"
+              value={formData.algorithm}
+              onChange={(e) => setFormData({ ...formData, algorithm: e.target.value as Algorithm })}
               className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
             >
               <option value="ed25519">ED25519 (Recommended)</option>
-              <option value="rsa">RSA (2048-bit)</option>
+              <option value="rsa-2048">RSA (2048-bit)</option>
+              <option value="rsa-4096">RSA (4096-bit)</option>
             </select>
           </div>
 
@@ -99,6 +120,11 @@ export function KeyGeneratorModal({
               className="w-full bg-[#1a1c23] border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
               placeholder="Leave blank for no passphrase"
             />
+            {formData.passphrase && (
+              <p className="text-xs text-slate-500 mt-1">
+                Profiles that use this key need the “SSH Key + Passphrase” method.
+              </p>
+            )}
           </div>
 
           <div>

@@ -62,3 +62,236 @@
     @apply bg-white/20;
   }
 }
+
+/* ─── Light theme (BL-35) ─────────────────────────────────────────────────────
+   The app's surfaces are Tailwind utilities with dark colours baked in, so the
+   light theme maps each of those classes to its light counterpart under
+   `.light` (a class on <html>, toggled by App.tsx). tests/renderer/lightTheme.test.ts
+   fails when a new dark utility is used without an entry here. */
+:root.light {
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 160 84% 30%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 32% 91%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 40%;
+  --accent: 214 32% 91%;
+  --accent-foreground: 222 47% 11%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 160 84% 30%;
+}
+/* Headings and fields that use white text on a dark card */
+.light h1.text-white,
+.light h2.text-white,
+.light h3.text-white,
+.light input.text-white {
+  color: #0f172a;
+}
+.light .from-\[\#151821\] {
+  --tw-gradient-from: #ffffff var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(255 255 255 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+.light .to-\[\#0a0a0f\] {
+  --tw-gradient-to: #f8fafc var(--tw-gradient-to-position);
+}
+.light .bg-\[\#0a0a0f\] {
+  background-color: rgb(248 250 252);
+}
+.light .bg-\[\#0a0a0f\]\/40 {
+  background-color: rgb(248 250 252 / 0.4);
+}
+.light .bg-\[\#0a0a0f\]\/50 {
+  background-color: rgb(248 250 252 / 0.5);
+}
+.light .bg-\[\#0f1117\] {
+  background-color: rgb(241 245 249);
+}
+.light .bg-\[\#151821\] {
+  background-color: rgb(255 255 255);
+}
+.light .bg-\[\#1a1c23\] {
+  background-color: rgb(241 245 249);
+}
+.light .bg-\[\#1a1d27\] {
+  background-color: rgb(255 255 255);
+}
+.light .bg-slate-600 {
+  background-color: rgb(148 163 184);
+}
+.light .bg-slate-700 {
+  background-color: rgb(203 213 225);
+}
+.light .bg-slate-800 {
+  background-color: rgb(226 232 240);
+}
+.light .bg-slate-800\/50 {
+  background-color: rgb(226 232 240 / 0.5);
+}
+.light .bg-slate-900 {
+  background-color: rgb(241 245 249);
+}
+.light .bg-slate-900\/50 {
+  background-color: rgb(241 245 249 / 0.5);
+}
+.light .bg-white\/5 {
+  background-color: rgb(15 23 42 / 0.05);
+}
+.light .border-slate-600 {
+  border-color: rgb(148 163 184);
+}
+.light .border-slate-700 {
+  border-color: rgb(203 213 225);
+}
+.light .border-slate-800 {
+  border-color: rgb(226 232 240);
+}
+.light .border-slate-800\/50 {
+  border-color: rgb(226 232 240 / 0.5);
+}
+.light .border-slate-800\/60 {
+  border-color: rgb(226 232 240 / 0.6);
+}
+.light .border-slate-800\/80 {
+  border-color: rgb(226 232 240 / 0.8);
+}
+.light .border-white\/\[0\.07\] {
+  border-color: rgb(15 23 42 / 0.07);
+}
+.light .border-white\/\[0\.08\] {
+  border-color: rgb(15 23 42 / 0.08);
+}
+.light .border-white\/\[0\.1\] {
+  border-color: rgb(15 23 42 / 0.1);
+}
+.light .hover\:bg-\[\#1a1c23\]:hover {
+  background-color: rgb(241 245 249);
+}
+.light .hover\:bg-slate-700:hover {
+  background-color: rgb(203 213 225);
+}
+.light .hover\:bg-slate-800:hover {
+  background-color: rgb(226 232 240);
+}
+.light .hover\:bg-slate-800\/30:hover {
+  background-color: rgb(226 232 240 / 0.3);
+}
+.light .hover\:bg-white\/10:hover {
+  background-color: rgb(15 23 42 / 0.1);
+}
+.light .hover\:border-slate-600:hover {
+  border-color: rgb(148 163 184);
+}
+.light .hover\:border-slate-700:hover {
+  border-color: rgb(203 213 225);
+}
+.light .hover\:text-slate-100:hover {
+  color: #0f172a;
+}
+.light .hover\:text-slate-200:hover {
+  color: #1e293b;
+}
+.light .hover\:text-slate-300:hover {
+  color: #334155;
+}
+.light .hover\:text-slate-500:hover {
+  color: #64748b;
+}
+.light .placeholder-slate-600::placeholder {
+  color: #94a3b8;
+}
+.light .text-slate-100 {
+  color: #0f172a;
+}
+.light .text-slate-200 {
+  color: #1e293b;
+}
+.light .text-slate-300 {
+  color: #334155;
+}
+.light .text-slate-400 {
+  color: #475569;
+}
+.light .text-slate-500 {
+  color: #64748b;
+}
+.light .text-slate-600 {
+  color: #94a3b8;
+}
+/* Accent text: the dark theme's pale 300–500 shades are unreadable on white */
+.light .group:hover .group-hover\:text-blue-400 {
+  color: rgb(37 99 235);
+}
+.light .group:hover .group-hover\:text-emerald-400 {
+  color: rgb(4 120 87);
+}
+.light .hover\:text-amber-200:hover {
+  color: rgb(120 53 15);
+}
+.light .hover\:text-blue-400:hover {
+  color: rgb(37 99 235);
+}
+.light .hover\:text-emerald-300:hover {
+  color: rgb(4 120 87);
+}
+.light .hover\:text-emerald-400:hover {
+  color: rgb(4 120 87);
+}
+.light .hover\:text-red-300:hover {
+  color: rgb(185 28 28);
+}
+.light .hover\:text-red-400:hover {
+  color: rgb(220 38 38);
+}
+.light .hover\:text-violet-300:hover {
+  color: rgb(109 40 217);
+}
+.light .text-amber-200 {
+  color: rgb(120 53 15);
+}
+.light .text-amber-300 {
+  color: rgb(146 64 14);
+}
+.light .text-amber-300\/70 {
+  color: rgb(146 64 14 / 0.7);
+}
+.light .text-amber-400 {
+  color: rgb(180 83 9);
+}
+.light .text-amber-500 {
+  color: rgb(180 83 9);
+}
+.light .text-blue-400 {
+  color: rgb(37 99 235);
+}
+.light .text-blue-500 {
+  color: rgb(37 99 235);
+}
+.light .text-emerald-400 {
+  color: rgb(4 120 87);
+}
+.light .text-emerald-400\/80 {
+  color: rgb(4 120 87 / 0.8);
+}
+.light .text-emerald-500 {
+  color: rgb(5 150 105);
+}
+.light .text-purple-500 {
+  color: rgb(147 51 234);
+}
+.light .text-red-400 {
+  color: rgb(220 38 38);
+}
+.light .text-red-500 {
+  color: rgb(220 38 38);
+}
+.light .text-violet-400 {
+  color: rgb(124 58 237);
+}

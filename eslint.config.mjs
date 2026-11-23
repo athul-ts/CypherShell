@@ -34,6 +34,14 @@ export default defineConfig(
     }
   },
   {
+    // BL-43: nothing logs through the console. The backend logger writes to stdout and stderr
+    // on purpose (the main process captures them into app.log); the rest goes through
+    // src/main/log.ts, the backend logger or the renderer's reportError.
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['backend/src/services/logger.service.ts'],
+    rules: { 'no-console': 'error' }
+  },
+  {
     // CommonJS build/tooling scripts — mirror the toolkit's treatment of *.js/*.mjs.
     files: ['**/*.cjs'],
     rules: {

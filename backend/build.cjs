@@ -14,10 +14,10 @@ esbuild
     entryPoints: ['src/index.ts'],
     bundle: true,
     platform: 'node',
-    target: 'node20',
+    target: 'node24',
     outfile: 'dist/index.js',
     format: 'cjs',
-    sourcemap: false,
+    sourcemap: 'linked', // BL-43: the backend runs with --enable-source-maps
     external: [
       // Native modules — cannot be bundled, must live in node_modules
       'better-sqlite3',
