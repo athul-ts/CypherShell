@@ -73,7 +73,7 @@ jobs:
         run: npm ci
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        run: npm ci --ignore-scripts --prefix backend
 
       # backend/build.cjs leaves @prisma/client external, so the packaged app
       # loads it from node_modules at runtime and the generated client in

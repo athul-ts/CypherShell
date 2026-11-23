@@ -203,6 +203,7 @@ describe('[FR-04.4][BL-30][BL-47] dropping a file from the OS', () => {
     answerWith('/home/tester')
     mockApi.post.mockResolvedValue({ data: { success: true } })
     renderWithQuery(<SftpPane sessionId="sess-drop" />)
+    await screen.findByText('notes.txt') // the pane has resolved its absolute home path
 
     const target = await screen.findByRole('button', { name: /upload/i })
     const file = new File(['x'], 'report.pdf')
@@ -265,6 +266,7 @@ describe('[FR-04.4][BL-30][BL-47] dropping a file from the OS', () => {
     answerWith('/home/tester')
     mockApi.post.mockResolvedValue({ data: { success: true } })
     renderWithQuery(<SftpPane sessionId="sess-pane" />)
+    await screen.findByText('notes.txt') // the pane has resolved its absolute home path
 
     const target = await screen.findByRole('button', { name: /upload/i })
     await act(async () => {

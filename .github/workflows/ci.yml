@@ -35,7 +35,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -75,7 +75,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -106,7 +106,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -146,7 +146,7 @@ jobs:
         run: npm ci
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        run: npm ci --ignore-scripts --prefix backend
 
       - name: Generate Prisma client
         run: npx prisma generate
