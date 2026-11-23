@@ -38,7 +38,7 @@
     "@types/ssh2-sftp-client": "^9.0.6",
     "@types/sshpk": "^1.17.4",
     "@types/ws": "^8.18.1",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "prisma": "^7.10.1",
     "typescript": "~5.9.3"
   },
