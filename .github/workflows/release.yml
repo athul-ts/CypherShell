@@ -63,7 +63,7 @@ jobs:
       # latest*.yml and *.blockmap files land here too. Without them the
       # in-app electron-updater has no feed to read and every update check
       # fails silently.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: installers-*
           merge-multiple: true
