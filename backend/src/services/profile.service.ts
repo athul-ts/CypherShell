@@ -1,3 +1,4 @@
+import type { Prisma, Profile, Tunnel } from '@prisma/client'
 import { prisma } from '../config/db'
 
 /** FUN-13: Resolve an SSH key by name, return its id or null. */
@@ -39,6 +40,64 @@ export interface ExportBundle {
 export type ConflictResolution = 'skip' | 'rename' | 'overwrite'
 
 export class ProfileService {
+  /** All profiles by name (FR-01.2). */
+  static list(): Promise<Profile[]> {
+    return prisma.profile.findMany({ orderBy: { name: 'asc' } })
+  }
+
+  /** One profile with its tunnels, or `null`. */
+  static get(id: string): Promise<(Profile & { tunnels: Tunnel[] }) | null> {
+    return prisma.profile.findUnique({ where: { id }, include: { tunnels: true } })
+  }
+
+  /** One profile by id, or `null`. */
+  static findForConnect(id: string): Promise<Profile | null> {
+    return prisma.profile.findUnique({ where: { id } })
+  }
+
+  static create(data: Prisma.ProfileUncheckedCreateInput): Promise<Profile> {
+    return prisma.profile.create({ data })
+  }
+
+  /** Updates a profile; returns `null` when it does not exist. */
+  static async update(
+    id: string,
+    data: Prisma.ProfileUncheckedUpdateInput
+  ): Promise<Profile | null> {
+    try {
+      return await prisma.profile.update({ where: { id }, data })
+    } catch {
+      return null
+    }
+  }
+
+  /** Deletes a profile; returns `false` when it does not exist. */
+  static async remove(id: string): Promise<boolean> {
+    try {
+      await prisma.profile.delete({ where: { id } })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Copies a profile as "<name> (Copy)"; returns `null` when it does not exist. */
+  static async duplicate(id: string): Promise<Profile | null> {
+    const existing = await prisma.profile.findUnique({ where: { id } })
+    if (!existing) return null
+    const { id: _id, createdAt: _ca, updatedAt: _ua, lastConnectedAt: _lc, ...data } = existing
+    void _id
+    void _ca
+    void _ua
+    void _lc
+    return prisma.profile.create({ data: { ...data, name: `${data.name} (Copy)` } })
+  }
+
+  /** Records a successful connection for the "last connected" line on the profile card (FR-01.2). */
+  static async markConnected(profileId: string): Promise<void> {
+    await prisma.profile.update({ where: { id: profileId }, data: { lastConnectedAt: new Date() } })
+  }
+
   static async buildExportPayload(ids?: string[]): Promise<ExportBundle> {
     const where = ids && ids.length > 0 ? { id: { in: ids } } : {}
     const profiles = await prisma.profile.findMany({

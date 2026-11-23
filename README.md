@@ -164,7 +164,7 @@ Most SSH clients are either too simple (PuTTY), too heavyweight (MobaXterm), req
 
 | Layer                       | Technology                                               |
 | --------------------------- | -------------------------------------------------------- |
-| **Shell / Packaging**       | Electron 39, electron-builder 26                         |
+| **Shell / Packaging**       | Electron 45, electron-builder 26                         |
 | **Frontend Framework**      | React 19, React Router 7                                 |
 | **Language**                | TypeScript 5.9 (all layers)                              |
 | **Build Tool**              | electron-vite 5 (Vite 6 under the hood)                  |
@@ -277,18 +277,17 @@ The Electron app launches with **hot-reload** for the renderer. The Express back
 
 ### Available Scripts
 
-| Command                  | Description                                 |
-| ------------------------ | ------------------------------------------- |
-| `npm run dev`            | Start Electron with hot-reload (HMR)        |
-| `npm run build`          | Compile TypeScript + Vite bundles           |
-| `npm run typecheck`      | Full TypeScript check across all targets    |
-| `npm run lint`           | Run ESLint                                  |
-| `npm run format`         | Auto-format with Prettier                   |
-| `npm run build:backend`  | Compile backend TypeScript only             |
-| `npm run rebuild:native` | Rebuild native modules against Electron ABI |
-| `npm run build:win`      | Package Windows installer                   |
-| `npm run build:mac`      | Package macOS DMG + zip                     |
-| `npm run build:linux`    | Package Linux AppImage + deb                |
+| Command                 | Description                              |
+| ----------------------- | ---------------------------------------- |
+| `npm run dev`           | Start Electron with hot-reload (HMR)     |
+| `npm run build`         | Compile TypeScript + Vite bundles        |
+| `npm run typecheck`     | Full TypeScript check across all targets |
+| `npm run lint`          | Run ESLint                               |
+| `npm run format`        | Auto-format with Prettier                |
+| `npm run build:backend` | Compile backend TypeScript only          |
+| `npm run build:win`     | Package Windows installer                |
+| `npm run build:mac`     | Package macOS DMG + zip                  |
+| `npm run build:linux`   | Package Linux AppImage + deb             |
 
 ---
 
@@ -311,7 +310,17 @@ are the one thing that cannot be given a platform suffix.
 
 > **Note:** Native modules (`better-sqlite3`, `ssh2`) are automatically rebuilt against the target Electron ABI **and target architecture** by the `after-pack` hook and are excluded from the asar archive for correct loading at runtime. On macOS the built binary is verified with `lipo -archs`, so an architecture mismatch fails the build instead of crashing on launch.
 
-> **macOS code signing:** CI builds are currently **unsigned and not notarized**. Gatekeeper will block the first launch — right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/CypherShell.app`. To produce a signed build instead, set `CSC_LINK` and `CSC_KEY_PASSWORD` (plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for notarization) and set `notarize: true` in `electron-builder.yml`.
+> **macOS code signing:** CI builds are **unsigned and not notarized**, so Gatekeeper blocks the first launch. This is deliberate, not an oversight — see [ADR-004](specs/decisions/ADR-004-release-pipeline.md).
+>
+> The old Control-click → **Open** override **no longer works** — Apple removed it in macOS 15 Sequoia. To open the app:
+>
+> 1. Launch it once, then dismiss the warning dialog.
+> 2. Open **System Settings → Privacy & Security** and scroll down to the **Security** section.
+> 3. Click **Open Anyway** for CypherShell and authenticate. macOS remembers the choice.
+>
+> The Terminal equivalent, for anyone who would rather not click through System Settings: `xattr -dr com.apple.quarantine /Applications/CypherShell.app`
+>
+> To produce a signed build instead, set `CSC_LINK` and `CSC_KEY_PASSWORD` (plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for notarization) and set `notarize: true` in `electron-builder.yml`.
 
 ### Releasing
 
@@ -364,7 +373,7 @@ CypherShell/
 │
 ├── build/                         # electron-builder resources (icons, installer scripts)
 ├── resources/                     # App icon assets (icns, ico, png)
-├── scripts/                       # Build helpers (rebuild-native, after-pack)
+├── scripts/                       # Build helpers (after-pack, native-prebuild)
 ├── docs/                          # Documentation and screenshots
 ├── electron-builder.yml           # Packaging config for Win / Mac / Linux
 ├── electron.vite.config.ts        # Vite config (main + preload + renderer targets)
@@ -385,10 +394,10 @@ CypherShell is designed with **defense-in-depth** — sensitive material is prot
 | Encryption key derivation    | **PBKDF2-SHA512**, 200,000 iterations; derived key held in-memory only   |
 | Key material in renderer     | Private keys are **never** sent to the renderer process                  |
 | Backend network binding      | Express binds to **`127.0.0.1`** only — not reachable externally         |
-| API authentication           | **JWT** tokens, 8-hour expiration, required on every endpoint            |
+| API authentication           | **JWT** tokens, 1-hour expiration, required on every endpoint            |
 | Rate limiting                | 5 auth attempts / min · 300 API requests / min                           |
 | Auto-lock                    | Configurable inactivity timeout clears the in-memory AES key             |
-| SFTP path traversal          | Backend validates all remote paths before operating                      |
+| Local file access            | The backend takes no local paths: main grants each file you pick         |
 | Context isolation            | Electron `contextIsolation: true`; renderer has no direct Node.js access |
 
 **Reporting a vulnerability:** Please open a [GitHub Security Advisory](https://github.com/athul-ts/CypherShell/security/advisories/new) rather than a public issue. We aim to respond within 72 hours.
@@ -474,11 +483,9 @@ Have an idea not listed here? [Open a feature request](https://github.com/athul-
 
 ### `better-sqlite3` fails to load after cloning
 
-Native modules must be compiled against the Electron ABI, not the system Node.js ABI.
+The module ships prebuilt binaries and needs no rebuild. Reinstall dependencies (`npm ci` and `npm ci --prefix backend`); never compile it with `node-gyp` or `@electron/rebuild`, because a local `build/` directory takes precedence over the prebuild. Linux needs glibc 2.34 or later (Ubuntu 22.04+).
 
-```bash
-npm run rebuild:native
-```
+If Electron itself is missing, run `npx install-electron`.
 
 ### Backend port conflict on startup
 
@@ -512,9 +519,13 @@ Diagnostic logs are written to:
 | macOS   | `~/Library/Application Support/CypherShell/app.log` |
 | Linux   | `~/.config/CypherShell/app.log`                     |
 
+### Gatekeeper blocks the app on first launch (macOS)
+
+Expected on a fresh install — releases are unsigned, so macOS blocks the first launch. The Control-click → **Open** override was removed in macOS 15 Sequoia and no longer works; use the steps in the [macOS code signing](#-building-for-production) note above. Alternatively, build from source to avoid it entirely.
+
 ### White screen on launch (macOS)
 
-This is usually a Gatekeeper issue with an unsigned build. Right-click the `.app` bundle and choose **Open**, then confirm. Alternatively, build from source to avoid this.
+This is a **different** problem from the Gatekeeper dialog above, and not a signing issue. A white screen almost always means the Express backend failed to start, leaving the renderer with no API to talk to. Check the log at `~/Library/Application Support/CypherShell/app.log`.
 
 ---
 

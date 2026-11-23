@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import type { Express } from 'express'
-import { createApp } from './helpers/createApp'
+import { createApp, launch } from './helpers/createApp'
 import { prisma } from '../../backend/src/config/db'
 import { CryptoService } from '../../backend/src/services/crypto.service'
 
@@ -29,7 +29,9 @@ describe('GET /api/health', () => {
 
 describe('GET /api/auth/status', () => {
   it('returns configured:false before setup', async () => {
-    const res = await request(app).get('/api/auth/status')
+    const res = await request(app)
+      .get('/api/auth/status')
+      .set(...launch())
     expect(res.status).toBe(200)
     expect(res.body.configured).toBe(false)
   })
@@ -37,26 +39,37 @@ describe('GET /api/auth/status', () => {
 
 describe('POST /api/auth/setup', () => {
   it('rejects a short password', async () => {
-    const res = await request(app).post('/api/auth/setup').send({ password: '123' })
+    const res = await request(app)
+      .post('/api/auth/setup')
+      .set(...launch())
+      .send({ password: '123' })
     expect(res.status).toBe(400)
   })
 
   it('creates config and returns a JWT', async () => {
-    const res = await request(app).post('/api/auth/setup').send({ password: 'test-password-123' })
+    const res = await request(app)
+      .post('/api/auth/setup')
+      .set(...launch())
+      .send({ password: 'test-password-123' })
     expect(res.status).toBe(200)
     expect(typeof res.body.token).toBe('string')
     expect(res.body.token.split('.').length).toBe(3) // valid JWT
   })
 
   it('returns 409 when called a second time', async () => {
-    const res = await request(app).post('/api/auth/setup').send({ password: 'another-password' })
+    const res = await request(app)
+      .post('/api/auth/setup')
+      .set(...launch())
+      .send({ password: 'another-password' })
     expect(res.status).toBe(409)
   })
 })
 
 describe('GET /api/auth/status (after setup)', () => {
   it('returns configured:true', async () => {
-    const res = await request(app).get('/api/auth/status')
+    const res = await request(app)
+      .get('/api/auth/status')
+      .set(...launch())
     expect(res.status).toBe(200)
     expect(res.body.configured).toBe(true)
     expect(res.body.locked).toBe(true)
@@ -65,12 +78,18 @@ describe('GET /api/auth/status (after setup)', () => {
 
 describe('POST /api/auth/unlock', () => {
   it('rejects wrong password', async () => {
-    const res = await request(app).post('/api/auth/unlock').send({ password: 'wrong-password' })
+    const res = await request(app)
+      .post('/api/auth/unlock')
+      .set(...launch())
+      .send({ password: 'wrong-password' })
     expect(res.status).toBe(401)
   })
 
   it('unlocks with correct password and returns JWT', async () => {
-    const res = await request(app).post('/api/auth/unlock').send({ password: 'test-password-123' })
+    const res = await request(app)
+      .post('/api/auth/unlock')
+      .set(...launch())
+      .send({ password: 'test-password-123' })
     expect(res.status).toBe(200)
     expect(typeof res.body.token).toBe('string')
   })
@@ -85,6 +104,7 @@ describe('JWT authentication', () => {
   it('allows protected routes with a valid token', async () => {
     const { body } = await request(app)
       .post('/api/auth/unlock')
+      .set(...launch())
       .send({ password: 'test-password-123' })
     const res = await request(app).get('/api/profiles').set('Authorization', `Bearer ${body.token}`)
     expect(res.status).toBe(200)
@@ -95,9 +115,11 @@ describe('POST /api/auth/lock', () => {
   it('clears the active key', async () => {
     const { body } = await request(app)
       .post('/api/auth/unlock')
+      .set(...launch())
       .send({ password: 'test-password-123' })
     const res = await request(app)
       .post('/api/auth/lock')
+      .set(...launch())
       .set('Authorization', `Bearer ${body.token}`)
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)

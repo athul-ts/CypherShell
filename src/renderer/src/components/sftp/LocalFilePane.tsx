@@ -1,45 +1,41 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { File, Folder, RefreshCw } from 'lucide-react'
 import { PathBreadcrumb } from './PathBreadcrumb'
+import { reportError } from '../../lib/log'
+import { LOCAL_FILE_MIME, localFileDragPayload, readRemoteFileDrag } from '../../lib/localFiles'
 
-interface LocalFileEntry {
-  name: string
-  type: 'd' | 'f'
-  size: number
-  modifyTime: string
-  permissions: number
-}
-
-interface ReadLocalDirResult {
-  path: string
-  files: LocalFileEntry[]
-}
-
-type LocalDirApi = {
-  readLocalDir: (dirPath?: string) => Promise<ReadLocalDirResult>
-}
+type LocalFileEntry = LocalDirEntry
 
 interface LocalFilePaneProps {
-  sessionId: string
   showHidden: boolean
-  onUpload: (localPath: string) => void
-  onDownload: (remotePath: string, localPath: string, filename: string, size: number) => void
+  /** A remote file was dropped here; `folderGrant` is the grant of the folder that is open (BL-47). */
+  onDownload: (
+    remote: { filename: string; remotePath: string; size: number },
+    folderGrant: string
+  ) => void
+}
+
+/** The reason in an IPC error: Electron prefixes it with "Error invoking remote method …". */
+function ipcMessage(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err)
+  return text.replace(/^Error invoking remote method '[^']*': (Error: )?(LocalFileError: )?/, '')
 }
 
 export function LocalFilePane({ showHidden, onDownload }: LocalFilePaneProps): React.JSX.Element {
-  const [currentPath, setCurrentPath] = useState<string>('')
-  const [files, setFiles] = useState<LocalFileEntry[]>([])
+  const [listing, setListing] = useState<LocalDirListing | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const currentPath = listing?.path ?? ''
+  const files: LocalFileEntry[] = listing?.files ?? []
 
+  /** `path` undefined opens the home folder. Main checks every path; a refused one is shown, not opened. */
   const fetchDir = async (path?: string): Promise<void> => {
     setIsLoading(true)
     try {
-      const localApi = (window as unknown as { api: LocalDirApi }).api
-      const res = await localApi.readLocalDir(path || currentPath)
-      setCurrentPath(res.path)
-      setFiles(res.files)
+      setListing(await window.api.readLocalDir(path))
     } catch (err) {
-      console.error(err)
+      toast.error(ipcMessage(err) || 'Could not open this folder')
+      reportError('LocalFilePane', err)
     } finally {
       setIsLoading(false)
     }
@@ -50,45 +46,33 @@ export function LocalFilePane({ showHidden, onDownload }: LocalFilePaneProps): R
     // resolves asynchronously; this is a genuine external-system fetch, not
     // derived render state, so the synchronous setState here is safe and intended.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchDir('')
+    void fetchDir(undefined)
   }, [])
 
   const handleNavigate = (file: LocalFileEntry): void => {
     if (file.type === 'd') {
       const sep = currentPath.includes('\\') ? '\\' : '/'
-      fetchDir(`${currentPath}${sep}${file.name}`)
+      void fetchDir(`${currentPath.replace(/[\\/]+$/, '')}${sep}${file.name}`)
     }
   }
 
+  // BL-47: main says what the parent is (null at the home folder), so no path maths here.
   const handleUp = (): void => {
-    const sep = currentPath.includes('\\') ? '\\' : '/'
-    const parts = currentPath.split(sep).filter(Boolean)
-    if (parts.length > 1) {
-      parts.pop()
-      fetchDir(parts.join(sep) + (currentPath.startsWith(sep) ? '' : sep))
-    } else {
-      fetchDir(sep)
-    }
+    if (listing?.parent) void fetchDir(listing.parent)
   }
 
   const handleDragStart = (e: React.DragEvent, file: LocalFileEntry): void => {
-    const sep = currentPath.includes('\\') ? '\\' : '/'
-    e.dataTransfer.setData('text/plain', `${currentPath}${sep}${file.name}`)
+    if (!listing) return
+    // A grant for the open folder plus the file's name — never a path, never text/plain.
+    e.dataTransfer.setData(LOCAL_FILE_MIME, localFileDragPayload(listing.grant, file.name))
     e.dataTransfer.effectAllowed = 'copy'
   }
 
   const handleDrop = (e: React.DragEvent): void => {
     e.preventDefault()
-    const data = e.dataTransfer.getData('application/x-remote-file')
-    if (!data) return
-    const { filename, remotePath, size } = JSON.parse(data) as {
-      filename: string
-      remotePath: string
-      size: number
-    }
-    const sep = currentPath.includes('\\') ? '\\' : '/'
-    const localPath = `${currentPath}${sep}${filename}`
-    onDownload(remotePath, localPath, filename, size)
+    const remote = readRemoteFileDrag(e.dataTransfer)
+    if (!remote || !listing) return
+    onDownload(remote, listing.grant)
   }
 
   const handleDragOver = (e: React.DragEvent): void => {
@@ -102,21 +86,26 @@ export function LocalFilePane({ showHidden, onDownload }: LocalFilePaneProps): R
       onDragOver={handleDragOver}
     >
       <div className="flex items-center gap-4 px-4 py-3 border-b border-slate-800 bg-[#151821]">
-        <button onClick={handleUp} className="text-slate-400 hover:text-slate-200">
+        <button
+          onClick={handleUp}
+          disabled={!listing?.parent}
+          className="text-slate-400 hover:text-slate-200 disabled:opacity-40"
+        >
           <Folder className="w-5 h-5" />
           <span className="sr-only">Up</span>
         </button>
-        <PathBreadcrumb path={currentPath} onNavigate={fetchDir} />
+        <PathBreadcrumb path={currentPath} onNavigate={(p) => void fetchDir(p)} />
         <button
-          onClick={() => fetchDir(currentPath)}
+          onClick={() => void fetchDir(currentPath || undefined)}
           className="text-slate-400 hover:text-slate-200"
         >
           <RefreshCw className="w-4 h-4" />
+          <span className="sr-only">Refresh</span>
         </button>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        {isLoading ? (
+        {isLoading && !listing ? (
           <div className="text-slate-500 flex justify-center py-10">Loading local directory...</div>
         ) : (
           <table className="w-full text-sm text-left">

@@ -27,11 +27,6 @@ interface ApiErrorResponse {
   response?: { data?: { error?: string } }
 }
 
-type LocalFileOpApi = {
-  saveFileDialog: (defaultName: string) => Promise<string | null>
-  executeLocalFileOp: (op: string, args: { path: string; content: string }) => Promise<void>
-}
-
 export default function Keys(): React.JSX.Element {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -72,18 +67,16 @@ export default function Keys(): React.JSX.Element {
     navigator.clipboard.writeText(text)
   }
 
+  // FR-05.9 / BL-22: main shows the save dialog and writes the public key
   const handleExport = async (key: SshKey): Promise<void> => {
-    const localApi = (window as unknown as { api: LocalFileOpApi }).api
     const defaultName = `${key.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.pub`
-    const localPath = await localApi.saveFileDialog(defaultName)
-    if (!localPath) return
-
     try {
-      await localApi.executeLocalFileOp('writeFile', {
-        path: localPath,
+      const savedTo = await window.api.saveTextFile({
+        kind: 'pub',
+        defaultName,
         content: key.publicKey
       })
-      toast.success('Key exported successfully!')
+      if (savedTo) toast.success('Key exported successfully!')
     } catch {
       toast.error('Failed to export key')
     }

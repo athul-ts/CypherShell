@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 const mockApi = api as unknown as {
   get: ReturnType<typeof vi.fn>
   put: ReturnType<typeof vi.fn>
+  post: ReturnType<typeof vi.fn>
 }
 
 const mockConfig = {
@@ -15,6 +16,7 @@ const mockConfig = {
   defaultFontSize: 14,
   logRetentionDays: 90,
   lockEnabled: false,
+  hasMasterPassword: false,
   autoLockMinutes: 15
 }
 
@@ -56,5 +58,58 @@ describe('Settings page', () => {
       fireEvent.click(saveBtn)
       await waitFor(() => expect(mockApi.put).toHaveBeenCalled())
     }
+  })
+})
+
+describe('[FR-07.7][BL-10] Settings app-lock toggle', () => {
+  it('never sends lockEnabled through PUT /config', async () => {
+    mockApi.get.mockResolvedValue({ data: mockConfig })
+    mockApi.put.mockResolvedValue({ data: mockConfig })
+    renderWithQuery(<Settings />)
+
+    const saveBtn = await screen.findByRole('button', { name: /save settings/i })
+    fireEvent.click(saveBtn)
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalled())
+    expect(mockApi.put.mock.calls[0][1]).not.toHaveProperty('lockEnabled')
+  })
+
+  it('turning lock on asks for a new master password and calls setup-password', async () => {
+    mockApi.get.mockResolvedValue({ data: mockConfig })
+    mockApi.post.mockResolvedValue({ data: { token: 'new-token', unreadableSecrets: 0 } })
+    renderWithQuery(<Settings />)
+
+    fireEvent.click(await screen.findByLabelText('App lock'))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Set Master Password')
+
+    fireEvent.change(screen.getByLabelText('New Master Password'), {
+      target: { value: 'master-pass' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: /turn on lock/i }))
+
+    await waitFor(() =>
+      expect(mockApi.post).toHaveBeenCalledWith('/auth/setup-password', { password: 'master-pass' })
+    )
+    expect(mockApi.put).not.toHaveBeenCalled()
+  })
+
+  it('turning lock off asks for the current master password and calls disable-lock', async () => {
+    mockApi.get.mockResolvedValue({
+      data: { ...mockConfig, lockEnabled: true, hasMasterPassword: true }
+    })
+    mockApi.post.mockResolvedValue({ data: { success: true, unreadableSecrets: 0 } })
+    renderWithQuery(<Settings />)
+
+    await waitFor(() => expect(screen.getByLabelText('App lock')).toBeChecked())
+    fireEvent.click(screen.getByLabelText('App lock'))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Turn Off App Lock')
+
+    fireEvent.change(screen.getByLabelText('Current Master Password'), {
+      target: { value: 'master-pass' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: /turn off lock/i }))
+
+    await waitFor(() =>
+      expect(mockApi.post).toHaveBeenCalledWith('/auth/disable-lock', { password: 'master-pass' })
+    )
   })
 })

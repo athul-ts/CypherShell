@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import {
   listDirectory,
+  resolveRemotePath,
   uploadFile,
   downloadFile,
   deleteFile,
@@ -14,6 +15,7 @@ import {
 const router = Router()
 
 router.get('/:sessionId/list', listDirectory)
+router.get('/:sessionId/realpath', resolveRemotePath)
 router.post('/:sessionId/upload', uploadFile)
 router.post('/:sessionId/download', downloadFile)
 router.post('/:sessionId/delete', deleteFile)

@@ -6,6 +6,14 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { useTerminalThemeStore } from '../../store/terminalThemeStore'
 import { TERMINAL_THEMES } from '../../lib/terminalThemes'
+import { decodeOutput, encodeInput } from '../../lib/terminalCodec'
+import {
+  APP_LOCKED_CLOSE_CODE,
+  openTerminalLink,
+  shouldReconnect,
+  SSH_LOST_CLOSE_CODE,
+  terminalSocketUrl
+} from '../../lib/terminalSocket'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalPaneProps {
@@ -21,12 +29,14 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
   const term = useRef<Terminal | null>(null)
   const ws = useRef<WebSocket | null>(null)
   const fitAddon = useRef<FitAddon | null>(null)
+  /** Refits the terminal and tells the remote PTY its new size; set by the main effect. */
+  const syncSize = useRef<() => void>(() => undefined)
   const reconnectRef = useRef<{ attempt: number; timer?: ReturnType<typeof setTimeout> }>({
     attempt: 0
   })
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
-    'connecting'
-  )
+  const [status, setStatus] = useState<
+    'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'
+  >('connecting')
   const { theme, fontSize, fontFamily } = useTerminalThemeStore()
 
   useEffect(() => {
@@ -42,7 +52,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
 
     fitAddon.current = new FitAddon()
     term.current.loadAddon(fitAddon.current)
-    term.current.loadAddon(new WebLinksAddon())
+    term.current.loadAddon(new WebLinksAddon(openTerminalLink)) // BL-21
     term.current.loadAddon(new SearchAddon())
 
     term.current.open(terminalRef.current)
@@ -64,9 +74,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
         .readText()
         .then((text) => {
           if (text && ws.current?.readyState === WebSocket.OPEN) {
-            const bytes = new TextEncoder().encode(text)
-            const binary = Array.from(bytes, (b) => String.fromCodePoint(b)).join('')
-            ws.current!.send(JSON.stringify({ type: 'input', data: btoa(binary) }))
+            ws.current.send(JSON.stringify({ type: 'input', data: encodeInput(text) }))
           }
         })
         .catch(() => {
@@ -82,8 +90,14 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
 
     // FR-02.6 — Auto-reconnect with exponential backoff (max 3 attempts)
     function connectWs(): void {
-      const wsUrl = `ws://127.0.0.1:${backendPort}/ws/terminal/${sessionId}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`
-      ws.current?.close()
+      const wsUrl = terminalSocketUrl(backendPort, sessionId, wsToken, window.api.launchSecret)
+      // Detach the old socket first so closing it cannot run the reconnect logic again.
+      if (ws.current) {
+        ws.current.onclose = null
+        ws.current.onerror = null
+        ws.current.close()
+      }
+      wsDisconnected = false // each attempt starts fresh — otherwise later drops are ignored
       ws.current = new WebSocket(wsUrl)
 
       ws.current.onopen = () => {
@@ -100,7 +114,8 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
       ws.current.onmessage = (event) => {
         const msg = JSON.parse(event.data)
         if (msg.type === 'output' && term.current) {
-          term.current.write(atob(msg.data))
+          // BL-15: write bytes, not a Latin-1 string, so UTF-8 renders correctly
+          term.current.write(decodeOutput(msg.data))
         } else if (msg.type === 'status') {
           setStatus(msg.state)
         } else if (msg.type === 'error') {
@@ -109,13 +124,32 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
         }
       }
 
-      ws.current.onclose = () => {
+      ws.current.onclose = (event) => {
         if (wsDisconnected) return
         wsDisconnected = true
         setStatus('disconnected')
 
+        // BL-18: the app locked — the shell is gone and this window is closing
+        if (event.code === APP_LOCKED_CLOSE_CODE) {
+          term.current?.write('\r\n\x1b[33mApp locked.\x1b[0m\r\n')
+          return
+        }
+
         if (intentionalClose) {
           term.current?.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n')
+          return
+        }
+
+        // BL-29: the shell ended (`exit`) or the session is gone — reconnecting
+        // would open a fresh shell or fail, so stop here.
+        if (!shouldReconnect(event.code)) {
+          term.current?.write(
+            event.code === 1008
+              ? '\r\n\x1b[31mSession no longer exists.\x1b[0m\r\n'
+              : event.code === SSH_LOST_CLOSE_CODE
+                ? '\r\n\x1b[31mConnection lost. Reconnect from the profile.\x1b[0m\r\n'
+                : '\r\n\x1b[33mSession ended.\x1b[0m\r\n'
+          )
           return
         }
 
@@ -127,6 +161,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
             `\r\n\x1b[33mConnection lost. Reconnecting in ${delay / 1000}s... (attempt ${attempt + 1}/3)\x1b[0m\r\n`
           )
           reconnectRef.current.attempt = attempt + 1
+          setStatus('reconnecting')
           reconnectRef.current.timer = setTimeout(connectWs, delay)
         } else {
           term.current?.write(
@@ -135,11 +170,10 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
         }
       }
 
+      // A failed or dropped socket always fires `close` after `error`, and `close`
+      // decides whether to reconnect — so `error` must not mark it handled.
       ws.current.onerror = () => {
-        if (!wsDisconnected) {
-          wsDisconnected = true
-          setStatus('error')
-        }
+        if (!wsDisconnected) setStatus('error')
       }
     }
 
@@ -148,12 +182,12 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     // Handle user input
     term.current.onData((data) => {
       if (ws.current?.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: 'input', data: btoa(data) }))
+        ws.current.send(JSON.stringify({ type: 'input', data: encodeInput(data) }))
       }
     })
 
     // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
+    syncSize.current = () => {
       if (fitAddon.current && term.current) {
         fitAddon.current.fit()
         if (ws.current?.readyState === WebSocket.OPEN) {
@@ -162,8 +196,23 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
           )
         }
       }
-    })
+    }
+    const resizeObserver = new ResizeObserver(() => syncSize.current())
     resizeObserver.observe(terminalRef.current)
+
+    // BL-35: xterm measures glyphs once and does not notice a web font finishing loading, so
+    // re-measure when one does (nudging the size makes it measure again), then refit.
+    const fonts = document.fonts as FontFaceSet | undefined
+    const onFontsLoaded = (): void => {
+      const terminal = term.current
+      if (!terminal) return
+      const size = terminal.options.fontSize ?? 14
+      terminal.options.fontSize = size + 1
+      terminal.options.fontSize = size
+      syncSize.current()
+    }
+    fonts?.addEventListener?.('loadingdone', onFontsLoaded)
+    fonts?.load?.(`${fontSize}px "JetBrains Mono"`).catch(() => undefined)
 
     return () => {
       intentionalClose = true
@@ -171,6 +220,7 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
       if (reconnectRef.current.timer) clearTimeout(reconnectRef.current.timer)
       reconnectRef.current.attempt = 0
       resizeObserver.disconnect()
+      fonts?.removeEventListener?.('loadingdone', onFontsLoaded)
       if (terminalRef.current) {
         terminalRef.current.removeEventListener('contextmenu', contextmenuHandler)
       }
@@ -179,8 +229,21 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
     }
   }, [sessionId])
 
+  // BL-35: a theme or font change in Settings reaches terminals that are already open.
+  useEffect(() => {
+    const terminal = term.current
+    if (!terminal) return
+    terminal.options.theme = TERMINAL_THEMES[theme] || TERMINAL_THEMES.dark
+    terminal.options.fontSize = fontSize
+    terminal.options.fontFamily = fontFamily
+    syncSize.current() // glyph size changed: refit, and tell the remote PTY the new grid
+  }, [theme, fontSize, fontFamily])
+
+  const background = (TERMINAL_THEMES[theme] || TERMINAL_THEMES.dark).background
+
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0f] relative">
+    // The surround takes the terminal theme's colour, so it matches in both app themes.
+    <div className="flex flex-col h-full relative" style={{ backgroundColor: background }}>
       <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
         <div
           className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border shadow-lg backdrop-blur-sm ${
@@ -192,14 +255,18 @@ export function TerminalPane({ sessionId }: TerminalPaneProps): React.JSX.Elemen
           }`}
         >
           {status === 'connected' && <CircleDot className="w-3.5 h-3.5" />}
-          {status === 'connecting' && <CircleDot className="w-3.5 h-3.5 animate-pulse" />}
+          {(status === 'connecting' || status === 'reconnecting') && (
+            <CircleDot className="w-3.5 h-3.5 animate-pulse" />
+          )}
           {status === 'error' && <ShieldAlert className="w-3.5 h-3.5" />}
 
           {status === 'connected'
             ? 'Connected'
             : status === 'connecting'
               ? 'Connecting...'
-              : 'Connection Lost'}
+              : status === 'reconnecting'
+                ? 'Reconnecting...'
+                : 'Connection Lost'}
         </div>
       </div>
 

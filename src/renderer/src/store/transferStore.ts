@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { LocalFileRef } from '../lib/localFiles'
 
 export interface TransferEvent {
   transferId: string
@@ -23,6 +24,12 @@ export interface Transfer {
   lastBytes?: number
   lastTime?: number
   speed?: number // bytes/sec since last progress event
+  /**
+   * BL-30 / BL-47: where the transfer came from and went to, so a failed one can be retried.
+   * `local` is a grant main issued (never a path); it is dropped when the grant is gone.
+   */
+  local?: LocalFileRef
+  remotePath?: string
 }
 
 /**
@@ -37,6 +44,9 @@ interface TransferState {
   updateProgress: (e: TransferEvent) => void
   cancelTransfer: (transferId: string) => void
   clearCompleted: () => void
+  removeTransfer: (transferId: string) => void
+  /** BL-47: the grant is no longer valid, so the transfer cannot be retried. */
+  forgetLocal: (transferId: string) => void
 }
 
 export const useTransferStore = create<TransferState>((set) => ({
@@ -83,6 +93,14 @@ export const useTransferStore = create<TransferState>((set) => ({
       transfers: state.transfers.map((t) =>
         t.id === transferId ? { ...t, status: 'cancelled' as const } : t
       )
+    })),
+
+  removeTransfer: (transferId) =>
+    set((state) => ({ transfers: state.transfers.filter((t) => t.id !== transferId) })),
+
+  forgetLocal: (transferId) =>
+    set((state) => ({
+      transfers: state.transfers.map((t) => (t.id === transferId ? { ...t, local: undefined } : t))
     })),
 
   // CODE-13: Clear all finished transfers (complete, error, cancelled)

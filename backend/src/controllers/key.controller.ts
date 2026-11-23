@@ -2,6 +2,25 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import { KeyService } from '../services/key.service'
 
+const generateKeySchema = z
+  .object({
+    name: z.string().trim().min(1, 'Key name is required'),
+    type: z.enum(['rsa', 'ed25519']),
+    bits: z.union([z.literal(2048), z.literal(4096)]).optional(),
+    passphrase: z.string().optional(),
+    description: z.string().optional()
+  })
+  .refine((data) => data.type === 'rsa' || data.bits === undefined, {
+    message: 'Key size applies to RSA keys only'
+  })
+
+const importKeySchema = z.object({
+  name: z.string().trim().min(1, 'Key name is required'),
+  privateKey: z.string().min(1, 'Private key is required'),
+  passphrase: z.string().optional(),
+  description: z.string().optional()
+})
+
 const exportBundleSchema = z.object({
   passphrase: z.string().min(1, 'Passphrase is required'),
   confirmPassphrase: z.string().min(1, 'Confirm passphrase is required')
@@ -33,9 +52,14 @@ export async function listKeys(_req: Request, res: Response): Promise<void> {
 }
 
 export async function generateKey(req: Request, res: Response): Promise<void> {
+  const parsed = generateKeySchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message })
+    return
+  }
   try {
-    const { name, type, passphrase, description } = req.body
-    const key = await KeyService.generateKey(name, type, passphrase, description)
+    const { name, type, bits, passphrase, description } = parsed.data
+    const key = await KeyService.generateKey(name, type, passphrase || undefined, description, bits)
     res.json({ success: true, id: key.id })
   } catch (error: unknown) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) })
@@ -43,12 +67,21 @@ export async function generateKey(req: Request, res: Response): Promise<void> {
 }
 
 export async function importKey(req: Request, res: Response): Promise<void> {
+  const parsed = importKeySchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message })
+    return
+  }
   try {
-    const { name, privateKey, passphrase, description } = req.body
-    const key = await KeyService.importKey(name, privateKey, description, passphrase)
+    const { name, privateKey, passphrase, description } = parsed.data
+    const key = await KeyService.importKey(name, privateKey, description, passphrase || undefined)
     res.json({ success: true, id: key.id })
   } catch (error: unknown) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) })
+    // An unparseable key or a wrong passphrase is a client error (FUN-07).
+    const message = error instanceof Error ? error.message : String(error)
+    res.status(/^Invalid private key|^Unsupported private key/.test(message) ? 400 : 500).json({
+      error: message
+    })
   }
 }
 

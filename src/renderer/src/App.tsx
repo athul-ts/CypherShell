@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from './components/ui/sonner'
-import { api } from './lib/api'
+import { api, setUnauthorizedHandler } from './lib/api'
 import LockScreen from './pages/LockScreen'
 import SetupWizard from './pages/SetupWizard'
 import { HashRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
@@ -13,15 +13,16 @@ import Settings from './pages/Settings'
 import { TabBar } from './components/terminal/TabBar'
 import { UpdateBanner } from './components/layout/UpdateBanner'
 import { useTabStore } from './store/tabStore'
+import { useAppTheme } from './hooks/useAppTheme'
 import { TerminalPane } from './components/terminal/TerminalPane'
 import { SftpPane } from './components/sftp/SftpPane'
 import { cn } from './lib/utils'
 
 type AppState = 'loading' | 'setup' | 'locked' | 'unlocked' | 'error'
 
-interface AppConfig {
-  lockEnabled: boolean
-  autoLockMinutes: number
+/** Terminal and SFTP windows are opened by main on `#/connection/<type>/<sessionId>`. */
+function isConnectionWindowHash(hash: string): boolean {
+  return hash.startsWith('#/connection/')
 }
 
 function StandaloneTerminal(): React.JSX.Element {
@@ -34,66 +35,14 @@ function StandaloneSftp(): React.JSX.Element {
   return <SftpPane sessionId={sessionId || ''} />
 }
 
-function AppContent({ onLock }: { onLock: () => void }): React.JSX.Element {
+// FR-07.5 / BL-18: auto-lock is no longer timed here. The main process keeps
+// one idle clock for every window and announces a lock with `app:locked`.
+function AppContent(): React.JSX.Element {
   const tabs = useTabStore((s) => s.tabs)
   const activeTabId = useTabStore((s) => s.activeTabId)
   const location = useLocation()
-  const [config, setConfig] = useState<AppConfig | null>(null)
-
-  useEffect(() => {
-    api
-      .get('/config')
-      .then((res) => setConfig(res.data))
-      .catch(console.error)
-  }, [])
-
-  // UX-02: Apply theme class from config
-  useEffect(() => {
-    const cfg = config as { theme?: string } | null
-    const theme = cfg?.theme || 'dark'
-    document.documentElement.classList.toggle('light', theme === 'light')
-    if (theme === 'system') {
-      const mq = window.matchMedia('(prefers-color-scheme: light)')
-      document.documentElement.classList.toggle('light', mq.matches)
-      const handleChange = (e: MediaQueryListEvent): void => {
-        document.documentElement.classList.toggle('light', e.matches)
-      }
-      mq.addEventListener('change', handleChange)
-      return (): void => mq.removeEventListener('change', handleChange)
-    }
-    return undefined
-  }, [config])
-
-  useEffect(() => {
-    if (!config || !config.lockEnabled) return
-
-    let lastActivity = Date.now()
-    const handleActivity = (): void => {
-      lastActivity = Date.now()
-    }
-
-    window.addEventListener('mousemove', handleActivity)
-    window.addEventListener('keydown', handleActivity)
-    window.addEventListener('mousedown', handleActivity)
-    window.addEventListener('scroll', handleActivity, true)
-
-    const interval = setInterval(() => {
-      if (Date.now() - lastActivity > config.autoLockMinutes * 60 * 1000) {
-        // FUN-01: Call server-side lock to clear the in-memory AES key
-        api.post('/auth/lock').catch(() => {})
-        sessionStorage.removeItem('jwt')
-        onLock()
-      }
-    }, 10000)
-
-    return () => {
-      window.removeEventListener('mousemove', handleActivity)
-      window.removeEventListener('keydown', handleActivity)
-      window.removeEventListener('mousedown', handleActivity)
-      window.removeEventListener('scroll', handleActivity, true)
-      clearInterval(interval)
-    }
-  }, [config, onLock])
+  // UX-02 / BL-35: the theme follows the saved config, including changes made in Settings
+  useAppTheme()
 
   const isConnectionWindow = location.pathname.startsWith('/connection/')
 
@@ -146,31 +95,47 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     async function initToken(): Promise<void> {
-      const hash = window.location.hash
-
-      // SEC-07: In connection windows, retrieve token via secure IPC
-      // instead of embedding it in the URL. Match /connection/<type>/<sessionId>
-      const connectionMatch = hash.match(/^#\/connection\/\w+\/([^?]+)/)
-      if (connectionMatch) {
-        const sessionId = connectionMatch[1]
-        const connectionToken = await window.api.getConnectionToken(sessionId)
-        if (connectionToken) {
-          sessionStorage.setItem('jwt', connectionToken)
-          return
-        }
-      }
-
-      // Fallback: legacy URL hash token (backward compat)
-      const searchParams = new URLSearchParams(
-        hash.includes('?') ? hash.split('?')[1] : window.location.search
-      )
-      const urlToken = searchParams.get('token')
-      if (urlToken) {
-        sessionStorage.setItem('jwt', urlToken)
-      }
+      // SEC-07 / BL-20: a connection window claims the token main holds for
+      // it, once, over IPC. A token in the URL is never read.
+      if (!isConnectionWindowHash(window.location.hash)) return
+      const connectionToken = await window.api.getConnectionToken()
+      if (connectionToken) sessionStorage.setItem('jwt', connectionToken)
     }
 
-    initToken().then(() => checkStatus(12)) // 12 retries × 1 s = up to 12 s while backend starts
+    initToken()
+      .catch(() => undefined) // without a token the status check re-authenticates
+      .then(() => checkStatus(12)) // 12 retries × 1 s = up to 12 s while backend starts
+  }, [])
+
+  // BL-18: the app locked (idle timeout or a lock request) — drop the token
+  // and show the lock screen at once. Main closes the connection windows.
+  useEffect(() => {
+    const unsubscribe = window.api.onAppLocked?.(() => {
+      sessionStorage.removeItem('jwt')
+      setState('locked')
+    })
+    return () => unsubscribe?.()
+  }, [])
+
+  // BL-16: when the backend rejects the token — it expired, was revoked by a
+  // lock, or the backend restarted — run the auth check again: with lock off
+  // a new token is issued silently, with lock on the lock screen appears.
+  useEffect(() => {
+    let inFlight = false
+    const reauthenticate = (): void => {
+      if (inFlight) return
+      inFlight = true
+      sessionStorage.removeItem('jwt')
+      checkStatus(12).finally(() => {
+        inFlight = false
+      })
+    }
+    setUnauthorizedHandler(reauthenticate)
+    const unsubscribe = window.api.onBackendRestarted?.(reauthenticate)
+    return () => {
+      setUnauthorizedHandler(null)
+      unsubscribe?.()
+    }
   }, [])
 
   async function checkStatus(retriesLeft: number): Promise<void> {
@@ -262,7 +227,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <HashRouter>
-      <AppContent onLock={() => setState('locked')} />
+      <AppContent />
       <Toaster position="bottom-right" richColors />
     </HashRouter>
   )

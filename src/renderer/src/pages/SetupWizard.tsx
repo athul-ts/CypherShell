@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
+import { MIN_MASTER_PASSWORD_LENGTH } from '../lib/passwordStrength'
+import { PasswordStrengthHint } from '../components/PasswordStrengthHint'
 
 interface SetupWizardProps {
   onComplete: () => void
@@ -15,7 +17,10 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
   const handleSetPassword = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     setError('')
-    if (password.length < 6) return setError('Password must be at least 6 characters.')
+    // BL-26: the backend enforces the same minimum
+    if (password.length < MIN_MASTER_PASSWORD_LENGTH) {
+      return setError(`Password must be at least ${MIN_MASTER_PASSWORD_LENGTH} characters.`)
+    }
     if (password !== confirm) return setError('Passwords do not match.')
 
     setLoading(true)
@@ -81,12 +86,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 6 characters"
+                  placeholder={`Min. ${MIN_MASTER_PASSWORD_LENGTH} characters`}
                   autoFocus
                   className="w-full px-4 py-3 rounded-xl bg-[#0f1117] border border-white/[0.1] text-white placeholder-slate-600
                     focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50
                     transition-all duration-200 text-sm"
                 />
+                <PasswordStrengthHint password={password} />
               </div>
 
               <div>
