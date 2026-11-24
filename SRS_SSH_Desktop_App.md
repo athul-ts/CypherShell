@@ -10,6 +10,7 @@
 > **Changelog from v3.6:**
 >
 > - BL-47 (2026-11-22): local files by grant — the backend no longer accepts local paths; the main process grants the files and folders the user picks (native dialogs, OS drops, local-pane listings) and resolves each grant for the backend (ADR-006). It closes the CodeQL path-injection alerts on PR #23 and the related drop and file-name defects
+> - BL-46 (2026-11-24): the 1.2.0 Release stopped at the Linux fuse check, which looked for the executable under the wrong name (`CypherShell` instead of `cyphershell`). The path is fixed and pinned by a test. macOS passed the fuse check, and its update feed lists both architectures, which answers the NFR-07 open question
 
 > **Changelog from v3.5:**
 >
@@ -2302,7 +2303,7 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 
 - `ci.yml`: runs on `push` to `ats`, on pull requests to `ats`, `features`, `dev`, `qa` and `main`, and as a reusable workflow; Node from a new `.nvmrc` (`24`). Jobs: **check** (typecheck, lint, `npm audit --omit=dev --audit-level=high` for the backend, `npm audit --audit-level=critical` at the root); **test** (backend and renderer tests on `ubuntu-latest` and `windows-2022`); **e2e** (`build:e2e` then `xvfb-run -a npm run test:e2e`, report uploaded on failure).
 - `release.yml` calls `ci.yml` and the installer build waits for it; `build.yml` takes its Node version from `.nvmrc`.
-- `scripts/check-mac-update-feed.cjs` fails the macOS build unless `latest-mac.yml` lists both `-macos-x64.zip` and `-macos-arm64.zip` with `sha512` and `size`. The first `package.yml` run answers the NFR-07 open question.
+- `scripts/check-mac-update-feed.cjs` fails the macOS build unless `latest-mac.yml` lists both `-macos-x64.zip` and `-macos-arm64.zip` with `sha512` and `size`. The first `package.yml` run answers the NFR-07 open question. Answered 2026-11-23: one `--mac` run writes a single `latest-mac.yml` that lists both zips (the check passed in the Release run for 1.2.0).
 - `.github/dependabot.yml` (npm for `/` and `/backend`, `github-actions`; weekly, minor and patch updates grouped, target `ats`, Electron majors ignored) and `.github/workflows/codeql.yml` (`javascript-typescript`).
 - `tests/e2e/app.spec.ts` test 2 always starts on a fresh profile, clicks "Continue without a password" and `#setup-skip-btn`, and asserts the Profiles page. `test-results/` is git-ignored.
 
@@ -2515,7 +2516,8 @@ Specified 2026-11-20. Phase 4 adds the missing capabilities (FR-11, FR-07.8, key
 - [x] `@electron/fuses read` on the packaged app shows the fuses above
 - [x] The storage key and launch secret are not present in the backend's environment
 - [x] The packaged Windows app starts on a throwaway profile (checked 2026-11-22)
-- [ ] macOS and Linux: the `Check Electron fuses` step of `build.yml` passes in `package.yml` (not yet run)
+- [x] macOS: the `Check Electron fuses` step of `build.yml` passes for both the x64 and the arm64 app (Release run for 1.2.0, 2026-11-23)
+- [ ] Linux: the same step passes. The 1.2.0 Release failed here because the step looked for `CypherShell`, while electron-builder names the Linux executable `cyphershell`. The path is fixed and pinned by `tests/backend/fuses.test.ts`; still to be confirmed by the next `package.yml` run
 
 ### ~~BL-47 — Local Files by Grant~~ ✅ Implemented
 
