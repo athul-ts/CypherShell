@@ -40,7 +40,7 @@
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.2",
     "prisma": "^7.10.1",
-    "typescript": "~5.9.3"
+    "typescript": "~7.0.2"
   },
   "allowScripts": {
     "prisma@7.8.0": true,
